@@ -2,7 +2,8 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 // Package validation defines Arc findings, typed validator invocation and command
-// severity policy. Automatic validator discovery and graph traversal are not provided.
+// severity policy, explicit graph registries and portable model annotations.
+// Runtime method discovery and reflective invocation are not provided.
 package validation
 
 import (
