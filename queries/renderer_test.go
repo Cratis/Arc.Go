@@ -117,6 +117,39 @@ func TestPlainSliceRemainsUnpagedAndPageIsNotPagedTwice(t *testing.T) {
 
 type providerQuery struct{ Prefix string }
 
+type nullableProvider interface{ ProviderName() string }
+
+func (*providerQuery) ProviderName() string { return "provider" }
+
+func TestNilProviderOutputSkipsRendererAndInterceptors(t *testing.T) {
+	for _, pointer := range []bool{false, true} {
+		var r queries.Registry
+		if pointer {
+			mustRegister(t, queries.Register[Item](&r, "Nil", queries.Function(func(context.Context, queries.NoArguments) (*providerQuery, error) { return nil, nil })))
+			mustRegister(t, queries.RegisterRenderer(&r, func(context.Context, *execution.Scope) (queries.Renderer[*providerQuery, []Item], error) {
+				t.Fatal("nil pointer activated renderer")
+				return nil, nil
+			}))
+		} else {
+			mustRegister(t, queries.Register[Item](&r, "Nil", queries.Function(func(context.Context, queries.NoArguments) (nullableProvider, error) { return nil, nil })))
+			mustRegister(t, queries.RegisterRenderer(&r, func(context.Context, *execution.Scope) (queries.Renderer[nullableProvider, []Item], error) {
+				t.Fatal("nil interface activated renderer")
+				return nil, nil
+			}))
+		}
+		mustRegister(t, queries.RegisterReadModelInterceptor[Item](&r, "never", func(context.Context, *execution.Scope) (queries.ReadModelInterceptor[Item], error) {
+			t.Fatal("ready-null activated interceptor")
+			return nil, nil
+		}))
+		p := build(t, &r, queries.PipelineOptions{})
+		result, err := queries.Perform[[]Item](t.Context(), p, "Item.Nil", queries.RequestFor(queries.NoArguments{}, queries.Parameters{Paging: queries.Paging{Size: 10, IsPaged: true}}))
+		mustRegister(t, err)
+		if data, present := result.Data(); !result.IsSuccess() || !result.IsReady() || !present || data != nil || result.Details().Paging.TotalItems != 0 {
+			t.Fatal("nil provider is not ready-null", result.Details(), data, present)
+		}
+	}
+}
+
 func TestProviderRendererOwnershipReuseAndOverride(t *testing.T) {
 	var r queries.Registry
 	calls := 0

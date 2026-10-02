@@ -41,6 +41,9 @@ type rendererEntry struct {
 
 func makeRenderer[Q, R any](f Factory[Renderer[Q, R]], keys []di.Key) rendererEntry {
 	return rendererEntry{queryType: reflect.TypeFor[Q](), dataType: reflect.TypeFor[R](), keys: slices.Clone(keys), invoke: func(ctx context.Context, s *execution.Scope, q any, c QueryContext) (data any, total int64, err error) {
+		if nilValue(q) {
+			return nil, 0, nil
+		}
 		var renderer Renderer[Q, R]
 		if err := boundary.Call(ctx, func(ctx context.Context) error { var err error; renderer, err = f(ctx, s); return err }); err != nil {
 			return nil, 0, err

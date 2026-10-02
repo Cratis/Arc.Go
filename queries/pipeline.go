@@ -410,7 +410,10 @@ func (p *queryPipeline) core(ctx context.Context, s *execution.Scope, prepared a
 		return result, err
 	}
 	var total int64
-	if q.page {
+	if nilValue(data) {
+		// A nil provider output is ready-null, not a renderer invocation.
+		data = nil
+	} else if q.page {
 		data, total = data.(pageValue).pageData()
 	} else if q.renderer != nil {
 		err = s.Use(ctx, func(ctx context.Context, view *execution.Scope) error {
@@ -424,13 +427,15 @@ func (p *queryPipeline) core(ctx context.Context, s *execution.Scope, prepared a
 	}
 	c.totalItems = total
 	ctx = context.WithValue(ctx, queryContextKey{}, c)
-	err = s.Use(ctx, func(ctx context.Context, view *execution.Scope) error {
-		var err error
-		data, err = intercept(ctx, view, data, q.dataType, p.interceptors)
-		return err
-	})
-	if err != nil {
-		return result, err
+	if !nilValue(data) {
+		err = s.Use(ctx, func(ctx context.Context, view *execution.Scope) error {
+			var err error
+			data, err = intercept(ctx, view, data, q.dataType, p.interceptors)
+			return err
+		})
+		if err != nil {
+			return result, err
+		}
 	}
 	if err := prepared.Check(ctx); err != nil {
 		return result, err
