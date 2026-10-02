@@ -35,6 +35,9 @@ func Unmarshal(data []byte, target any) error {
 	if !v.IsValid() || v.Kind() != reflect.Pointer || v.IsNil() {
 		return fmt.Errorf("JSON target must be a non-nil pointer")
 	}
+	if err := ValidateType(v.Elem().Type()); err != nil {
+		return err
+	}
 	if err := validateJSON(data); err != nil {
 		return err
 	}
@@ -49,6 +52,9 @@ func Unmarshal(data []byte, target any) error {
 func unmarshal(data []byte, v reflect.Value, depth int) error {
 	if depth > 64 {
 		return fmt.Errorf("JSON nesting exceeds 64 levels")
+	}
+	if err := ValidateType(v.Type()); err != nil {
+		return err
 	}
 	if v.CanAddr() && v.Addr().CanInterface() {
 		if optional, ok := v.Addr().Interface().(interface{ bindOptional([]byte, int) error }); ok {

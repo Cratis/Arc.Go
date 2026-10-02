@@ -44,6 +44,7 @@ versions and normalization. Fixtures are not live .NET captures.
 | Calendar/duration output | Fundamentals DateOnly/TimeOnly converters; System.Text.Json TimeSpan | `DateOnly`, `TimeOnly`, `TimeSpan`, aliases provided by `github.com/cratis/fundamentals.go/concepts` at `v0.0.0-20261002203106-9d83ef2578a5` | Implemented | `ContractTests/scalars_test.go`, `concepts/scalars_test.go`, `concepts/aliases_test.go`; unchanged canonical strings, zero values, full signed tick range and shared-type identity/round trips |
 | Calendar input | Same converters | `ParseDateOnly`, `ParseTimeOnly`, `ParseTimeSpan`, forwarding to `github.com/cratis/fundamentals.go/concepts` at `v0.0.0-20261002203106-9d83ef2578a5` | Partial | Boundary and failure-atomicity tests; invariant input only, no culture-dependent parsing or DateOnly timestamp coercion |
 | DateTime/DateTimeOffset | `JsonSerializerOptionsConfiguration.cs` (default System.Text.Json timestamp codecs) | `time.Time` through `serialization.Marshal`, `Unmarshal` | Partial | `TestTimestampWirePolicy` pins RFC3339Nano output: UTC `Z`, up to nine fractional digits, explicit offsets. C# DateTimeOffset emits `+00:00` for UTC and at most seven digits; DateTime suffix depends on kind. Not all C# timestamp input forms are accepted; no DateTimeOffset-specific codec |
+| ConceptAs<T> → Concept[T] recognition | Fundamentals `Concepts/ConceptAs.cs`, `Json/ConceptAsJsonConverter.cs` at `d2accc4`; Arc `JsonSerializerOptionsConfiguration.cs` at `7c1e780` | `concepts.Concept[T]` alias; `serialization.ValidateType`, cached shared `Underlying` metadata | Partial | `ContractTests/concepts_test.go`: UUID forwarding, string/int, pointers, slices/map values, inspectable marker-only/nested rejection before encoding/binding, metadata-only concurrent plans, encoded fields checked with `CheckJSON`. Codecs remain application-owned; HTTP GET/QUERY text binding, decimal/enum concepts and generated schema/proxy recognition are not implemented |
 | Model naming/nulls/numbers | `JsonSerializerOptionsConfiguration.cs` | `serialization.Marshal`, `Unmarshal` | Partial | `serialization/serialization_test.go`, `codec_regression_test.go`; acronym-preserving naming, exact case-sensitive binding, tags, null omission, numeric enums, nonfinite floats, JSON/text codecs, embedded-field promotion and standard Go omission tags. Complex dictionary keys, polymorphism and descriptor-generated codecs await later slices |
 | Input presence and duplicates | `ArcOptions.cs`, `JsonSerializerOptionsConfiguration.cs`, command and query request readers | `serialization.Optional[T]`, `Some`, `Null` | Go-specific | `TestExactWireNames`, `TestNullStringPolicyAndOptionalOutput`, presence and atomic-binding tests; unknown properties including case variants ignored, exact duplicate declared names rejected. Present-null Optionals emit null; plain Go strings reject null unlike C# strings. HTTP GET/QUERY binding not implemented |
 | Framework recursion safety | `JsonSerializerOptionsConfiguration.cs` (System.Text.Json traversal) | Model and envelope encoders | Go-specific | `TestFrameworkCyclesAndNestingUseSharedBudget`; one 64-level budget across validation State, command responses, query data/findings/change sets and Optional values. Application custom codecs own their recursion safety |
@@ -116,7 +117,12 @@ versions and normalization. Fixtures are not live .NET captures.
   spelling; this slice does not implement the full C# timestamp input grammar.
 - Arc.Go's UUID and calendar/duration scalars alias Fundamentals.Go's shared
   types; existing imports, constructors, parsers and wire formats are unchanged.
-  Custom `Concept[T]`/`Underlying` recognition remains unimplemented in Arc.Go.
+  `Concept[T]` is the shared interface declaration, recognized through cached
+  `Underlying` metadata without executing application methods. Supply all four
+  text/JSON codecs; marker-only and nested concepts fail preflight with inspectable
+  Fundamentals errors. Unlike C# inheritance and converter-created instances, Go
+  uses explicit methods and constructors. HTTP text binding and generated schema
+  metadata remain future slices.
 - Use invariant calendar text and dashed UUIDs. Go deliberately does not guess a
   server culture. Input forms outside those documented codecs must be normalized
   by the caller or a custom codec.

@@ -23,6 +23,11 @@ func marshal(v reflect.Value, depth int) ([]byte, error) {
 	if depth > 64 {
 		return nil, fmt.Errorf("JSON nesting exceeds 64 levels (possibly cyclic)")
 	}
+	if v.IsValid() {
+		if err := ValidateType(v.Type()); err != nil {
+			return nil, err
+		}
+	}
 	if nilValue(v) {
 		return []byte("null"), nil
 	}

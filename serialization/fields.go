@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 	"unicode"
 )
 
@@ -29,7 +30,25 @@ type field struct {
 	omitZero  bool
 }
 
+type fieldPlan struct {
+	once    sync.Once
+	members []field
+	err     error
+}
+
+var fieldPlans sync.Map // reflect.Type -> *fieldPlan
+
 func fields(t reflect.Type) ([]field, error) {
+	entry, loaded := fieldPlans.Load(t)
+	if !loaded {
+		entry, _ = fieldPlans.LoadOrStore(t, &fieldPlan{})
+	}
+	plan := entry.(*fieldPlan)
+	plan.once.Do(func() { plan.members, plan.err = buildFields(t) })
+	return plan.members, plan.err
+}
+
+func buildFields(t reflect.Type) ([]field, error) {
 	var candidates []field
 	if err := collectFields(t, nil, make(map[reflect.Type]bool), &candidates); err != nil {
 		return nil, err

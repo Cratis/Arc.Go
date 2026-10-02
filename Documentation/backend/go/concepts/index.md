@@ -13,11 +13,11 @@ contracts Go does not provide directly. Arc does not require a `Concept[T]` wrap
 
 `UUID`, `DateOnly`, `TimeOnly` and `TimeSpan` are provided by
 `github.com/cratis/fundamentals.go/concepts`, pinned at
-`v0.0.0-20261002203106-9d83ef2578a5`. Arc.Go's `concepts` package aliases these
+`v0.0.0-20261002211957-66acfedfec9c`. Arc.Go's `concepts` package aliases these
 shared types and forwards its existing constructors and parsers. You can pass
 values between the two packages without conversion; existing Arc.Go imports
-and wire formats are unchanged. Custom `Concept[T]` recognition is not yet
-implemented in Arc.Go.
+and wire formats are unchanged. `concepts.Concept[T]` also aliases the shared
+concept declaration, so your models need only Arc.Go's `concepts` import.
 
 | Type | Zero value | JSON output | Input |
 | --- | --- | --- | --- |
@@ -38,6 +38,61 @@ source identifiers: those may be arbitrary strings.
 A new named type such as `type TaskID concepts.UUID` does not inherit codec
 methods. Explicitly forward text/JSON methods, or compose the UUID in a domain
 wrapper with its own codec. String/integer named types keep their scalar JSON kind.
+
+## Declare a domain concept
+
+Use `Concept[T]` when Arc should recognize a domain value as a particular scalar,
+not merely a named Go primitive. This is an interface declaration, not a wrapper
+or a replacement for your codecs. For example, this complete type declaration
+requires imports of `encoding/json` and `github.com/cratis/arc.go/concepts`:
+
+```go
+type Title string
+
+func (v Title) ConceptValue() string { return string(v) }
+func (v Title) MarshalText() ([]byte, error) { return []byte(v), nil }
+func (v Title) MarshalJSON() ([]byte, error) { return json.Marshal(string(v)) }
+func (v *Title) UnmarshalText(data []byte) error {
+    *v = Title(data)
+    return nil
+}
+func (v *Title) UnmarshalJSON(data []byte) error {
+    var value string
+    if err := json.Unmarshal(data, &value); err != nil {
+        return err
+    }
+    *v = Title(value)
+    return nil
+}
+
+var _ concepts.Concept[string] = Title("")
+```
+
+The value declares its representation and implements both encoders; its pointer
+implements both decoders. For a UUID-backed type, return `concepts.UUID` from
+`ConceptValue` and forward all four codecs to that UUID. A marker without codecs
+is invalid. `T` must be an exact supported primitive or shared scalar; concepts
+cannot wrap another concept, and concept-bearing structs cannot embed fields.
+Defined calendar types need forwarding codecs. A defined TimeSpan without a
+marker is indistinguishable from an ordinary int64 and encodes as ticks.
+
+Call `serialization.ValidateType(reflect.TypeFor[YourModel]())` during model
+registration. It prepares cached field plans and checks pointers, collection
+elements, map keys/values, and exported JSON fields without constructing values or
+calling your methods. `Marshal` and `Unmarshal` also perform this check before
+using a type, even for empty collections or omitted nil fields. Invalid declarations
+preserve Fundamentals.Go's `concepts.ErrInvalidConcept` and `*concepts.TypeError`
+for `errors.Is`/`errors.As`; import the Fundamentals package to inspect those errors.
+Custom non-concept codecs are opaque, and interface values are checked at runtime.
+
+Arc keeps using your codecs, never `ConceptValue`, to encode and bind values.
+Pointer concepts retain Arc's null semantics; slices and string-key map values
+retain their scalar encoding. Non-string map keys still need a custom codec.
+HTTP GET/QUERY string argument binding is not implemented yet; when authoring a
+concept, make its text decoder accept the same canonical scalar as its JSON codec.
+Arc's contract tests run Fundamentals.Go's `CheckJSON` on encoded concept fields;
+responses do not pay that validation cost. Test your own codecs against `CheckJSON`
+as well: static recognition cannot prove what a method will emit.
 
 ## Timestamps
 
