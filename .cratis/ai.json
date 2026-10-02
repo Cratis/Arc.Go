@@ -11,10 +11,16 @@
   "profiles": [
     "cratis/engineering/core",
     "cratis/documentation",
-    "cratis/arc/core",
     "cratis/chronicle/core",
+    "cratis/chronicle/compliance",
+    "cratis/chronicle/multi-tenancy",
     "cratis/specifications",
-    "cratis/cli"
+    "cratis/cli",
+    "cratis/review",
+    "cratis/fundamentals",
+    "cratis/methodology/governed-releases",
+    "cratis/arc/core",
+    "cratis/arc/identity"
   ],
   "languages": [
     "language-agnostic",
