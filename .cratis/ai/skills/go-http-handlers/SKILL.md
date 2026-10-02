@@ -59,23 +59,23 @@ and error mapping. It reports write errors but cannot undo a committed response.
 package transport
 
 import (
- "encoding/json"
- "fmt"
- "net/http"
+	"encoding/json"
+	"fmt"
+	"net/http"
 )
 
 // WriteJSON encodes value before committing status and JSON headers.
 func WriteJSON(w http.ResponseWriter, status int, value any) error {
- body, err := json.Marshal(value)
- if err != nil {
-  return fmt.Errorf("encode response: %w", err)
- }
- w.Header().Set("Content-Type", "application/json")
- w.WriteHeader(status)
- if _, err := w.Write(append(body, '\n')); err != nil {
-  return fmt.Errorf("write response: %w", err)
- }
- return nil
+	body, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("encode response: %w", err)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if _, err := w.Write(append(body, '\n')); err != nil {
+		return fmt.Errorf("write response: %w", err)
+	}
+	return nil
 }
 ```
 
