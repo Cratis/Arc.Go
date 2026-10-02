@@ -1,0 +1,41 @@
+---
+title: Query return types
+description: Choose owning-model snapshot shapes, already-windowed pages or exact provider renderers.
+---
+
+<!-- Copyright (c) Cratis. All rights reserved. -->
+<!-- Licensed under the MIT license. See LICENSE file in the project root for full license information. -->
+
+A query belongs to one named, nonpointer read-model struct `M`. Its client data
+must be that model or a supported collection of it; unrelated models do not become
+eligible because they happen to have the same fields.
+
+## Snapshot matrix
+
+| Performer output | Client data | Paging |
+| --- | --- | --- |
+| `M`, `*M` | Same declared shape | None |
+| `[]M`, `[]*M`, arrays of either | Same collection shape | None by default |
+| `Page[M]`, `Page[*M]` | `[]M`, `[]*M` | Already windowed; total supplied by performer |
+| Provider output `Q` with exact `Renderer[Q,R]` | Supported owning-model `R` | Renderer-owned |
+| Channel, iterator, observable metadata | Rejected | Deferred streaming surface |
+
+A successful nil single model is ready-null and skips interception. `Page` is
+unwrapped once and is never rendered or paged again. Plain slices stay unpaged
+unless you explicitly register a renderer.
+
+## Render a provider query
+
+Register a reusable renderer with `RegisterRenderer[Q,R]`, or select a per-query
+override with `WithRenderer[A,Q,R]`. Registration keys are exact declared types,
+not the first assignable runtime type. Build validates rendered ownership without
+calling a factory. An unrelated raw output is rejected at Build unless an exact
+renderer supplies an eligible result shape.
+
+`Registration.ReturnType()` describes the raw performer output;
+`DataType()` describes the rendered/unwrapped data. The generic
+`queries.Perform[R]` checks known compatibility before running application code.
+Provider dependencies, counting and storage I/O belong inside rendering, not Build.
+
+See [paging and sorting](paging.md) and the executed provider example in
+`queries/example_test.go`.
