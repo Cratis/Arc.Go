@@ -107,6 +107,9 @@ func (r *Registry) Build(options PipelineOptions) (Pipeline, error) {
 		}
 		return nil
 	}
+	if err := options.Validation.CheckDependencies(catalog); err != nil {
+		return nil, err
+	}
 	for _, registration := range r.registrations {
 		if err := checkKeys(registration.dependencies); err != nil {
 			return nil, &RegistrationError{registration.descriptor.Type.Identity(), err}
@@ -130,6 +133,9 @@ func (r *Registry) Build(options PipelineOptions) (Pipeline, error) {
 		}
 		options.Authorization = evaluator
 	} else if err := options.Authorization.CheckCatalog(r.Catalog()); err != nil {
+		return nil, err
+	}
+	if err := options.Authorization.CheckDependencies(r.Catalog(), catalog); err != nil {
 		return nil, err
 	}
 	// Reuse metadata's existing route/collision rules; no second route algorithm.

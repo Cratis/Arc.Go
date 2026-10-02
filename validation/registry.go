@@ -10,6 +10,7 @@ import (
 	"reflect"
 
 	"github.com/cratis/arc.go/execution"
+	di "github.com/cratis/fundamentals.go/dependencyinjection"
 )
 
 var (
@@ -31,7 +32,6 @@ type ModelValidator interface {
 
 // Factory creates a borrowed validator during validation, never during Build.
 // The non-closing scope expires on return from this node's validation callback.
-// DI dependency manifests will be added when Fundamentals contracts are published.
 type Factory[T any] func(context.Context, *execution.Scope) (T, error)
 
 // Registry is a single-owner builder. Zero is usable. One validator (ordinary or
@@ -43,43 +43,52 @@ type Registry struct {
 }
 
 type graphRegistration struct {
+	keys    []di.Key
 	concept bool
 	invoke  func(context.Context, *execution.Scope, any) ([]Result, error)
 }
 
 // Register borrows a shared, concurrently callable validator for exact T.
 func Register[T any](r *Registry, validator Validator[T]) error {
-	return register(r, validator, Factory[Validator[T]](nil), false)
+	return register(r, validator, Factory[Validator[T]](nil), false, nil)
 }
 
 // RegisterConcept registers T as an opaque concept leaf. Findings attach to the
 // owning member, not to a concept's private representation.
 func RegisterConcept[T any](r *Registry, validator Validator[T]) error {
-	return register(r, validator, Factory[Validator[T]](nil), true)
+	return register(r, validator, Factory[Validator[T]](nil), true, nil)
 }
 
-// RegisterScoped registers a lazy validator factory; no DI contract is required.
-func RegisterScoped[T any](r *Registry, factory Factory[Validator[T]]) error {
+// RegisterScoped registers a lazy validator factory. Optional exact dependency
+// keys are copied and checked by pipeline Build without activating the factory.
+// Omit keys for manually wired factories; invalid keys fail registration.
+func RegisterScoped[T any](r *Registry, factory Factory[Validator[T]], keys ...di.Key) error {
 	if factory == nil {
 		return ErrInvalidRegistration
 	}
-	return register(r, nil, factory, false)
+	return register(r, nil, factory, false, keys)
 }
 
-// RegisterScopedConcept registers a lazy concept validator factory.
-func RegisterScopedConcept[T any](r *Registry, factory Factory[Validator[T]]) error {
+// RegisterScopedConcept registers a lazy concept validator factory with the
+// same optional dependency manifest contract as RegisterScoped.
+func RegisterScopedConcept[T any](r *Registry, factory Factory[Validator[T]], keys ...di.Key) error {
 	if factory == nil {
 		return ErrInvalidRegistration
 	}
-	return register(r, nil, factory, true)
+	return register(r, nil, factory, true, keys)
 }
 
-func register[T any](r *Registry, validator Validator[T], factory Factory[Validator[T]], concept bool) error {
+func register[T any](r *Registry, validator Validator[T], factory Factory[Validator[T]], concept bool, keys []di.Key) error {
 	if r == nil || (factory == nil && isNil(validator)) {
 		return ErrInvalidRegistration
 	}
 	if r.frozen {
 		return ErrFrozen
+	}
+	for _, key := range keys {
+		if key.Type() == nil {
+			return ErrInvalidRegistration
+		}
 	}
 	t := reflect.TypeFor[T]()
 	if t.Kind() == reflect.Interface || t.Kind() == reflect.Func || t.Kind() == reflect.Chan || t.Kind() == reflect.UnsafePointer {
@@ -91,7 +100,7 @@ func register[T any](r *Registry, validator Validator[T], factory Factory[Valida
 	if r.entries == nil {
 		r.entries = make(map[reflect.Type]graphRegistration)
 	}
-	r.entries[t] = graphRegistration{concept: concept, invoke: func(ctx context.Context, scope *execution.Scope, value any) (results []Result, err error) {
+	r.entries[t] = graphRegistration{keys: append([]di.Key(nil), keys...), concept: concept, invoke: func(ctx context.Context, scope *execution.Scope, value any) (results []Result, err error) {
 		if factory == nil {
 			return Invoke(ctx, validator, value.(T))
 		}
@@ -124,7 +133,7 @@ func (r *Registry) Build() (*Graph, error) {
 	if r.frozen {
 		return nil, ErrFrozen
 	}
-	graph := &Graph{entries: make(map[reflect.Type]graphRegistration)}
+	graph := &Graph{entries: make(map[reflect.Type]graphRegistration), order: append([]reflect.Type(nil), r.order...)}
 	for _, t := range r.order {
 		graph.entries[t] = r.entries[t]
 	}

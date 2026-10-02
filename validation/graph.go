@@ -13,6 +13,7 @@ import (
 	"github.com/cratis/arc.go/execution"
 	"github.com/cratis/arc.go/internal/modelshape"
 	fconcepts "github.com/cratis/fundamentals.go/concepts"
+	di "github.com/cratis/fundamentals.go/dependencyinjection"
 )
 
 // Graph holds immutable registrations and is concurrent-safe when its validators
@@ -20,6 +21,26 @@ import (
 // Maps are opaque: register an explicit validator to inspect their entries.
 type Graph struct {
 	entries map[reflect.Type]graphRegistration
+	order   []reflect.Type
+}
+
+// CheckDependencies validates every registered scoped validator's declared keys
+// against a borrowed catalog, without resolving dependencies or running rules.
+// All registrations are checked because runtime interfaces may expose any model.
+// Nil/zero graphs and graphs without keys need no catalog. A missing or typed-nil
+// catalog fails when keys exist. Hidden closure dependencies cannot be checked.
+func (g *Graph) CheckDependencies(catalog di.Catalog) error {
+	if g == nil {
+		return nil
+	}
+	for _, typ := range g.order {
+		for _, key := range g.entries[typ].keys {
+			if isNil(catalog) || !catalog.Contains(key) {
+				return fmt.Errorf("%w: %s requires %s", ErrInvalidRegistration, typ, key)
+			}
+		}
+	}
+	return nil
 }
 
 type visit struct {

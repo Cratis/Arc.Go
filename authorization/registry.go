@@ -16,6 +16,7 @@ import (
 	"github.com/cratis/arc.go/identity"
 	"github.com/cratis/arc.go/metadata"
 	"github.com/cratis/arc.go/tenancy"
+	di "github.com/cratis/fundamentals.go/dependencyinjection"
 )
 
 // Kind identifies an operation category.
@@ -84,23 +85,30 @@ type Registry struct {
 	frozen   bool
 }
 type registration struct {
+	keys      []di.Key
 	policy    Policy
 	factory   func(context.Context, *execution.Scope) (Policy, error)
 	anonymous bool
 }
 
 // Factory constructs a borrowed policy only during scoped evaluation. Its scope
-// view is non-closing and expires on return from EvaluateScoped. DI dependency
-// manifests will follow the published Fundamentals contracts.
+// view is non-closing and expires on return from EvaluateScoped.
 type Factory[P Policy] func(context.Context, *execution.Scope) (P, error)
 
 // RegisterPolicy registers a lazy scoped policy without activating its factory.
-// Nil factories and duplicate names fail. Resources own disposal of the policy.
-func RegisterPolicy[P Policy](r *Registry, name string, factory Factory[P], options PolicyOptions) error {
+// Nil factories, invalid keys and duplicate names fail. Optional exact dependency
+// keys are copied and checked by pipeline Build without constructing the policy.
+// Omit keys for manually wired factories. Resources own disposal of the policy.
+func RegisterPolicy[P Policy](r *Registry, name string, factory Factory[P], options PolicyOptions, keys ...di.Key) error {
+	for _, key := range keys {
+		if key.Type() == nil {
+			return configuration(Target{}, name, ErrInvalidConfiguration)
+		}
+	}
 	if factory == nil {
 		return configuration(Target{}, name, ErrInvalidConfiguration)
 	}
-	return r.register(name, registration{anonymous: options.EvaluatesAnonymous, factory: func(ctx context.Context, scope *execution.Scope) (Policy, error) {
+	return r.register(name, registration{keys: slices.Clone(keys), anonymous: options.EvaluatesAnonymous, factory: func(ctx context.Context, scope *execution.Scope) (Policy, error) {
 		policy, err := factory(ctx, scope)
 		if check := scope.CheckContext(ctx); check != nil {
 			return nil, errors.Join(err, check)

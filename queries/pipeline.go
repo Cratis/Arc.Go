@@ -92,6 +92,9 @@ func (r *Registry) Build(o PipelineOptions) (Pipeline, error) {
 		}
 		return nil
 	}
+	if err := o.Validation.CheckDependencies(o.DependencyCatalog); err != nil {
+		return nil, err
+	}
 	p := &queryPipeline{options: o, queries: map[FullyQualifiedQueryName]Registration{}, filters: slices.Clone(r.filters), interceptors: slices.Clone(r.interceptors)}
 	catalog := r.Catalog()
 	if _, err := metadata.Resolve(catalog, metadata.DefaultOptions()); err != nil {
@@ -154,6 +157,9 @@ func (r *Registry) Build(o PipelineOptions) (Pipeline, error) {
 		}
 		p.options.Authorization = e
 	} else if err := o.Authorization.CheckCatalog(catalog); err != nil {
+		return nil, err
+	}
+	if err := p.options.Authorization.CheckDependencies(catalog, o.DependencyCatalog); err != nil {
 		return nil, err
 	}
 	r.frozen = true

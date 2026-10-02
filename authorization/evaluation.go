@@ -12,6 +12,7 @@ import (
 	"github.com/cratis/arc.go/identity"
 	"github.com/cratis/arc.go/metadata"
 	"github.com/cratis/arc.go/tenancy"
+	di "github.com/cratis/fundamentals.go/dependencyinjection"
 )
 
 // Evaluator is immutable and concurrent-safe with concurrently callable policies.
@@ -65,6 +66,34 @@ func (e *Evaluator) CheckCatalog(catalog metadata.Catalog) error {
 		}
 		if err := check(Target{Kind: Query, Identity: query.Identity()}, query.Authorization, query.ReadModelAuthorization); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// CheckDependencies checks effective policy manifests for the supplied catalog
+// subset, after checking its frozen declarations. Overridden policies and other
+// targets do not require dependencies for this pipeline. No policies or factories
+// run. Missing/typed-nil catalogs fail only when applicable declared keys exist;
+// manually captured dependencies remain the application's responsibility.
+func (e *Evaluator) CheckDependencies(catalog metadata.Catalog, dependencies di.Catalog) error {
+	if err := e.CheckCatalog(catalog); err != nil {
+		return err
+	}
+	targets := make([]Target, 0, len(catalog.Commands)+len(catalog.Queries))
+	for _, command := range catalog.Commands {
+		targets = append(targets, Target{Kind: Command, Identity: command.Type.Identity()})
+	}
+	for _, query := range catalog.Queries {
+		targets = append(targets, Target{Kind: Query, Identity: query.Identity()})
+	}
+	for _, target := range targets {
+		for _, requirement := range e.declarations[target].requirements {
+			for _, key := range requirement.registration.keys {
+				if nilValue(dependencies) || !dependencies.Contains(key) {
+					return configuration(target, key.String(), ErrInvalidConfiguration)
+				}
+			}
 		}
 	}
 	return nil
