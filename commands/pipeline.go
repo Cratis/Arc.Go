@@ -94,8 +94,9 @@ func (p *pipeline) ValidateScoped(ctx context.Context, scope *execution.Scope, c
 	return NewResult(result.Details(), serialization.Optional[NoResponse]{}), err
 }
 
-// Execute checks a compatible known response contract before application code.
-// Unknown contracts require R=any or an explicit registration response option.
+// Execute checks a known response contract before application code. Unknown
+// contracts are checked against the actual response after execution; a mismatch
+// returns ErrResponseType and a failed envelope with no response.
 func Execute[R any](ctx context.Context, p Pipeline, command any, options ...ExecuteOptions) (Result[R], error) {
 	if nilValue(p) {
 		return FromError[R](contextID(ctx), ErrInvalidRegistration), ErrInvalidRegistration
@@ -103,9 +104,6 @@ func Execute[R any](ctx context.Context, p Pipeline, command any, options ...Exe
 	registration, err := p.LookupCommand(command)
 	if err == nil {
 		t := reflect.TypeFor[R]()
-		if registration.responseKind == ResponseUnknown && t != reflect.TypeFor[any]() {
-			err = ErrResponseType
-		}
 		if registration.responseKind == ResponseValue && !registration.responseType.AssignableTo(t) {
 			err = ErrResponseType
 		}

@@ -30,6 +30,7 @@ type Registry struct {
 	filters       []extension[Filter]
 	authFilters   []extension[AuthorizationFilter]
 	responses     []extension[ResponseValueHandler]
+	responseTypes map[string]reflect.Type
 	participants  []extension[ExecutionScope]
 }
 type extension[T any] struct {
@@ -144,7 +145,7 @@ func (r *Registry) Build(options PipelineOptions) (Pipeline, error) {
 	}
 	p := &pipeline{options: options, byType: make(map[reflect.Type]Registration), byName: make(map[string]Registration), providers: append([]extension[ContextValuesProvider](nil), r.providers...), keys: append([]extension[KeyResolver](nil), r.keys...), filters: append([]extension[Filter](nil), r.filters...), authFilters: append([]extension[AuthorizationFilter](nil), r.authFilters...), responses: append([]extension[ResponseValueHandler](nil), r.responses...), participants: append([]extension[ExecutionScope](nil), r.participants...)}
 	for _, entry := range r.registrations {
-		if entry.responseKind == ResponseUnknown && len(r.responses) == 0 && entry.adapter.returnType.Kind() != reflect.Interface {
+		if entry.responseKind == ResponseUnknown && r.responsesCannotMatch(entry.adapter.returnType) && entry.adapter.returnType.Kind() != reflect.Interface {
 			entry.responseKind, entry.responseType = ResponseValue, entry.adapter.returnType
 		}
 		p.byType[entry.commandType], p.byName[entry.descriptor.Type.Identity()] = entry, entry
@@ -152,6 +153,16 @@ func (r *Registry) Build(options PipelineOptions) (Pipeline, error) {
 	r.frozen = true
 	return p, nil
 }
+func (r *Registry) responsesCannotMatch(output reflect.Type) bool {
+	for _, handler := range r.responses {
+		typ, typed := r.responseTypes[handler.name]
+		if !typed || matchesConsumerType(typ, output) {
+			return false
+		}
+	}
+	return true
+}
+
 func addExtension[T any](r *Registry, kind, name string, factory Factory[T], keys []di.Key, entries *[]extension[T]) error {
 	if r == nil || factory == nil || !validExtensionName(name) {
 		return ErrInvalidRegistration

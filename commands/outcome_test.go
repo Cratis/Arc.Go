@@ -173,9 +173,34 @@ func TestTypedNilScalarZerosAndCollectionLeaves(t *testing.T) {
 		t.Fatal(response, present)
 	}
 }
+
+type OrderID string
+
+func TestTypedUnrelatedEventHandlerPreservesKnownOrderIDResponse(t *testing.T) {
+	var r commands.Registry
+	must(t, commands.Register[Clear](&r, commands.Handle(func(Clear, context.Context) (OrderID, error) { return OrderID("order-1"), nil })))
+	must(t, commands.RegisterResponseValueHandler[Event](&r, "events", func(context.Context, *execution.Scope) (commands.ResponseValueHandler, error) {
+		return consumer{can: func(commands.CommandContext, any) bool { return true }, handle: func(context.Context, *commands.Invocation, any) (commands.Result[commands.NoResponse], error) {
+			t.Fatal("unrelated handler consumed OrderID")
+			return commands.Result[commands.NoResponse]{}, nil
+		}}, nil
+	}))
+	p := build(t, &r, commands.PipelineOptions{})
+	registration, _ := p.Lookup("Clear")
+	if typ, present := registration.ResponseType(); registration.ResponseKind() != commands.ResponseValue || !present || typ != reflect.TypeFor[OrderID]() {
+		t.Fatal("unrelated typed handler erased response metadata")
+	}
+	result, err := commands.Execute[OrderID](t.Context(), p, Clear{})
+	must(t, err)
+	if value, present := result.Response(); !result.IsSuccess() || !present || value != "order-1" {
+		t.Fatal(result.Details(), value)
+	}
+}
+
 func TestUnknownAndEnforcedResponseContracts(t *testing.T) {
 	var r commands.Registry
-	must(t, commands.Register[Clear](&r, commands.Handle(func(Clear, context.Context) (int, error) { t.Fatal("typed unknown contract invoked"); return 1, nil })))
+	calls := 0
+	must(t, commands.Register[Clear](&r, commands.Handle(func(Clear, context.Context) (int, error) { calls++; return 1, nil })))
 	must(t, r.AddResponseValueHandler("conditional", func(context.Context, *execution.Scope) (commands.ResponseValueHandler, error) {
 		return consumer{can: func(commands.CommandContext, any) bool { return false }, handle: func(context.Context, *commands.Invocation, any) (commands.Result[commands.NoResponse], error) {
 			return commands.Result[commands.NoResponse]{}, nil
@@ -186,8 +211,17 @@ func TestUnknownAndEnforcedResponseContracts(t *testing.T) {
 	if registration.ResponseKind() != commands.ResponseUnknown {
 		t.Fatal("dynamic handler guessed response")
 	}
-	if _, err := commands.Execute[int](t.Context(), p, Clear{}); !errors.Is(err, commands.ErrResponseType) {
-		t.Fatal(err)
+	typed, err := commands.Execute[int](t.Context(), p, Clear{})
+	must(t, err)
+	if value, present := typed.Response(); !typed.IsSuccess() || !present || value != 1 || calls != 1 {
+		t.Fatal("unknown contract was refused before runtime assertion", typed.Details(), value, calls)
+	}
+	mismatch, err := commands.Execute[string](t.Context(), p, Clear{})
+	if !errors.Is(err, commands.ErrResponseType) || mismatch.IsSuccess() || calls != 2 {
+		t.Fatal("runtime mismatch reported success", mismatch.Details(), err, calls)
+	}
+	if _, present := mismatch.Response(); present {
+		t.Fatal("runtime mismatch retained response")
 	}
 	var noResponse commands.Registry
 	must(t, commands.Register[Clear](&noResponse, commands.Handle(func(Clear, context.Context) (int, error) { return 1, nil }), commands.WithNoResponse[Clear]()))

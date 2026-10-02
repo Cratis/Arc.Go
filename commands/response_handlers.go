@@ -43,7 +43,7 @@ func RegisterResponseValueHandler[T any](r *Registry, name string, factory Facto
 	if factory == nil {
 		return ErrInvalidRegistration
 	}
-	return r.AddResponseValueHandler(name, func(ctx context.Context, scope *execution.Scope) (ResponseValueHandler, error) {
+	err := r.AddResponseValueHandler(name, func(ctx context.Context, scope *execution.Scope) (ResponseValueHandler, error) {
 		h, err := factory(ctx, scope)
 		if err != nil {
 			return nil, err
@@ -57,6 +57,14 @@ func RegisterResponseValueHandler[T any](r *Registry, name string, factory Facto
 		}
 		return base, nil
 	}, keys...)
+	if err != nil {
+		return err
+	}
+	if r.responseTypes == nil {
+		r.responseTypes = make(map[string]reflect.Type)
+	}
+	r.responseTypes[name] = reflect.TypeFor[T]()
+	return nil
 }
 
 type typedConsumer struct {

@@ -7,7 +7,7 @@ A returned value can represent work for a server extension rather than a client 
 
 ## Register a consumer
 
-`AddResponseValueHandler(name, factory, keys...)` registers a dynamic consumer. `RegisterResponseValueHandler[T]` additionally restricts applicability to exact T; its `CanHandle` predicate still decides at runtime. Factories run only after Handle, never during Build or Validate, and return borrowed instances. Resources own disposal.
+`AddResponseValueHandler(name, factory, keys...)` registers a dynamic consumer. `RegisterResponseValueHandler[T]` additionally restricts applicability to exact concrete T or values implementing interface T; its `CanHandle` predicate still decides at runtime. Factories run only after Handle, never during Build or Validate, and return borrowed instances. Resources own disposal.
 
 The methods are:
 

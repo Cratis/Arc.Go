@@ -17,7 +17,7 @@ result, err := commands.Execute[string](ctx, pipeline, Greet{Name: "Ada"})
 
 Check the local `err`, then inspect `IsAuthorized`, `IsValid`, and `HasExceptions`. Expected validation findings and business denials may return a failed envelope with nil error. Infrastructure and cancellation errors remain inspectable with `errors.Is`/`errors.As`. `Response()` distinguishes absence from scalar zero.
 
-The typed helper checks a known incompatible response contract before any application callback. Unknown contracts require `R=any` or an explicit `WithResponseType[C,R]`; a compatible typed call may still return no response.
+The typed helper checks a known incompatible response contract before any application callback. Unknown contracts are checked against the actual response after execution; a mismatch returns `ErrResponseType` and a failed envelope without a response. A compatible typed call may still return no response.
 
 ## Follow the stages
 
