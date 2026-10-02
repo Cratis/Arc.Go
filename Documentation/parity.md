@@ -54,8 +54,15 @@ versions and normalization. Fixtures are not live .NET captures.
 | Change-set envelope | `Queries/ChangeSet.cs` | `queries.ChangeSet` | Implemented | Delta golden, independent array copies, item encoding failures; no diff computation or delivery protocol |
 | Validation findings | `Validation/ValidationResult*.cs` | `validation.Result`, `Severity`, `Reason` | Implemented | Four standalone goldens plus findings in results; open reasons, nil state omission and required members array |
 | Standard status precedence | `Http/EndpointRouteHelper.cs` | Result `StatusCode` methods | Implemented | All constructed flag combinations; ingress 401, QUERY reader 400 and wait 408 remain transport work |
-| Command/query execution | Command/query pipelines | None | Not implemented | No handlers, filters, validators, authorization or execution scopes |
-| Contexts and lifecycle | Operation/correlation contexts and scopes | UUID fields only | Not implemented | No fabricated ambient context or service registry; foundation APIs are synchronous values |
+| Command/query execution | Command/query pipelines | None | Not implemented | No handlers, filters, validators, authorization or pipeline integration |
+| Principal/context | `Authorization/CurrentPrincipalAccessor.cs` (`7c1e780`) | `identity.Principal`, `WithPrincipal`, `PrincipalFrom` | Go-specific | `identity/TestPrincipalSnapshot`, `TestPrincipalContexts`; immutable explicit contexts replace ambient accessors, preserving explicit anonymous shadowing; no authentication or authorization |
+| System actor | `Authorization/SystemPrincipal.cs` (`7c1e780`) | `identity.System` | Implemented | `identity/TestSystemRoles`; C# subject/name/role claims, supplied roles only, no privileged bypass |
+| Tenant context | `Tenancy/TenantIdAccessor.cs` (`7c1e780`) | `tenancy.WithTenant`, `TenantFrom` | Go-specific | `tenancy/TestTenantContexts`; nested/concurrent explicit contexts replace disposable ambient overrides; NotSet shadows parents |
+| Tenant sentinel semantics | `Tenancy/TenantId.cs` (`7c1e780`) | `tenancy.ID`, `ParseID`, `Default` | Implemented | `tenancy/TestTenantSentinelsAndCodecs`, `FuzzTenantText`, `FuzzTenantJSON`; zero internally represents `[NotSet]`, named Default remains distinct; controls, invalid UTF-8 and surrounding whitespace rejected, JSON strings only |
+| Correlation | `Execution/CorrelationIdResolver.cs` (`7c1e780`) | `correlation.ID`, `Parse`, `Normalize`, `Resolve` | Partial | `correlation/TestCorrelationParsingAndReplacement`, `TestCorrelationContextPrecedence`, `FuzzCorrelationParse`; aliases existing UUID; dashed input subset, no other Guid spellings |
+| Receipt metadata | `OperationContextScope.cs` (`7c1e780`) | `execution.WithReceivedAt`, `ReceivedAt`, `Capture`, `NewContext` | Go-specific | `execution/TestReceiptNormalizationAndOverrides`, `TestExplicitMetadata`; UTC value contexts replace ambient leases; pipeline forwarding remains 06/08 |
+| Services/scopes | `HostBuilderExtensions.cs` (`7c1e780`) | `services.Registry`, `Provider`, `Scope`, `Resolve`, `execution.Run` | Go-specific | `services/scope_test.go`, `concurrency_test.go`, `cleanup_test.go`, `provider_concurrency_test.go`, `execution/background_test.go`; explicit exact-type registration, isolated metadata, owned reverse cleanup, synchronous fresh background scopes; no convention DI or implicit command completion |
+| Startup graph checks | `ArcApplicationBuilder.cs` (`7c1e780`) | `services.Registry.Build` | Go-specific | `services/TestBuildDoesNotInvokeFactoriesAndFailureIsEditable`, `TestDependencyGraphs`; stronger declared-edge validation in every environment without constructing services; hidden closure captures cannot be checked |
 | HTTP hosting/discovery | Endpoint mappers and hosting | None | Not implemented | No endpoints registered; 404/405, HEAD, redirects and request limits await hosting |
 | Observable queries | Observable handlers/demultiplexer | Change-set DTO only | Not implemented | No SSE, WebSocket, revisions, subscriptions or snapshot waits |
 | Proxy generation/OpenAPI | ProxyGenerator/OpenAPI | Route descriptors only | Not implemented | No generated clients, schema or browser-runtime conformance |
@@ -114,7 +121,7 @@ versions and normalization. Fixtures are not live .NET captures.
 
 ## Next slices
 
-ARC-GO-04 adds immutable execution metadata/scopes; 05 adds validation and security;
-06/07 add command/query execution; 08 adds hosting. Historical paired HTTP and real
+ARC-GO-04 provides immutable execution metadata and explicit service scopes;
+05 adds validation and security; 06/07 add command/query execution; 08 adds hosting. Historical paired HTTP and real
 browser consumers belong after those boundaries exist. Chronicle integration must
 use Chronicle.Go's transaction participant/owner contract, not a second Arc UoW.
