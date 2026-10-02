@@ -8,8 +8,16 @@
       href: backend/go/commands/results.md
     - name: Query results
       href: backend/go/queries/results.md
-    - name: Validation findings
+    - name: Validation and severity
       href: backend/go/validation/index.md
+    - name: Authentication handlers
+      href: backend/go/authentication/index.md
+    - name: Authorization policies
+      href: backend/go/authorization/index.md
+    - name: Identity details
+      href: backend/go/identity/index.md
+    - name: Tenant selection and membership
+      href: backend/go/tenancy/index.md
     - name: Routes and identities
       href: backend/go/configuration/routing.md
     - name: Execution metadata
