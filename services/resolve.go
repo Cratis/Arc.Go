@@ -7,12 +7,14 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"time"
 )
 
 // Resolve returns the exact registered T. It checks cancellation and scope security,
 // shares singleton/scoped attempts, and constructs each transient independently.
-// Failed attempts reach current waiters but are not cached; later calls may retry.
-// Waiter cancellation never cancels the creator. Returned services are borrowed
+// Ordinary failed attempts reach current waiters but are not cached. A live waiter
+// retries an attempt canceled by its creator. Waiter cancellation never cancels
+// the creator. Returned services are borrowed
 // until their owning scope/provider closes; disposal does not commit effects.
 func Resolve[T any](ctx context.Context, scope *Scope) (T, error) {
 	var zero T
@@ -80,27 +82,43 @@ func (s *Scope) resolve(ctx context.Context, key Key, path []Key, root bool) (an
 	if b.lifetime == Transient {
 		return s.construct(ctx, key, b, path, root, owner)
 	}
-	owner.mu.Lock()
-	if existing, ok := owner.entries[key]; ok {
-		owner.mu.Unlock()
-		if err := wait(ctx, existing.done); err != nil {
+	for {
+		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		return existing.value, existing.err
+		owner.mu.Lock()
+		if existing, ok := owner.entries[key]; ok {
+			owner.mu.Unlock()
+			if err := wait(ctx, existing.done); err != nil {
+				return nil, err
+			}
+			if errors.Is(existing.err, context.Canceled) || errors.Is(existing.err, context.DeadlineExceeded) {
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
+				// The creator's lifetime is not the waiter's lifetime. Failed
+				// entries have been removed; retry or join the next attempt.
+				continue
+			}
+			return existing.value, existing.err
+		}
+		attempt := &entry{done: make(chan struct{})}
+		owner.entries[key] = attempt
+		owner.mu.Unlock()
+		value, err := s.construct(ctx, key, b, path, root, owner)
+		owner.mu.Lock()
+		attempt.value, attempt.err = value, err
+		if err != nil {
+			delete(owner.entries, key)
+		}
+		close(attempt.done)
+		owner.mu.Unlock()
+		return value, err
 	}
-	attempt := &entry{done: make(chan struct{})}
-	owner.entries[key] = attempt
-	owner.mu.Unlock()
-	value, err := s.construct(ctx, key, b, path, root, owner)
-	owner.mu.Lock()
-	attempt.value, attempt.err = value, err
-	if err != nil {
-		delete(owner.entries, key)
-	}
-	close(attempt.done)
-	owner.mu.Unlock()
-	return value, err
 }
+
+const failedValueCleanupTimeout = 30 * time.Second
+
 func (s *Scope) construct(ctx context.Context, key Key, b binding, path []Key, root bool, owner *owner) (any, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -118,7 +136,11 @@ func (s *Scope) construct(ctx context.Context, key Key, b binding, path []Key, r
 	}
 	if err != nil {
 		if !nilValue(value) {
-			err = errors.Join(err, closeValue(ctx, ownedValue{key: key, value: value}))
+			// A canceled creator must not hand an already-canceled context to
+			// its failed value's cleanup. Cleanup stays synchronous and bounded.
+			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), failedValueCleanupTimeout)
+			err = errors.Join(err, closeValue(cleanupCtx, ownedValue{key: key, value: value}))
+			cancel()
 		}
 		return nil, err
 	}

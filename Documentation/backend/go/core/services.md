@@ -83,9 +83,13 @@ this does not make your resolved application services thread-safe.
 
 Successful singleton/scoped instances are cached once. Concurrent callers share
 an in-flight attempt. Each waiter may cancel without canceling the creator. An
-attempt's failure reaches current waiters; a later call can retry, but Arc never
-retries automatically. Cancellation is checked around factory callbacks. Factory
-panics become inspectable `services.Error` values and release waiters.
+ordinary failure reaches current waiters; a later call can retry. If an attempt
+fails with the creator's cancellation or deadline error while a waiter's own
+context is still live, that waiter retries construction or joins the next attempt.
+It does not inherit the creator's cancellation. This is the only automatic retry;
+ordinary factory failures are not retried. Cancellation is checked around factory
+callbacks. Factory panics become inspectable `services.Error` values and release
+waiters.
 
 ## Close owned resources
 
@@ -101,8 +105,10 @@ supported. The contextual check comes first; Go cannot overload the two differen
 `Close` signatures on one type.
 
 Cleanup continues after errors and panics and combines failures with `errors.Join`.
-A nonnil value returned with a factory error is immediately closed. Dependencies
-successfully resolved before a parent fails remain owned until scope/provider
+A nonnil value returned with a factory error is immediately closed using a
+synchronous `context.WithoutCancel` child bounded to 30 seconds, so a canceled
+creator does not prevent cooperative cleanup. Factory and cleanup failures remain
+joined. Dependencies successfully resolved before a parent fails remain owned until scope/provider
 cleanup. Borrowed values are never disposed. Concurrent/repeated Close calls do
 not execute cleanup twice, and completed cleanup results are retained.
 
