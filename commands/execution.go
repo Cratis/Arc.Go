@@ -13,11 +13,9 @@ import (
 )
 
 type executionState struct {
-	mu       sync.Mutex
-	top      *frame
-	closed   bool
-	failures Result[NoResponse]
-	err      error
+	mu     sync.Mutex
+	top    *frame
+	closed bool
 }
 
 // Execution is a callback-scoped view of synchronous command ownership. It is not
@@ -55,8 +53,12 @@ func (e *Execution) Check(ctx context.Context) error {
 }
 func (f *frame) mergeNested() {
 	f.owner.mu.Lock()
-	failures, err := f.owner.failures, f.owner.err
-	f.owner.failures, f.owner.err = Success(f.snapshot.correlation), nil
+	if !f.nestedSet {
+		f.owner.mu.Unlock()
+		return
+	}
+	failures, err := f.nested, f.nestedErr
+	f.nested, f.nestedErr, f.nestedSet = Result[NoResponse]{}, nil, false
 	f.owner.mu.Unlock()
 	f.merge(failures, false)
 	f.err = errors.Join(f.err, err)
@@ -143,6 +145,11 @@ func (b *boundPipeline) record(result Result[any], err error) {
 	if owner.closed {
 		return
 	}
-	owner.failures = Merge(owner.failures, NewResult(result.Details(), serialization.Optional[NoResponse]{}))
-	owner.err = errors.Join(owner.err, err)
+	f := b.frame
+	if !f.nestedSet {
+		f.nested = Success(result.Details().CorrelationID)
+		f.nestedSet = true
+	}
+	f.nested = Merge(f.nested, NewResult(result.Details(), serialization.Optional[NoResponse]{}))
+	f.nestedErr = errors.Join(f.nestedErr, err)
 }

@@ -147,6 +147,10 @@ type frame struct {
 	err          error
 	owner        *executionState
 	parent       *frame
+	// Nested fragments are guarded by owner.mu, independently for each frame.
+	nested    Result[NoResponse]
+	nestedErr error
+	nestedSet bool
 }
 
 func (p *pipeline) run(ctx context.Context, borrowed *execution.Scope, command any, validationOnly bool, parent *frame, options []ExecuteOptions) (result Result[any], err error) {
@@ -193,7 +197,7 @@ func (p *pipeline) run(ctx context.Context, borrowed *execution.Scope, command a
 	f := &frame{pipeline: p, registration: registration, ctx: ctx, prepared: prepared, policy: policy, parent: parent,
 		snapshot: CommandContext{descriptor: registration.Descriptor(), command: command, correlation: id, received: received.Round(0).UTC(), principal: principal, tenant: tenant, values: ContextValues{entries: make(map[string]any)}, allowed: allowed, validationOnly: validationOnly}, result: NewResult(Details{CorrelationID: id, Authorized: true}, serialization.Optional[any]{})}
 	if parent == nil {
-		f.owner = &executionState{top: f, failures: Success(id)}
+		f.owner = &executionState{top: f}
 	} else {
 		f.owner = parent.owner
 		f.owner.mu.Lock()
@@ -238,9 +242,7 @@ func (p *pipeline) run(ctx context.Context, borrowed *execution.Scope, command a
 		return nil
 	})
 	f.fail(err, false)
-	if parent == nil {
-		f.mergeNested()
-	}
+	f.mergeNested()
 	if owned {
 		cleanup, cancel, cleanupErr := boundary.CleanupContext(ctx, p.options.CleanupTimeout)
 		if cleanupErr == nil {

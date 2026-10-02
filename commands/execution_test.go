@@ -131,6 +131,37 @@ func TestIgnoredNestedFailureIsSticky(t *testing.T) {
 		t.Fatal("sticky failure retained response")
 	}
 }
+
+type Grandchild struct{}
+
+func TestNestedIntermediateResultRetainsIgnoredGrandchildFailure(t *testing.T) {
+	var r commands.Registry
+	must(t, commands.Register[Parent](&r, commands.Invoke(func(ctx context.Context, inv *commands.Invocation, _ Parent) (int, error) {
+		child, err := inv.Pipeline().Execute(ctx, Child{})
+		if err != nil {
+			return 0, err
+		}
+		if child.IsAuthorized() || child.IsSuccess() {
+			t.Error("intermediate child reported success after ignored grandchild denial")
+		}
+		return 42, nil
+	})))
+	must(t, commands.Register[Child](&r, commands.Invoke(func(ctx context.Context, inv *commands.Invocation, _ Child) (int, error) {
+		_, _ = inv.Pipeline().Execute(ctx, Grandchild{})
+		return 1, nil
+	})))
+	must(t, commands.Register[Grandchild](&r, commands.Void(func(Grandchild, context.Context) error { t.Fatal("denied grandchild handled"); return nil }), commands.WithAuthorization[Grandchild](metadata.Authorization{})))
+	p := build(t, &r, commands.PipelineOptions{})
+	result, err := p.Execute(t.Context(), Parent{})
+	must(t, err)
+	if result.IsAuthorized() || result.IsSuccess() {
+		t.Fatal("root lost grandchild failure", result.Details())
+	}
+	if len(result.Details().ExceptionMessages) != 0 {
+		t.Fatal(result.Details())
+	}
+}
+
 func TestRootExecutorInsideHandlerOpensIndependentOwner(t *testing.T) {
 	var r commands.Registry
 	opens := 0
