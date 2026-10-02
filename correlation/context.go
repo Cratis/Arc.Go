@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/cratis/arc.go/concepts"
+	fcorrelation "github.com/cratis/fundamentals.go/correlation"
 )
 
 // ID aliases the approved UUID value used by command/query results.
@@ -19,8 +20,6 @@ const DefaultHeader = "X-Correlation-ID"
 
 // ErrInvalidID identifies malformed, missing, or zero correlation input.
 var ErrInvalidID = errors.New("invalid correlation ID")
-
-type idKey struct{}
 
 // Parse trims surrounding whitespace and accepts nonzero dashed UUIDs.
 func Parse(text string) (ID, error) {
@@ -50,8 +49,10 @@ func Resolve(ctx context.Context, text string) (ID, error) {
 	return concepts.NewUUID()
 }
 
-// WithID installs the ID; zero shadows an inherited ID. Correlation grants no authority.
-func WithID(ctx context.Context, id ID) context.Context { return context.WithValue(ctx, idKey{}, id) }
+// WithID installs the ID using Fundamentals.Go's shared context key; zero shadows
+// an inherited ID. Correlation grants no authority. It panics if ctx is nil.
+func WithID(ctx context.Context, id ID) context.Context { return fcorrelation.WithID(ctx, id) }
 
-// FromContext returns zero when absent and never generates an ID.
-func FromContext(ctx context.Context) ID { id, _ := ctx.Value(idKey{}).(ID); return id }
+// FromContext reads Fundamentals.Go's shared context key, returns zero when absent,
+// and never generates an ID. It panics if ctx is nil.
+func FromContext(ctx context.Context) ID { return fcorrelation.FromContext(ctx) }

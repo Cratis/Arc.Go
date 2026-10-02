@@ -60,8 +60,15 @@ result fields need no conversion. `correlation.DefaultHeader` is
 | `correlation.FromContext(ctx)` | Read only; return zero when absent |
 | `correlation.WithID(ctx, id)` | Install an explicit ID; zero shadows parents |
 
+`WithID` and `FromContext` delegate to `github.com/cratis/fundamentals.go/correlation`
+using its shared context key. An ID installed through Arc is visible to
+Fundamentals and Chronicle.Go consumers of that context, and vice versa, without
+conversion. Reading never generates an ID; an explicit zero shadows any parent ID
+across both packages. Both accessors panic on a nil context, as before.
+
 Generated IDs preserve generation failures. Correlation conveys no authorization
-or ownership authority. Other C# Guid input spellings are not supported.
+or ownership authority. Other C# Guid input spellings are not supported. Ingress
+parsing, generation policy and header handling remain Arc-owned.
 
 `execution.WithReceivedAt` stores a UTC receipt without a monotonic component;
 `ReceivedAt` returns the value and its presence. Nested overrides leave parents
