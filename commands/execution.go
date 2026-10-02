@@ -97,24 +97,24 @@ func (b *boundPipeline) run(ctx context.Context, scope *execution.Scope, command
 	b.mu.Lock()
 	if b.stopped {
 		b.mu.Unlock()
-		return b.rejected(ctx, ErrExecutionClosed)
+		return b.rejected(ctx, ErrExecutionClosed, validate)
 	}
 	if b.busy {
 		b.mu.Unlock()
-		return b.rejected(ctx, ErrConcurrentExecution)
+		return b.rejected(ctx, ErrConcurrentExecution, validate)
 	}
 	b.busy = true
 	b.done = make(chan struct{})
 	b.mu.Unlock()
 	defer func() { b.mu.Lock(); b.busy = false; close(b.done); b.mu.Unlock() }()
 	if err := b.invocation.owner.Check(ctx); err != nil {
-		return b.rejected(ctx, err)
+		return b.rejected(ctx, err, validate)
 	}
 	if scope != b.scope || (b.frame.snapshot.validationOnly && !validate) {
-		return b.rejected(ctx, ErrExecutionMismatch)
+		return b.rejected(ctx, ErrExecutionMismatch, validate)
 	}
 	result, err = b.pipeline.run(ctx, scope, command, validate, b.frame, options)
-	if !result.IsSuccess() {
+	if !result.IsSuccess() && (!validate || b.frame.snapshot.validationOnly) {
 		b.record(result, err)
 	}
 	return result, err
@@ -133,9 +133,11 @@ func (b *boundPipeline) expire() error {
 	}
 	return nil
 }
-func (b *boundPipeline) rejected(ctx context.Context, err error) (Result[any], error) {
+func (b *boundPipeline) rejected(ctx context.Context, err error, validate bool) (Result[any], error) {
 	result := FromError[any](contextID(ctx), err)
-	b.record(result, err)
+	if !validate || b.frame.snapshot.validationOnly {
+		b.record(result, err)
+	}
 	return result, err
 }
 func (b *boundPipeline) record(result Result[any], err error) {

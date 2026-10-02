@@ -114,6 +114,48 @@ func TestNestedExecutionSharesOwnerResourcesAndDistinctReceipts(t *testing.T) {
 		t.Fatal(result.Details(), opens, begins, completes)
 	}
 }
+func TestNestedValidateFailureIsAdvisoryDuringExecute(t *testing.T) {
+	var r commands.Registry
+	must(t, commands.Register[Parent](&r, commands.Invoke(func(ctx context.Context, inv *commands.Invocation, _ Parent) (int, error) {
+		child, err := inv.Pipeline().Validate(ctx, Child{})
+		must(t, err)
+		if child.IsSuccess() {
+			t.Fatal("child validation unexpectedly passed")
+		}
+		return 42, nil
+	})))
+	must(t, commands.Register[Child](&r, commands.Void(func(Child, context.Context) error {
+		t.Fatal("Validate invoked child Handle")
+		return nil
+	}), commands.WithAuthorization[Child](metadata.Authorization{})))
+	p := build(t, &r, commands.PipelineOptions{})
+	result, err := p.Execute(t.Context(), Parent{})
+	must(t, err)
+	if value, present := result.Response(); !result.IsSuccess() || !present || value != 42 {
+		t.Fatal("advisory validation contaminated parent execution", result.Details(), value)
+	}
+}
+
+func TestNestedValidateFailureRemainsStickyDuringValidate(t *testing.T) {
+	var r commands.Registry
+	must(t, commands.Register[Parent](&r, commands.Void(func(Parent, context.Context) error { return nil })))
+	must(t, commands.Register[Child](&r, commands.Void(func(Child, context.Context) error { return nil }), commands.WithAuthorization[Child](metadata.Authorization{})))
+	must(t, r.AddFilter("nested-validation", func(context.Context, *execution.Scope) (commands.Filter, error) {
+		return commands.FilterFunc(func(ctx context.Context, inv *commands.Invocation) (commands.Result[commands.NoResponse], error) {
+			if _, parent := inv.CommandContext().Command().(Parent); parent {
+				_, _ = inv.Pipeline().Validate(ctx, Child{})
+			}
+			return commands.Success(inv.CommandContext().CorrelationID()), nil
+		}), nil
+	}))
+	p := build(t, &r, commands.PipelineOptions{})
+	result, err := p.Validate(t.Context(), Parent{})
+	must(t, err)
+	if result.IsSuccess() {
+		t.Fatal("validation-only parent lost nested validation failure")
+	}
+}
+
 func TestIgnoredNestedFailureIsSticky(t *testing.T) {
 	var r commands.Registry
 	must(t, commands.Register[Parent](&r, commands.Invoke(func(ctx context.Context, inv *commands.Invocation, _ Parent) (int, error) {
