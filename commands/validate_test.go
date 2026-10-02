@@ -108,6 +108,66 @@ func TestValidateExcludesParticipantsPreparationAndResponseHandlers(t *testing.T
 		t.Fatal(result.Details())
 	}
 }
+
+type emptyValidationFailure struct{}
+
+func (emptyValidationFailure) Error() string                          { return "empty rejection" }
+func (emptyValidationFailure) ValidationResults() []validation.Result { return nil }
+
+func TestFilteredWarningErrorsNeverAccompanySuccessfulResults(t *testing.T) {
+	for _, stage := range []string{"validator", "filter"} {
+		for _, mixed := range []bool{false, true} {
+			var r commands.Registry
+			handled := 0
+			warning := validation.Reject(validation.Result{Severity: validation.Warning, Message: "advisory"})
+			cause := errors.New("infrastructure failure")
+			failure := warning
+			if mixed {
+				failure = errors.Join(warning, cause)
+			}
+			options := []commands.Option[Clear]{commands.Void(func(Clear, context.Context) error { handled++; return nil })}
+			if stage == "validator" {
+				options = append(options, commands.WithValidator(validation.ValidatorFunc[Clear](func(context.Context, Clear) ([]validation.Result, error) { return nil, failure })))
+			} else {
+				must(t, r.AddFilter("warning", func(context.Context, *execution.Scope) (commands.Filter, error) {
+					return commands.FilterFunc(func(_ context.Context, inv *commands.Invocation) (commands.Result[commands.NoResponse], error) {
+						return commands.Success(inv.CommandContext().CorrelationID()), failure
+					}), nil
+				}))
+			}
+			must(t, commands.Register[Clear](&r, options...))
+			p := build(t, &r, commands.PipelineOptions{})
+			result, err := p.Execute(t.Context(), Clear{})
+			if mixed {
+				if err == nil || result.IsSuccess() || handled != 0 {
+					t.Fatal(stage, "mixed failure became success", result.Details(), err)
+				}
+			} else if err != nil || !result.IsSuccess() || handled != 1 {
+				t.Fatal(stage, "filtered warning returned an error or skipped handling", result.Details(), err, handled)
+			}
+			validated, err := p.Validate(t.Context(), Clear{})
+			if validated.IsSuccess() && err != nil {
+				t.Fatal(stage, "Validate returned success with error", err)
+			}
+		}
+	}
+}
+
+func TestEmptyFilterFailureCannotReturnSuccessWithError(t *testing.T) {
+	var r commands.Registry
+	must(t, commands.Register[Clear](&r))
+	must(t, r.AddFilter("empty", func(context.Context, *execution.Scope) (commands.Filter, error) {
+		return commands.FilterFunc(func(_ context.Context, inv *commands.Invocation) (commands.Result[commands.NoResponse], error) {
+			return commands.Success(inv.CommandContext().CorrelationID()), emptyValidationFailure{}
+		}), nil
+	}))
+	p := build(t, &r, commands.PipelineOptions{})
+	result, err := p.Execute(t.Context(), Clear{})
+	if err == nil || result.IsSuccess() || !result.HasExceptions() {
+		t.Fatal(result.Details(), err)
+	}
+}
+
 func TestValidatorFailureClassificationAndOptOut(t *testing.T) {
 	cause := errors.New("secret validator detail")
 	var r commands.Registry

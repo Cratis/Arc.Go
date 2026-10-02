@@ -281,6 +281,11 @@ func (f *frame) fail(err error, filter bool) {
 	if err == nil {
 		return
 	}
+	failure := boundary.Classify(err)
+	if filter && len(failure.Findings) > 0 && len(failure.Exceptions) == 0 && len(f.policy.Filter(failure.Findings)) == 0 {
+		// Nonblocking findings are not a failure, even when delivered as an error.
+		return
+	}
 	f.err = errors.Join(f.err, err)
 	fragment := FromError[NoResponse](f.snapshot.correlation, err)
 	if f.pipeline.options.ExposeExceptionDetails {
@@ -299,6 +304,10 @@ func (f *frame) fail(err error, filter bool) {
 		fragment = NewResult(d, serialization.Optional[NoResponse]{})
 	}
 	f.merge(fragment, filter)
+	if f.result.IsSuccess() {
+		// An unclassified/empty failure must never produce success with an error.
+		f.fail(ErrInvalidPreparation, false)
+	}
 	if logger := f.pipeline.options.Logger; logger != nil {
 		logger.ErrorContext(f.ctx, "Command callback failed", "command", f.registration.descriptor.Type.Identity(), "correlationId", f.snapshot.correlation, "error", err)
 	}
