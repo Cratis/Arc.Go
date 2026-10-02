@@ -28,6 +28,7 @@ go mod download
 go mod verify
 go build ./...
 go vet ./...
+python3 scripts/check-no-container.py
 go test -count=1 -timeout=2m ./...
 go test -race -count=1 -timeout=3m ./...
 golangci-lint run
@@ -47,6 +48,29 @@ govulncheck ./...
 Format all Go source with `gofmt`; no source files should appear in `gofmt -l` output. After `go mod tidy`, also check `git status --short -- go.mod go.sum` for untracked manifests. Commit `go.sum` when dependencies require it. Do not commit nested modules, local `replace` directives, or personal `go.work` files: released modules must build without sibling checkouts.
 
 Hosted CI also runs the ordinary build, vet, and tests on macOS and Windows. Workflow lint invokes ShellCheck when it is available. Foundation behavioral and wire-fixture tests run without external services. They are not HTTP integration tests; add explicitly bounded integration checks before claiming HTTP contract conformance. CodeQL runs separately in GitHub Actions.
+
+## Zero-container guarantee
+
+Keep plain constructors, closures, and explicitly supplied resources first-class.
+The [no-container example](examples/nocontainer/main.go) runs authorization,
+validation, and execution-scope flows without importing any Fundamentals
+`dependencyinjection` package. Its tests cover successful output, authorization
+denial, validation failure, and resource cleanup.
+
+`python3 scripts/check-no-container.py` uses `go list -deps -json ./...` without
+`-test` to check every runtime package in the root module. None may depend on
+`github.com/cratis/fundamentals.go/dependencyinjection/container`; container imports
+in tests do not affect that graph. Only explicitly reviewed DI-demonstrating
+examples may be excluded in the script (currently none). The check also rejects
+any direct DI import in the no-container example, including its tests.
+
+The standard-library-only DI **contracts** may appear transitively through
+`execution`, including from authorization and validation. The guarantee excludes
+an imposed container implementation, not these interfaces. Do not require a
+container merely to use a public entry point. CI runs this check in the module
+hygiene job and compiles/tests the example with all other packages. See
+[dependency injection and operation resources](Documentation/backend/go/core/dependency-injection.md)
+for plain wiring and optional container integration.
 
 ## Conventions
 

@@ -111,6 +111,8 @@ jobs:
           if module.get('Replace'):
               raise SystemExit('Published modules must not rely on replace directives; consumers ignore them.')
           PY
+      - name: Guarantee the zero-container runtime path and DI-free example imports
+        run: python3 scripts/check-no-container.py
       - name: Check tidy manifests with the minimum supported Go
         run: |
           go mod tidy
