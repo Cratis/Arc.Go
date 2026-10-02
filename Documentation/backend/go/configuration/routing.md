@@ -50,11 +50,14 @@ explicit-route artifacts still count in those groups, matching C#.
 `Command.Path` overrides the whole command route. For queries, `Query.Path` (a
 pointer) wins over `ReadModelPath`. A non-nil empty method path selects convention
 instead of falling back to the model path. Nonempty explicit paths retain exact
-casing and trailing slashes; the prefix is not added.
+casing; query paths also retain trailing slashes. The prefix is not added.
 
 Only literal absolute paths are supported in this foundation. Relative paths,
 wildcards, escaped paths, dot segments, whitespace and repeated explicit slashes
 fail with configuration errors rather than guessing host-specific routing rules.
+Every derived endpoint is checked too. Command paths `/create/` and `/` are
+rejected because appending `/validate` produces repeated slashes. Use `/create`
+or configure a non-root conventional command route instead.
 
 `Resolve` rejects duplicate identities and case-insensitive method/path collisions,
 including command validation routes. Inspect `*metadata.CollisionError` with

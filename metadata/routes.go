@@ -101,6 +101,9 @@ func Resolve(catalog Catalog, options Options) ([]Endpoint, error) {
 			routes = append(routes, Endpoint{Identity: a.identity, Method: "QUERY", Path: path})
 		}
 		for _, endpoint := range routes {
+			if err := validatePath(endpoint.Path); err != nil {
+				return nil, fmt.Errorf("route for %s: %w", a.identity, err)
+			}
 			key := endpoint.Method + " " + strings.ToLower(endpoint.Path)
 			if first, ok := seen[key]; ok {
 				return nil, &CollisionError{key, first, a.identity}

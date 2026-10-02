@@ -135,6 +135,34 @@ func TestCommandAndQueryMaySharePath(t *testing.T) {
 	}
 }
 
+func TestDerivedCommandPathsAreValidated(t *testing.T) {
+	for _, tc := range []struct {
+		name, path            string
+		conventional, rejects bool
+	}{
+		{"literal command", "/create", false, false},
+		{"trailing slash", "/create/", false, true},
+		{"root", "/", false, true},
+		{"conventional root", "", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			options := metadata.DefaultOptions()
+			if tc.conventional {
+				options.RoutePrefix = ""
+				options.IncludeCommandName = false
+			}
+			catalog := metadata.Catalog{Version: metadata.Version, Commands: []metadata.Command{{Type: metadata.TypeName{Name: "Create"}, Path: tc.path}}}
+			routes, err := metadata.Resolve(catalog, options)
+			if (err != nil) != tc.rejects {
+				t.Fatalf("routes = %#v, error = %v; rejects = %v", routes, err, tc.rejects)
+			}
+			if err == nil && (len(routes) != 2 || routes[1].Path != "/create/validate") {
+				t.Fatalf("routes = %#v", routes)
+			}
+		})
+	}
+}
+
 func TestInvalidMetadataFailsExplicitly(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
