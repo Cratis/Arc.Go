@@ -16,7 +16,7 @@ Zero Options selects header tenancy. Empty configurable names use the defaults:
 | --- | --- | --- |
 | `Header` | Request header | `x-cratis-tenant-id` |
 | `Query` | Query-string parameter | `tenantId` |
-| `Claim` | First matching typed principal claim | `tenant_id` |
+| `Claim` | First matching authenticated principal claim | `tenant_id` |
 | `Subdomain` | `Request.Host`, else configured header | Requires BaseDomain |
 | `Fixed` | Deployment FixedID | `development` when zero |
 
@@ -27,8 +27,10 @@ resolver, err := tenancy.NewResolver(tenancy.Options{Strategy: tenancy.Fixed})
 ```
 
 Inspect `err`, then call `resolver.Resolve(ctx, request)`. Fixed works with a nil
-request. Claim reads only trusted typed principal metadata and can also work
-without a request. Other selectors return NotSet for a nil request. Missing input
+request. Claim reads only authenticated typed principal metadata and can also work
+without a request. An unauthenticated principal returns NotSet even when it has a
+tenant claim; this is stricter than C#'s claim selector. Other selectors return
+NotSet for a nil request. Missing input
 returns NotSet; header/query selectors reject multiple values with
 `ErrAmbiguousSelection`. Malformed query encoding and invalid tenant text fail
 rather than silently selecting a partial value.

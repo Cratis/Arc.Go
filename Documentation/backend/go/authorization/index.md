@@ -43,7 +43,10 @@ err := registry.Register("owner", authorization.PolicyFunc(
 
 Inspect `err`, then call `registry.Build(catalog, options)`. Build validates all
 supplied levels, even overridden read-model declarations, without calling any
-policy. It copies declarations and fallback. A successful build freezes the
+policy. Queries sharing a read-model identity must supply identical
+`ReadModelAuthorization` content, including declaration presence and requirement
+order, even when a method overrides it. Mismatches fail with
+`ErrInvalidConfiguration`. Build copies declarations and fallback. A successful build freezes the
 single-owner registry; a failed build remains editable. Evaluators are immutable;
 shared policies must independently support concurrent use.
 
@@ -71,7 +74,11 @@ ReceivedAt. Do not mutate or retain Resource. Decisions are never cached across
 operations or security identities. An anonymous caller can evaluate only when
 every requirement is policy-only and every policy explicitly opts in with
 `EvaluatesAnonymous: true`. Roles and empty authentication requirements prevent
-that exception. `identity.System` is not privileged.
+that exception. Guest policies receive an empty Principal, never the anonymous
+caller's ID, name, roles or claims. Continuity checks still compare the original
+caller snapshot and presence, so replacing an anonymous caller or authenticating
+during a callback invalidates the prepared operation. `identity.System` is not
+privileged.
 
 A zero Decision denies. `Deny(reason)` retains local diagnostics; `Decision.Err()`
 wraps `ErrDenied` without exposing the reason in text. Policy errors return a denied
@@ -82,6 +89,8 @@ Use `errors.Is` for `ErrInvalidConfiguration`, `ErrDuplicate`, `ErrFrozen`,
 `ErrUnknownPolicy`, `ErrUnsupportedScheme`, `ErrUnknownTarget`,
 `ErrIdentityChanged` and `ErrNotPrepared`; `ConfigurationError` supplies target
 and policy identities. No claims or request values appear in configuration errors.
+An unknown runtime target returns `ErrUnknownTarget` alone, not a configuration
+error, and its error text does not include the requested identity.
 
 Explicit anonymous bypasses declaration policies, not configured
 [tenant membership](../tenancy/index.md). The evaluator does not create or verify

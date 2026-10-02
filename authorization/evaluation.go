@@ -41,7 +41,7 @@ func (e *Evaluator) Prepare(ctx context.Context, target Target) (Prepared, error
 	}
 	declaration, ok := e.declarations[target]
 	if !ok {
-		return Prepared{}, configuration(target, "", ErrUnknownTarget)
+		return Prepared{}, ErrUnknownTarget
 	}
 	principal, pp := identity.PrincipalFrom(ctx)
 	tenant, tp := tenancy.TenantFrom(ctx)
@@ -95,8 +95,13 @@ func (p Prepared) Evaluate(ctx context.Context, resource any) (Decision, error) 
 			return Deny("role required"), nil
 		}
 	}
+	principal := p.principal
+	if !principal.IsAuthenticated() {
+		// Policies see a synthetic guest; Check still certifies the original caller.
+		principal = identity.Principal{}
+	}
 	receivedAt, _ := execution.ReceivedAt(ctx)
-	value := Context{Principal: p.principal, Tenant: p.tenant, Target: p.target, Resource: resource, ReceivedAt: receivedAt}
+	value := Context{Principal: principal, Tenant: p.tenant, Target: p.target, Resource: resource, ReceivedAt: receivedAt}
 	for _, requirement := range declaration.requirements {
 		policy := requirement.registration.policy
 		if policy == nil {

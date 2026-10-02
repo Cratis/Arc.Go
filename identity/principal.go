@@ -32,6 +32,8 @@ type PrincipalData struct {
 type Principal struct{ data PrincipalData }
 
 // NewPrincipal copies trusted input; only verified adapters/application code should call it.
+// An unauthenticated principal's ID and claims are not trusted identity data.
+// Authorization policies receive an empty principal for anonymous callers.
 func NewPrincipal(data PrincipalData) Principal {
 	data.Roles = slices.Clone(data.Roles)
 	data.Claims = slices.Clone(data.Claims)

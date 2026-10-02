@@ -73,8 +73,8 @@ func TestPrecedenceAndFallback(t *testing.T) {
 	c := catalog(nil)
 	c.Queries = []metadata.Query{
 		{ReadModel: metadata.TypeName{Name: "Item"}, Name: "Public", Authorization: &metadata.Authorization{AllowAnonymous: true}, ReadModelAuthorization: fallback},
-		{ReadModel: metadata.TypeName{Name: "Item"}, Name: "Restricted", ReadModelAuthorization: &metadata.Authorization{}},
-		{ReadModel: metadata.TypeName{Name: "Item"}, Name: "Inherited"},
+		{ReadModel: metadata.TypeName{Name: "Item"}, Name: "Restricted", Authorization: &metadata.Authorization{}, ReadModelAuthorization: fallback},
+		{ReadModel: metadata.TypeName{Name: "Item"}, Name: "Inherited", ReadModelAuthorization: fallback},
 	}
 	var registry authorization.Registry
 	e := build(t, &registry, c, authorization.Options{Fallback: fallback})

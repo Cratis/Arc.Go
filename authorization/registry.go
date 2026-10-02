@@ -37,7 +37,7 @@ type Target struct {
 // Context is immutable operation metadata plus borrowed, operation-specific data.
 // Policies must not mutate or retain Resource.
 type Context struct {
-	// Principal is the trusted actor snapshot.
+	// Principal is the authenticated actor snapshot, or empty for a guest.
 	Principal identity.Principal
 	// Tenant is the selected tenant, not evidence of membership.
 	Tenant tenancy.ID
@@ -117,7 +117,8 @@ func (r *Registry) register(name string, value registration) error {
 
 // Build validates every declaration, including overridden levels, and copies the
 // effective graph. Commands use command then fallback; queries use method then
-// read model then fallback. No declaration and no fallback is public.
+// read model then fallback. Queries of the same read model must supply identical
+// read-model declarations by content. No declaration and no fallback is public.
 func (r *Registry) Build(catalog metadata.Catalog, options Options) (*Evaluator, error) {
 	if r == nil {
 		return nil, configuration(Target{}, "", ErrInvalidConfiguration)
@@ -133,16 +134,17 @@ func (r *Registry) Build(catalog metadata.Catalog, options Options) (*Evaluator,
 		return nil, err
 	}
 	type artifact struct {
-		target Target
-		levels []*metadata.Authorization
-		valid  bool
+		target    Target
+		levels    []*metadata.Authorization
+		valid     bool
+		readModel string
 	}
 	artifacts := make([]artifact, 0, len(catalog.Commands)+len(catalog.Queries))
 	for _, command := range catalog.Commands {
-		artifacts = append(artifacts, artifact{Target{Kind: Command, Identity: command.Type.Identity()}, []*metadata.Authorization{command.Authorization}, validType(command.Type)})
+		artifacts = append(artifacts, artifact{target: Target{Kind: Command, Identity: command.Type.Identity()}, levels: []*metadata.Authorization{command.Authorization}, valid: validType(command.Type)})
 	}
 	for _, query := range catalog.Queries {
-		artifacts = append(artifacts, artifact{Target{Kind: Query, Identity: query.Identity()}, []*metadata.Authorization{query.Authorization, query.ReadModelAuthorization}, validType(query.ReadModel) && validSegment(query.Name)})
+		artifacts = append(artifacts, artifact{target: Target{Kind: Query, Identity: query.Identity()}, levels: []*metadata.Authorization{query.Authorization, query.ReadModelAuthorization}, valid: validType(query.ReadModel) && validSegment(query.Name), readModel: query.ReadModel.Identity()})
 	}
 	slices.SortFunc(artifacts, func(a, b artifact) int {
 		if n := strings.Compare(a.target.Identity, b.target.Identity); n != 0 {
@@ -150,6 +152,7 @@ func (r *Registry) Build(catalog metadata.Catalog, options Options) (*Evaluator,
 		}
 		return int(a.target.Kind) - int(b.target.Kind)
 	})
+	readModels := make(map[string]*metadata.Authorization)
 	evaluator := &Evaluator{declarations: make(map[Target]declaration)}
 	for i, artifact := range artifacts {
 		if !artifact.valid || !validTarget(artifact.target) {
@@ -157,6 +160,13 @@ func (r *Registry) Build(catalog metadata.Catalog, options Options) (*Evaluator,
 		}
 		if i > 0 && artifacts[i-1].target.Identity == artifact.target.Identity {
 			return nil, configuration(artifact.target, "", ErrDuplicate)
+		}
+		if artifact.target.Kind == Query {
+			readModelDeclaration := artifact.levels[1]
+			if previous, exists := readModels[artifact.readModel]; exists && !sameAuthorization(previous, readModelDeclaration) {
+				return nil, configuration(artifact.target, "", ErrInvalidConfiguration)
+			}
+			readModels[artifact.readModel] = readModelDeclaration
 		}
 		effective := fallback
 		selected := false

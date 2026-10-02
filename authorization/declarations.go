@@ -19,6 +19,24 @@ type declaration struct {
 	requirements []requirement
 }
 
+// sameAuthorization compares explicit declaration content, including presence
+// and requirement order. Nil and empty lists describe the same requirements.
+func sameAuthorization(a, b *metadata.Authorization) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	if a.AllowAnonymous != b.AllowAnonymous || len(a.Requirements) != len(b.Requirements) {
+		return false
+	}
+	for i, requirement := range a.Requirements {
+		other := b.Requirements[i]
+		if requirement.Policy != other.Policy || !slices.Equal(requirement.Roles, other.Roles) || !slices.Equal(requirement.AuthenticationSchemes, other.AuthenticationSchemes) {
+			return false
+		}
+	}
+	return true
+}
+
 func (r *Registry) compile(target Target, source *metadata.Authorization) (declaration, error) {
 	if source == nil {
 		return declaration{public: true}, nil

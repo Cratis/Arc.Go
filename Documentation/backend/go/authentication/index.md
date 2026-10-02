@@ -32,8 +32,10 @@ unverified token payload, display cookie or caller-authored identity header.
 `New` rejects nil and typed-nil handlers, copies the registration slice and
 borrows the handlers. Shared handlers must support concurrent calls. Zero `Chain`
 is empty. Chain exhaustion remains anonymous. Supplied context is installed on a
-request copy; request data is borrowed only for the call. Cancellation is checked
-before and after callbacks; callbacks must cooperate.
+request clone; context, headers and URL are isolated from the caller. The body is
+shared, not cloned: handlers must not read `Body`. Other request data is not
+guaranteed isolated, and request data is borrowed only for the call. Cancellation
+is checked before and after callbacks; callbacks must cooperate.
 
 ## Handle failures at ingress
 

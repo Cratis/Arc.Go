@@ -13,6 +13,7 @@ import (
 )
 
 // Handler authenticates synchronously, borrowing request data for the call only.
+// Handlers must not read Body: it is shared with the caller, not cloned.
 // Shared handlers must support concurrent calls and honor cancellation.
 type Handler interface {
 	Authenticate(context.Context, *http.Request) (Result, error)
@@ -40,8 +41,10 @@ func New(handlers ...Handler) (*Chain, error) {
 	return &Chain{handlers: slices.Clone(handlers)}, nil
 }
 
-// Authenticate passes supplied context on a request copy, leaving the incoming
-// request unchanged. Errors are infrastructure failures, not credential rejection.
+// Authenticate installs the supplied context on a request clone. Context, headers
+// and URL are isolated from the caller; Body is shared and handlers must not read
+// it. Other request data is not guaranteed isolated. Errors are infrastructure
+// failures, not credential rejection.
 func (c *Chain) Authenticate(ctx context.Context, request *http.Request) (Result, error) {
 	if c == nil || ctx == nil || request == nil {
 		return Result{}, ErrInvalidRequest
@@ -49,7 +52,7 @@ func (c *Chain) Authenticate(ctx context.Context, request *http.Request) (Result
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
-	request = request.WithContext(ctx)
+	request = request.Clone(ctx)
 	for _, handler := range c.handlers {
 		if err := ctx.Err(); err != nil {
 			return Result{}, err

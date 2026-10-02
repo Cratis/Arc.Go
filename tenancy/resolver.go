@@ -34,7 +34,7 @@ const (
 	Header Strategy = iota
 	// Query selects a query-string parameter.
 	Query
-	// Claim selects the first matching trusted principal claim.
+	// Claim selects the first matching authenticated principal claim.
 	Claim
 	// Subdomain selects one label before BaseDomain, else the header.
 	Subdomain
@@ -126,6 +126,9 @@ func (s *selector) Resolve(ctx context.Context, request *http.Request) (ID, erro
 		return s.options.FixedID, nil
 	case Claim:
 		principal, _ := identity.PrincipalFrom(ctx)
+		if !principal.IsAuthenticated() {
+			return ID{}, nil
+		}
 		text, _ := principal.Claim(s.options.ClaimType)
 		return ParseID(text)
 	}
