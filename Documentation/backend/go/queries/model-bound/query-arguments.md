@@ -32,7 +32,7 @@ equals and backslash in default text. Unknown, duplicated or malformed options f
 | GET empty | Omitted effectively unless `preservePresence` |
 | QUERY null or empty string | Omitted effectively unless `preservePresence` |
 | Supplied malformed scalar | `malformedRequest`; performer never runs |
-| Direct `NewArguments` empty/null | Not transport-omitted; scalar conversion still applies |
+| Direct `NewArguments` empty/null | Missing/default rules for types unable to represent empty strings, unless `preservePresence`; strings retain empty values |
 | `RequestFor[A]` | Exact typed input; no conversion, omission or transport defaults |
 
 `Request.Arguments()` and `QueryContext.Arguments()` retain raw missing/null/empty

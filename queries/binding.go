@@ -194,8 +194,10 @@ func bindArguments[A any](request Request, bindings []Argument[A]) (any, error) 
 	for _, a := range bindings {
 		raw, present := request.arguments.Get(a.parameter.Name)
 		effective := present
-		if present && !a.preserve && request.arguments.source != directInput && omittedRaw(raw, request.arguments.source) {
-			effective = false
+		if present && !a.preserve && omittedRaw(raw, request.arguments.source) {
+			if request.arguments.source != directInput || !representsEmptyString(a.parameter.Type) {
+				effective = false
+			}
 		}
 		if !effective {
 			if a.hasDefault {
@@ -261,6 +263,19 @@ func omittedRaw(raw any, source provenance) bool {
 	}
 	return false
 }
+func representsEmptyString(t reflect.Type) bool {
+	if base, ok := optionalElement(t); ok {
+		return representsEmptyString(base)
+	}
+	if t.Kind() == reflect.Pointer {
+		return representsEmptyString(t.Elem())
+	}
+	if base, recognized, err := fconcepts.Underlying(t); err == nil && recognized {
+		return base.Type.Kind() == reflect.String
+	}
+	return t.Kind() == reflect.String
+}
+
 func optionalElement(t reflect.Type) (reflect.Type, bool) {
 	// Inspect only framework Optional's type metadata, never its private value.
 	if t.PkgPath() == "github.com/cratis/arc.go/serialization" && strings.HasPrefix(t.Name(), "Optional[") {

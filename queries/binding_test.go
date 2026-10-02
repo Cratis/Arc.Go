@@ -42,6 +42,31 @@ func bindingPipeline(t *testing.T, c *bindingCapture) queries.Pipeline {
 	}), public[bindArgs]()))
 	return build(t, &r, queries.PipelineOptions{})
 }
+func TestDirectEmptyScalarInputUsesDefaultAndRequirednessRules(t *testing.T) {
+	var capture bindingCapture
+	p := bindingPipeline(t, &capture)
+	for _, empty := range []any{nil, ""} {
+		arguments, err := queries.NewArguments(map[string]any{"required": 0, "limit": empty, "name": "", "maybe": ""})
+		mustRegister(t, err)
+		result, err := p.Perform(t.Context(), "Item.Bind", queries.NewRequest(arguments, queries.Parameters{}))
+		mustRegister(t, err)
+		if !result.IsSuccess() || capture.Last.Limit != 10 || capture.Last.Name != "" || !capture.Last.Maybe.IsPresent() {
+			t.Fatal("direct empty numeric input did not use default", result.Details(), capture.Last)
+		}
+		before := capture.Calls
+		arguments, err = queries.NewArguments(map[string]any{"required": empty})
+		mustRegister(t, err)
+		result, err = p.Perform(t.Context(), "Item.Bind", queries.NewRequest(arguments, queries.Parameters{}))
+		var argumentError *queries.ArgumentError
+		if !errors.As(err, &argumentError) || !argumentError.Missing || result.IsValid() || capture.Calls != before {
+			t.Fatal("direct empty required input was not classified missing", result.Details(), err)
+		}
+		if findings := result.Details().ValidationResults; len(findings) != 1 || findings[0].Reason != validation.Rule {
+			t.Fatal(findings)
+		}
+	}
+}
+
 func TestBindingPresenceDefaultsZeroAndAtomicFailure(t *testing.T) {
 	var capture bindingCapture
 	p := bindingPipeline(t, &capture)
@@ -110,8 +135,8 @@ func TestBindingTransportRawNullEmptyAndTypedDistinctions(t *testing.T) {
 	raw, err := queries.NewArguments(map[string]any{"required": "", "limit": 0})
 	mustRegister(t, err)
 	result, err = p.Perform(context.Background(), "Item.Bind", queries.NewRequest(raw, queries.Parameters{}))
-	if err == nil || result.IsValid() {
-		t.Fatal("direct empty malformed int was omitted")
+	if err == nil || result.IsValid() || result.Details().ValidationResults[0].Reason != validation.Rule {
+		t.Fatal("direct empty required int was not classified missing")
 	}
 }
 func TestBindingCSVVersusJSONArraysAndPrecision(t *testing.T) {
