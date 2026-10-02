@@ -22,8 +22,8 @@
       href: backend/go/configuration/routing.md
     - name: Execution metadata
       href: backend/go/core/execution-context.md
-    - name: Services and scopes
-      href: backend/go/core/services.md
+    - name: Dependency injection and operation resources
+      href: backend/go/core/dependency-injection.md
 - name: Parity
   href: parity.md
 - name: Releases

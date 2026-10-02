@@ -11,12 +11,13 @@ import (
 )
 
 // Resources is an application-owned holder for operation dependencies. Close
-// must honor its context. This will alias fundamentals.go/lifecycle once published.
+// must honor its context. A Fundamentals dependencyinjection.Scope satisfies it
+// structurally; plain Go holders need no dependency-injection contract.
 type Resources = interface{ Close(context.Context) error }
 
 // OpenResources opens cheap/lazy resources, not handler dependencies. A returned
-// holder is owned even when accompanied by an error. This will alias
-// fundamentals.go/lifecycle once published.
+// holder is owned even when accompanied by an error. Arc owns this operation
+// seam; supplying a container is optional.
 type OpenResources = func(context.Context) (Resources, error)
 
 // ErrResourceType identifies an absent or incompatible resource holder.
@@ -70,6 +71,9 @@ func BorrowScope(ctx context.Context, resources Resources) (*Scope, error) {
 	}
 	scope := newScope(ctx, false)
 	scope.state.resources = resources
+	if err := scope.CheckContext(ctx); err != nil {
+		return nil, err
+	}
 	return scope, nil
 }
 

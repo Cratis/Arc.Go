@@ -10,6 +10,7 @@ import (
 
 	"github.com/cratis/arc.go/identity"
 	"github.com/cratis/arc.go/tenancy"
+	di "github.com/cratis/fundamentals.go/dependencyinjection"
 )
 
 var (
@@ -64,7 +65,8 @@ func newScope(ctx context.Context, owned bool) *Scope {
 
 // CheckContext checks cancellation, security presence and lifetime. An admitted
 // view remains usable while Close waits, but expires when its callback returns.
-// Correlation and receipt changes do not change security ownership.
+// Correlation and receipt changes do not change security ownership. Resources
+// implementing di.ContextChecker are checked too, including borrowed DI scopes.
 func (s *Scope) CheckContext(ctx context.Context) error {
 	if s == nil || s.state == nil {
 		return ErrInvalidScope
@@ -86,6 +88,9 @@ func (s *Scope) CheckContext(ctx context.Context) error {
 	tenant, tp := tenancy.TenantFrom(ctx)
 	if pp != state.principalPresent || tp != state.tenantPresent || !state.principal.Equal(principal) || tenant != state.tenant {
 		return ErrIdentityChanged
+	}
+	if checker, ok := state.resources.(di.ContextChecker); ok {
+		return invoke(ctx, func() error { return checker.CheckContext(ctx) })
 	}
 	return nil
 }

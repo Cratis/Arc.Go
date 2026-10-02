@@ -82,29 +82,29 @@ The new context retains the parent's cancellation and deadlines.
 
 ## Run an independent job
 
-Build a [service provider](services.md), then call `execution.Run` using an
-application/job lifetime context. This excerpt assumes `jobCtx` and `provider`
-are already available and imports `context`, `execution`, `identity`, `services`,
-and `tenancy`:
+Start with [plain Go operation resources](dependency-injection.md), then call
+`execution.RunWithResources` using an application/job lifetime context. This
+excerpt assumes `jobCtx` and an `open` function of type `execution.OpenResources`
+are available and imports `context`, `execution`, `identity`, and `tenancy`:
 
 ```go
-err := execution.Run(jobCtx, provider, execution.Metadata{
+err := execution.RunWithResources(jobCtx, open, execution.Metadata{
     Principal: identity.System("jobs"),
     Tenant:    tenancy.Default(),
-}, 0, func(ctx context.Context, scope *services.Scope) error {
-    _, err := services.Resolve[string](ctx, scope)
-    return err
+}, 0, func(ctx context.Context, scope *execution.Scope) error {
+    return scope.CheckContext(ctx)
 })
 ```
 
-Register `string` before this call. Inspect the returned `err`. Run invokes the
-callback synchronously in a fresh scope, always attempts scope cleanup, and joins
-callback, cancellation, and cleanup errors. It creates no goroutine. Callback
-panics are re-panicked after cleanup; the original panic is not replaced by a
-cleanup error. Cleanup errors cannot be returned on that panic path.
+Inspect the returned `err`. The callback runs synchronously in a fresh scope,
+receives a non-closing view, and expires on return. Cleanup follows callback
+completion; callback, cancellation, and cleanup errors are joined. It creates no
+goroutine. Callback panics become inspectable `execution.PanicError` diagnostics
+without disclosing their payload in error text. The unreleased `execution.Run`
+API is removed; use `RunWithResources` for both plain holders and DI factories.
 
-Zero cleanup timeout means 30 seconds. Negative timeouts and nil providers or
-callbacks return `execution.ErrInvalidArgument`. Cleanup uses a bounded
+Zero cleanup timeout means 30 seconds. Negative timeouts and nil contexts or
+callbacks return `execution.ErrInvalidArgument`. A nil opener means empty resources. Cleanup uses a bounded
 `context.WithoutCancel` child: it preserves metadata but does not inherit caller
 cancellation. Deadlines are cooperative, not forced termination. Do not detach a
 request context to give accidental background work an unlimited lifetime.
