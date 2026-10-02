@@ -36,8 +36,9 @@ func (r *Registry) AddResponseValueHandler(name string, factory Factory[Response
 	return addExtension(r, "responses", name, factory, keys, &r.responses)
 }
 
-// RegisterResponseValueHandler limits a consumer to exact T, retaining its dynamic
-// predicate. The marker does not establish unconditional no-response metadata.
+// RegisterResponseValueHandler limits a consumer to exact concrete T or values
+// implementing interface T, retaining its dynamic predicate. The marker does not
+// establish unconditional no-response metadata.
 func RegisterResponseValueHandler[T any](r *Registry, name string, factory Factory[ResponseValueHandler], keys ...di.Key) error {
 	if factory == nil {
 		return ErrInvalidRegistration
@@ -64,7 +65,16 @@ type typedConsumer struct {
 }
 
 func (h typedConsumer) CanHandle(c CommandContext, v any) bool {
-	return reflect.TypeOf(v) == h.typ && h.handler.CanHandle(c, v)
+	return matchesConsumerType(h.typ, reflect.TypeOf(v)) && h.handler.CanHandle(c, v)
+}
+func matchesConsumerType(consumerType, valueType reflect.Type) bool {
+	if valueType == nil {
+		return false
+	}
+	if consumerType.Kind() == reflect.Interface {
+		return valueType.Implements(consumerType)
+	}
+	return consumerType == valueType
 }
 func (h typedConsumer) Handle(ctx context.Context, inv *Invocation, value any) (Result[NoResponse], error) {
 	return h.handler.Handle(ctx, inv, value)

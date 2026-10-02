@@ -35,6 +35,38 @@ type updatingConsumer struct {
 func (h updatingConsumer) UpdateContext(ctx context.Context, inv *commands.Invocation, v any) error {
 	return h.update(ctx, inv, v)
 }
+
+type eventMarker interface{ EventName() string }
+type markedEvent struct{}
+
+func (markedEvent) EventName() string { return "created" }
+
+func TestTypedInterfaceConsumersMatchImplementationsButConcreteTypesStayExact(t *testing.T) {
+	for _, exact := range []bool{false, true} {
+		var r commands.Registry
+		must(t, commands.Register[Clear](&r, commands.Handle(func(Clear, context.Context) (*markedEvent, error) { return &markedEvent{}, nil })))
+		calls := 0
+		factory := func(context.Context, *execution.Scope) (commands.ResponseValueHandler, error) {
+			return consumer{can: func(commands.CommandContext, any) bool { return true }, handle: func(_ context.Context, inv *commands.Invocation, _ any) (commands.Result[commands.NoResponse], error) {
+				calls++
+				return commands.Success(inv.CommandContext().CorrelationID()), nil
+			}}, nil
+		}
+		if exact {
+			must(t, commands.RegisterResponseValueHandler[markedEvent](&r, "events", factory))
+		} else {
+			must(t, commands.RegisterResponseValueHandler[eventMarker](&r, "events", factory))
+		}
+		p := build(t, &r, commands.PipelineOptions{})
+		result, err := p.Execute(t.Context(), Clear{})
+		must(t, err)
+		_, present := result.Response()
+		if !result.IsSuccess() || present != exact || calls != map[bool]int{true: 0, false: 1}[exact] {
+			t.Fatal(result.Details(), present, calls)
+		}
+	}
+}
+
 func TestAdditiveHandlersAndResponseDependentPredicates(t *testing.T) {
 	var r commands.Registry
 	must(t, commands.Register[Clear](&r, commands.Handle(func(Clear, context.Context) (commands.Outcome[string], error) {
