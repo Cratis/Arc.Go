@@ -454,9 +454,14 @@ func convertRaw(raw any, t reflect.Type, source provenance, collection bool) (re
 	case reflect.String:
 		value.SetString(text)
 	case reflect.Bool:
-		var x bool
-		x, err = strconv.ParseBool(text)
-		value.SetBool(x)
+		switch strings.ToLower(strings.TrimSpace(text)) {
+		case "true":
+			value.SetBool(true)
+		case "false":
+			value.SetBool(false)
+		default:
+			err = &strconv.NumError{Func: "ParseBool", Num: text, Err: strconv.ErrSyntax}
+		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		var x int64
 		x, err = strconv.ParseInt(text, 10, t.Bits())

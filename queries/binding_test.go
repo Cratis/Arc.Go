@@ -42,6 +42,58 @@ func bindingPipeline(t *testing.T, c *bindingCapture) queries.Pipeline {
 	}), public[bindArgs]()))
 	return build(t, &r, queries.PipelineOptions{})
 }
+
+type boolArguments struct {
+	Flag bool `json:"flag"`
+}
+
+func TestBooleanBindingAcceptsOnlyTrimmedTrueFalseAcrossReaders(t *testing.T) {
+	var registry queries.Registry
+	var captured boolArguments
+	calls := 0
+	mustRegister(t, queries.Register[Item](&registry, "Boolean", queries.Function(func(_ context.Context, input boolArguments) (Item, error) {
+		captured = input
+		calls++
+		return Item{}, nil
+	})))
+	p := build(t, &registry, queries.PipelineOptions{})
+	for _, tc := range []struct {
+		text         string
+		valid, value bool
+	}{
+		{"true", true, true}, {" TrUe ", true, true},
+		{"false", true, false}, {" FALSE ", true, false},
+		{"1", false, false}, {"0", false, false}, {"t", false, false}, {"F", false, false},
+	} {
+		for _, reader := range []string{"direct", "GET", "QUERY"} {
+			var request queries.Request
+			var err error
+			switch reader {
+			case "GET":
+				request, err = queries.ReadGET(url.Values{"flag": {tc.text}})
+			case "QUERY":
+				body, marshalErr := json.Marshal(map[string]any{"arguments": map[string]any{"flag": tc.text}})
+				mustRegister(t, marshalErr)
+				request, err = queries.ReadQUERY(body)
+			default:
+				arguments, argumentsErr := queries.NewArguments(map[string]any{"flag": tc.text})
+				mustRegister(t, argumentsErr)
+				request = queries.NewRequest(arguments, queries.Parameters{})
+			}
+			mustRegister(t, err)
+			before := calls
+			result, err := p.Perform(t.Context(), "Item.Boolean", request)
+			if tc.valid {
+				if err != nil || !result.IsSuccess() || calls != before+1 || captured.Flag != tc.value {
+					t.Fatal(reader, tc.text, result.Details(), err, captured)
+				}
+			} else if err == nil || result.IsValid() || calls != before || result.Details().ValidationResults[0].Reason != validation.MalformedRequest {
+				t.Fatal(reader, "accepted invalid boolean", tc.text, result.Details(), err)
+			}
+		}
+	}
+}
+
 func TestDirectEmptyScalarInputUsesDefaultAndRequirednessRules(t *testing.T) {
 	var capture bindingCapture
 	p := bindingPipeline(t, &capture)
