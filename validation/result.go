@@ -63,6 +63,12 @@ type Result struct {
 
 // MarshalJSON implements the Arc validation envelope.
 func (r Result) MarshalJSON() ([]byte, error) {
+	return serialization.Marshal(r)
+}
+
+// MarshalJSONWith encodes nested State using the supplied Arc traversal. The
+// callback is synchronous and is not retained; callers normally use MarshalJSON.
+func (r Result) MarshalJSONWith(encode func(any) ([]byte, error)) ([]byte, error) {
 	members := r.Members
 	if members == nil {
 		members = []string{}
@@ -71,7 +77,7 @@ func (r Result) MarshalJSON() ([]byte, error) {
 	if reason == "" {
 		reason = Rule
 	}
-	state, err := serialization.Marshal(r.State)
+	state, err := encode(r.State)
 	if err != nil {
 		return nil, err
 	}

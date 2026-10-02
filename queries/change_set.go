@@ -6,7 +6,7 @@ package queries
 import (
 	"encoding/json"
 
-	"github.com/cratis/arc.go/internal/wire"
+	"github.com/cratis/arc.go/serialization"
 )
 
 // ChangeSet carries items (not IDs) added, replaced and removed. It is only a wire
@@ -22,15 +22,21 @@ type ChangeSet struct {
 
 // MarshalJSON always emits three arrays through the Arc model codec.
 func (c ChangeSet) MarshalJSON() ([]byte, error) {
-	added, err := wire.Payload(append([]any{}, c.Added...))
+	return serialization.Marshal(c)
+}
+
+// MarshalJSONWith encodes nested items using the supplied Arc traversal. The
+// callback is synchronous and is not retained; callers normally use MarshalJSON.
+func (c ChangeSet) MarshalJSONWith(encode func(any) ([]byte, error)) ([]byte, error) {
+	added, err := encode(append([]any{}, c.Added...))
 	if err != nil {
 		return nil, err
 	}
-	replaced, err := wire.Payload(append([]any{}, c.Replaced...))
+	replaced, err := encode(append([]any{}, c.Replaced...))
 	if err != nil {
 		return nil, err
 	}
-	removed, err := wire.Payload(append([]any{}, c.Removed...))
+	removed, err := encode(append([]any{}, c.Removed...))
 	if err != nil {
 		return nil, err
 	}

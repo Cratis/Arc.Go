@@ -99,26 +99,40 @@ func (r Result[T]) StatusCode() int {
 // MarshalJSON emits the Arc QueryResult envelope. It never emits an authorization
 // failure reason; that property belongs only to commands.
 func (r Result[T]) MarshalJSON() ([]byte, error) {
+	return serialization.Marshal(r)
+}
+
+// MarshalJSONWith encodes nested values using the supplied Arc traversal. The
+// callback is synchronous and is not retained; callers normally use MarshalJSON.
+func (r Result[T]) MarshalJSONWith(encode func(any) ([]byte, error)) ([]byte, error) {
 	var data json.RawMessage
 	if value, present := r.Data(); present {
 		var err error
-		data, err = wire.Payload(value)
+		data, err = wire.Payload(value, encode)
 		if err != nil {
 			return nil, err
 		}
 	}
+	findings, err := encode(wire.Findings(r.details.ValidationResults))
+	if err != nil {
+		return nil, err
+	}
+	changes, err := wire.Payload(r.details.ChangeSet, encode)
+	if err != nil {
+		return nil, err
+	}
 	return json.Marshal(struct {
-		Paging              PagingInfo          `json:"paging"`
-		CorrelationID       concepts.UUID       `json:"correlationId"`
-		Data                json.RawMessage     `json:"data,omitempty"`
-		IsSuccess           bool                `json:"isSuccess"`
-		IsReady             bool                `json:"isReady"`
-		IsAuthorized        bool                `json:"isAuthorized"`
-		IsValid             bool                `json:"isValid"`
-		HasExceptions       bool                `json:"hasExceptions"`
-		ValidationResults   []validation.Result `json:"validationResults"`
-		ExceptionMessages   []string            `json:"exceptionMessages"`
-		ExceptionStackTrace string              `json:"exceptionStackTrace"`
-		ChangeSet           *ChangeSet          `json:"changeSet,omitempty"`
-	}{r.details.Paging, r.details.CorrelationID, data, r.IsSuccess(), r.IsReady(), r.IsAuthorized(), r.IsValid(), r.HasExceptions(), wire.Findings(r.details.ValidationResults), wire.Messages(r.details.ExceptionMessages), r.details.ExceptionStackTrace, r.details.ChangeSet})
+		Paging              PagingInfo      `json:"paging"`
+		CorrelationID       concepts.UUID   `json:"correlationId"`
+		Data                json.RawMessage `json:"data,omitempty"`
+		IsSuccess           bool            `json:"isSuccess"`
+		IsReady             bool            `json:"isReady"`
+		IsAuthorized        bool            `json:"isAuthorized"`
+		IsValid             bool            `json:"isValid"`
+		HasExceptions       bool            `json:"hasExceptions"`
+		ValidationResults   json.RawMessage `json:"validationResults"`
+		ExceptionMessages   []string        `json:"exceptionMessages"`
+		ExceptionStackTrace string          `json:"exceptionStackTrace"`
+		ChangeSet           json.RawMessage `json:"changeSet,omitempty"`
+	}{r.details.Paging, r.details.CorrelationID, data, r.IsSuccess(), r.IsReady(), r.IsAuthorized(), r.IsValid(), r.HasExceptions(), findings, wire.Messages(r.details.ExceptionMessages), r.details.ExceptionStackTrace, changes})
 }

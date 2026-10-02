@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/cratis/arc.go/serialization"
 	"github.com/cratis/arc.go/validation"
 )
 
@@ -25,8 +24,8 @@ func Findings(values []validation.Result) []validation.Result {
 func Messages(values []string) []string { return append([]string{}, values...) }
 
 // Payload omits null payloads without treating scalar zero as absent.
-func Payload(value any) (json.RawMessage, error) {
-	data, err := serialization.Marshal(value)
+func Payload(value any, encode func(any) ([]byte, error)) (json.RawMessage, error) {
+	data, err := encode(value)
 	if err != nil {
 		return nil, err
 	}

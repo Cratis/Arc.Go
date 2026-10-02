@@ -95,24 +95,34 @@ func (r Result[R]) StatusCode() int {
 
 // MarshalJSON emits the Arc CommandResult envelope with required arrays and strings.
 func (r Result[R]) MarshalJSON() ([]byte, error) {
+	return serialization.Marshal(r)
+}
+
+// MarshalJSONWith encodes nested values using the supplied Arc traversal. The
+// callback is synchronous and is not retained; callers normally use MarshalJSON.
+func (r Result[R]) MarshalJSONWith(encode func(any) ([]byte, error)) ([]byte, error) {
 	var response json.RawMessage
 	if value, present := r.Response(); present {
 		var err error
-		response, err = wire.Payload(value)
+		response, err = wire.Payload(value, encode)
 		if err != nil {
 			return nil, err
 		}
 	}
+	findings, err := encode(wire.Findings(r.details.ValidationResults))
+	if err != nil {
+		return nil, err
+	}
 	return json.Marshal(struct {
-		CorrelationID              concepts.UUID       `json:"correlationId"`
-		IsSuccess                  bool                `json:"isSuccess"`
-		IsAuthorized               bool                `json:"isAuthorized"`
-		IsValid                    bool                `json:"isValid"`
-		HasExceptions              bool                `json:"hasExceptions"`
-		ValidationResults          []validation.Result `json:"validationResults"`
-		ExceptionMessages          []string            `json:"exceptionMessages"`
-		ExceptionStackTrace        string              `json:"exceptionStackTrace"`
-		AuthorizationFailureReason string              `json:"authorizationFailureReason"`
-		Response                   json.RawMessage     `json:"response,omitempty"`
-	}{r.details.CorrelationID, r.IsSuccess(), r.IsAuthorized(), r.IsValid(), r.HasExceptions(), wire.Findings(r.details.ValidationResults), wire.Messages(r.details.ExceptionMessages), r.details.ExceptionStackTrace, r.details.AuthorizationFailureReason, response})
+		CorrelationID              concepts.UUID   `json:"correlationId"`
+		IsSuccess                  bool            `json:"isSuccess"`
+		IsAuthorized               bool            `json:"isAuthorized"`
+		IsValid                    bool            `json:"isValid"`
+		HasExceptions              bool            `json:"hasExceptions"`
+		ValidationResults          json.RawMessage `json:"validationResults"`
+		ExceptionMessages          []string        `json:"exceptionMessages"`
+		ExceptionStackTrace        string          `json:"exceptionStackTrace"`
+		AuthorizationFailureReason string          `json:"authorizationFailureReason"`
+		Response                   json.RawMessage `json:"response,omitempty"`
+	}{r.details.CorrelationID, r.IsSuccess(), r.IsAuthorized(), r.IsValid(), r.HasExceptions(), findings, wire.Messages(r.details.ExceptionMessages), r.details.ExceptionStackTrace, r.details.AuthorizationFailureReason, response})
 }
