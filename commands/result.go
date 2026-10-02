@@ -1,0 +1,118 @@
+// Copyright (c) Cratis. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+
+// Package commands defines Arc command outcomes. Execution pipelines are not yet provided.
+package commands
+
+import (
+	"encoding/json"
+
+	"github.com/cratis/arc.go/concepts"
+	"github.com/cratis/arc.go/internal/wire"
+	"github.com/cratis/arc.go/serialization"
+	"github.com/cratis/arc.go/validation"
+)
+
+// NoResponse is the type argument for commands without a client response.
+type NoResponse struct{}
+
+// Details configures a finalized result. Zero denies authorization. Use Success or
+// WithResponse for success. Arrays are copied; validation State remains borrowed.
+type Details struct {
+	// CorrelationID is echoed unchanged; transport normalization happens separately.
+	CorrelationID concepts.UUID
+	// Authorized states the final authorization decision.
+	Authorized bool
+	// ValidationResults are retained findings after severity filtering.
+	ValidationResults []validation.Result
+	// ExceptionMessages are client-safe messages; nonempty means exception failure.
+	ExceptionMessages []string
+	// ExceptionStackTrace is empty outside explicit development exposure.
+	ExceptionStackTrace string
+	// AuthorizationFailureReason is safe client-visible denial feedback.
+	AuthorizationFailureReason string
+}
+
+// Result is a finalized command outcome with computed flags and explicit response
+// presence. Its zero value denies authorization. It is safe for concurrent reads
+// if borrowed response and State values are not mutated. It is an output envelope,
+// not a JSON decoder; use ordinary DTOs to consume remote responses.
+type Result[R any] struct {
+	details  Details
+	response serialization.Optional[R]
+}
+
+// NewResult finalizes details and copies their arrays. Any failure discards response
+// presence, including scalar zeros. Application response values remain borrowed.
+func NewResult[R any](details Details, response serialization.Optional[R]) Result[R] {
+	details.ValidationResults = wire.Findings(details.ValidationResults)
+	details.ExceptionMessages = wire.Messages(details.ExceptionMessages)
+	result := Result[R]{details: details, response: response}
+	if !result.IsSuccess() {
+		result.response = serialization.Optional[R]{}
+	}
+	return result
+}
+
+// Success returns a successful command without a response.
+func Success(id concepts.UUID) Result[NoResponse] {
+	return NewResult(Details{CorrelationID: id, Authorized: true}, serialization.Optional[NoResponse]{})
+}
+
+// WithResponse returns success with an explicitly present response, including zero.
+func WithResponse[R any](id concepts.UUID, response R) Result[R] {
+	return NewResult(Details{CorrelationID: id, Authorized: true}, serialization.Some(response))
+}
+
+// Details returns copy-isolated arrays; application State remains borrowed.
+func (r Result[R]) Details() Details {
+	d := r.details
+	d.ValidationResults = wire.Findings(d.ValidationResults)
+	d.ExceptionMessages = wire.Messages(d.ExceptionMessages)
+	return d
+}
+
+// Response distinguishes absence from a legitimate zero value. Nil payloads are
+// omitted on the wire, even if present locally, matching C# null omission.
+func (r Result[R]) Response() (R, bool) { return r.response.Value() }
+
+// IsAuthorized reports the final authorization decision.
+func (r Result[R]) IsAuthorized() bool { return r.details.Authorized }
+
+// IsValid reports whether the retained validation list is empty.
+func (r Result[R]) IsValid() bool { return len(r.details.ValidationResults) == 0 }
+
+// HasExceptions reports whether exceptionMessages is nonempty.
+func (r Result[R]) HasExceptions() bool { return len(r.details.ExceptionMessages) > 0 }
+
+// IsSuccess combines authorization, validity and absence of exceptions.
+func (r Result[R]) IsSuccess() bool { return r.IsAuthorized() && r.IsValid() && !r.HasExceptions() }
+
+// StatusCode selects 200, 403, 400 or 500 in Arc precedence order.
+func (r Result[R]) StatusCode() int {
+	return wire.StatusCode(r.IsSuccess(), r.IsAuthorized(), r.IsValid(), true)
+}
+
+// MarshalJSON emits the Arc CommandResult envelope with required arrays and strings.
+func (r Result[R]) MarshalJSON() ([]byte, error) {
+	var response json.RawMessage
+	if value, present := r.Response(); present {
+		var err error
+		response, err = wire.Payload(value)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return json.Marshal(struct {
+		CorrelationID              concepts.UUID       `json:"correlationId"`
+		IsSuccess                  bool                `json:"isSuccess"`
+		IsAuthorized               bool                `json:"isAuthorized"`
+		IsValid                    bool                `json:"isValid"`
+		HasExceptions              bool                `json:"hasExceptions"`
+		ValidationResults          []validation.Result `json:"validationResults"`
+		ExceptionMessages          []string            `json:"exceptionMessages"`
+		ExceptionStackTrace        string              `json:"exceptionStackTrace"`
+		AuthorizationFailureReason string              `json:"authorizationFailureReason"`
+		Response                   json.RawMessage     `json:"response,omitempty"`
+	}{r.details.CorrelationID, r.IsSuccess(), r.IsAuthorized(), r.IsValid(), r.HasExceptions(), wire.Findings(r.details.ValidationResults), wire.Messages(r.details.ExceptionMessages), r.details.ExceptionStackTrace, r.details.AuthorizationFailureReason, response})
+}
