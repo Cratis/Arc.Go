@@ -35,6 +35,8 @@ type Command struct {
 	Type TypeName `json:"type"`
 	// Path overrides the entire route verbatim; empty uses convention.
 	Path string `json:"path,omitempty"`
+	// Authorization is the optional command declaration; nil uses fallback.
+	Authorization *Authorization `json:"authorization,omitempty"`
 }
 
 // Query describes a method on a read model. Its identity includes the model name,
@@ -50,6 +52,10 @@ type Query struct {
 	ReadModelPath string `json:"readModelPath,omitempty"`
 	// Observable indicates an observable return shape; it does not start a stream.
 	Observable bool `json:"observable"`
+	// Authorization replaces the read-model declaration when nonnil.
+	Authorization *Authorization `json:"authorization,omitempty"`
+	// ReadModelAuthorization applies only when no method declaration exists.
+	ReadModelAuthorization *Authorization `json:"readModelAuthorization,omitempty"`
 }
 
 // Identity returns the stable fully qualified query name used by subscriptions.
@@ -57,7 +63,8 @@ func (q Query) Identity() string { return q.ReadModel.Identity() + "." + q.Name 
 
 // Catalog is descriptor format v1 for endpoint identity and route metadata. It is
 // caller-owned mutable configuration. Resolve borrows it only during the call.
-// Handler/schema/authorization graphs will be added with their owning slices.
+// Authorization compilation is separate from route resolution. Use keyed literals
+// for public descriptors as optional fields may be added during v0 development.
 type Catalog struct {
 	// Version must equal metadata.Version; zero is not silently upgraded.
 	Version int `json:"version"`
