@@ -174,16 +174,27 @@ func (p *queryPipeline) Lookup(name FullyQualifiedQueryName) (Registration, bool
 // Perform checks typed result compatibility before invoking application callbacks.
 // Absence remains valid; incompatible known data contracts fail before admission.
 func Perform[R any](ctx context.Context, p Pipeline, name FullyQualifiedQueryName, request Request) (Result[R], error) {
+	var id correlation.ID
+	if ctx != nil {
+		id = correlation.FromContext(ctx)
+	}
+	expose := false
+	if concrete, ok := p.(*queryPipeline); ok && concrete != nil {
+		expose = concrete.options.ExposeExceptionDetails
+	}
+	failure := func(err error) (Result[R], error) {
+		return finalize(FromError[R](id, err), expose), err
+	}
 	if nilValue(p) {
-		return Result[R]{}, ErrInvalidRegistration
+		return failure(ErrInvalidRegistration)
 	}
 	q, ok := p.Lookup(name)
 	if !ok {
-		return Result[R]{}, ErrUnknownQuery
+		return failure(ErrUnknownQuery)
 	}
 	target := reflect.TypeFor[R]()
 	if q.DataType() == nil || !q.DataType().AssignableTo(target) {
-		return Result[R]{}, ErrResponseType
+		return failure(ErrResponseType)
 	}
 	result, err := p.Perform(ctx, name, request)
 	d := result.Details()
@@ -196,7 +207,7 @@ func Perform[R any](ctx context.Context, p Pipeline, name FullyQualifiedQueryNam
 	}
 	value, ok := data.(R)
 	if !ok {
-		return NewResult(d, serialization.Optional[R]{}), errors.Join(err, ErrResponseType)
+		return finalize(Merge(NewResult(d, serialization.Optional[R]{}), FromError[any](d.CorrelationID, ErrResponseType)), expose), errors.Join(err, ErrResponseType)
 	}
 	return NewResult(d, serialization.Some(value)), err
 }
