@@ -5,6 +5,7 @@ package services
 
 import (
 	"reflect"
+	"strconv"
 	"strings"
 )
 
@@ -36,10 +37,42 @@ func typeIdentity(t reflect.Type) string {
 	case reflect.Slice:
 		return "[]" + typeIdentity(t.Elem())
 	case reflect.Array:
-		return "[" + strings.TrimSuffix(strings.SplitN(t.String(), "]", 2)[0], "[") + "]" + typeIdentity(t.Elem())
+		return "[" + strconv.Itoa(t.Len()) + "]" + typeIdentity(t.Elem())
 	case reflect.Map:
 		return "map[" + typeIdentity(t.Key()) + "]" + typeIdentity(t.Elem())
+	case reflect.Chan:
+		return t.ChanDir().String() + " " + typeIdentity(t.Elem())
+	case reflect.Func:
+		return functionIdentity(t)
+	case reflect.Struct:
+		fields := make([]string, t.NumField())
+		for i := range fields {
+			f := t.Field(i)
+			fields[i] = f.PkgPath + ":" + f.Name + " " + typeIdentity(f.Type) + " " + strconv.Quote(string(f.Tag)) + " " + strconv.FormatBool(f.Anonymous)
+		}
+		return "struct{" + strings.Join(fields, ";") + "}"
+	case reflect.Interface:
+		methods := make([]string, t.NumMethod())
+		for i := range methods {
+			m := t.Method(i)
+			methods[i] = m.PkgPath + ":" + m.Name + typeIdentity(m.Type)
+		}
+		return "interface{" + strings.Join(methods, ";") + "}"
 	default:
 		return t.String()
 	}
+}
+func functionIdentity(t reflect.Type) string {
+	inputs := make([]string, t.NumIn())
+	outputs := make([]string, t.NumOut())
+	for i := range inputs {
+		inputs[i] = typeIdentity(t.In(i))
+		if t.IsVariadic() && i == len(inputs)-1 {
+			inputs[i] = "..." + typeIdentity(t.In(i).Elem())
+		}
+	}
+	for i := range outputs {
+		outputs[i] = typeIdentity(t.Out(i))
+	}
+	return "func(" + strings.Join(inputs, ",") + ")(" + strings.Join(outputs, ",") + ")"
 }

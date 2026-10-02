@@ -105,7 +105,7 @@ func (r *Registry) Build() (*Provider, error) {
 		bindings[key] = b
 	}
 	r.frozen = true
-	return &Provider{bindings: bindings}, nil
+	return newProvider(bindings), nil
 }
 
 func nilValue(value any) bool {
@@ -120,11 +120,3 @@ func nilValue(value any) bool {
 		return false
 	}
 }
-
-// Provider owns singleton instances and outstanding child scopes. Zero is invalid.
-// Construct with Registry.Build; methods added alongside scope resolution.
-type Provider struct{ bindings map[Key]binding }
-
-// Scope owns scoped values and transient instances. Zero is invalid.
-// Construct with Provider.NewScope; factory views are restricted and expire.
-type Scope struct{}

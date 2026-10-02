@@ -20,8 +20,8 @@ func TestCorrelationParsingAndReplacement(t *testing.T) {
 	if err != nil || id.String() != text {
 		t.Fatal(id, err)
 	}
-	var alias concepts.UUID = id
-	if alias != id {
+	asUUID := func(value concepts.UUID) correlation.ID { return value }
+	if asUUID(id) != id {
 		t.Fatal("alias")
 	}
 	for _, invalid := range []string{"", "bad", "00000000-0000-0000-0000-000000000000", "{12345678-abcd-4abc-8def-123456789012}"} {
