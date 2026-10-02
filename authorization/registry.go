@@ -5,12 +5,14 @@ package authorization
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"slices"
 	"strings"
 	"time"
 	"unicode"
 
+	"github.com/cratis/arc.go/execution"
 	"github.com/cratis/arc.go/identity"
 	"github.com/cratis/arc.go/metadata"
 	"github.com/cratis/arc.go/tenancy"
@@ -83,7 +85,34 @@ type Registry struct {
 }
 type registration struct {
 	policy    Policy
+	factory   func(context.Context, *execution.Scope) (Policy, error)
 	anonymous bool
+}
+
+// Factory constructs a borrowed policy only during scoped evaluation. Its scope
+// view is non-closing and expires on return from EvaluateScoped. DI dependency
+// manifests will follow the published Fundamentals contracts.
+type Factory[P Policy] func(context.Context, *execution.Scope) (P, error)
+
+// RegisterPolicy registers a lazy scoped policy without activating its factory.
+// Nil factories and duplicate names fail. Resources own disposal of the policy.
+func RegisterPolicy[P Policy](r *Registry, name string, factory Factory[P], options PolicyOptions) error {
+	if factory == nil {
+		return configuration(Target{}, name, ErrInvalidConfiguration)
+	}
+	return r.register(name, registration{anonymous: options.EvaluatesAnonymous, factory: func(ctx context.Context, scope *execution.Scope) (Policy, error) {
+		policy, err := factory(ctx, scope)
+		if check := scope.CheckContext(ctx); check != nil {
+			return nil, errors.Join(err, check)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if nilValue(policy) {
+			return nil, ErrInvalidConfiguration
+		}
+		return policy, nil
+	}})
 }
 
 // Register borrows a concurrently callable direct policy. Names are exact and
@@ -153,7 +182,7 @@ func (r *Registry) Build(catalog metadata.Catalog, options Options) (*Evaluator,
 		return int(a.target.Kind) - int(b.target.Kind)
 	})
 	readModels := make(map[string]*metadata.Authorization)
-	evaluator := &Evaluator{declarations: make(map[Target]declaration)}
+	evaluator := &Evaluator{declarations: make(map[Target]declaration), sources: make(map[Target][]*metadata.Authorization)}
 	for i, artifact := range artifacts {
 		if !artifact.valid || !validTarget(artifact.target) {
 			return nil, configuration(artifact.target, "", ErrInvalidConfiguration)
@@ -181,6 +210,9 @@ func (r *Registry) Build(catalog metadata.Catalog, options Options) (*Evaluator,
 			}
 		}
 		evaluator.declarations[artifact.target] = effective
+		for _, level := range artifact.levels {
+			evaluator.sources[artifact.target] = append(evaluator.sources[artifact.target], cloneAuthorization(level))
+		}
 	}
 	r.frozen = true
 	return evaluator, nil

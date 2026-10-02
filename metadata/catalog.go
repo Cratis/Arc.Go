@@ -6,7 +6,11 @@
 // no reflection discovery, invocation or network activity occurs here.
 package metadata
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/cratis/arc.go/validation"
+)
 
 // Version is the supported descriptor format. Readers reject other versions.
 const Version = 1
@@ -37,7 +41,23 @@ type Command struct {
 	Path string `json:"path,omitempty"`
 	// Authorization is the optional command declaration; nil uses fallback.
 	Authorization *Authorization `json:"authorization,omitempty"`
+	// BlockOnValidationSeverity is the optional inclusive command severity floor.
+	BlockOnValidationSeverity *validation.Severity `json:"blockOnValidationSeverity,omitempty"`
+	// ExcludeFromDiscovery hides catalog exposure, not execution or authorization.
+	ExcludeFromDiscovery bool `json:"excludeFromDiscovery,omitempty"`
 }
+
+// QueryHTTPMethod selects an explicit query transport; zero retains route defaults.
+type QueryHTTPMethod string
+
+const (
+	// QueryHTTPDefault follows Options.EnableQueryHTTPMethod.
+	QueryHTTPDefault QueryHTTPMethod = ""
+	// QueryHTTPGet exposes GET only.
+	QueryHTTPGet QueryHTTPMethod = "GET"
+	// QueryHTTPQuery exposes QUERY only (and requires it enabled in route options).
+	QueryHTTPQuery QueryHTTPMethod = "QUERY"
+)
 
 // Query describes a method on a read model. Its identity includes the model name,
 // but its conventional route includes only the namespace and method name.
@@ -56,6 +76,12 @@ type Query struct {
 	Authorization *Authorization `json:"authorization,omitempty"`
 	// ReadModelAuthorization applies only when no method declaration exists.
 	ReadModelAuthorization *Authorization `json:"readModelAuthorization,omitempty"`
+	// HTTPMethod restricts the route method; empty retains the existing defaults.
+	HTTPMethod QueryHTTPMethod `json:"httpMethod,omitempty"`
+	// ExcludeFromDiscovery hides query exposure without disabling execution.
+	ExcludeFromDiscovery bool `json:"excludeFromDiscovery,omitempty"`
+	// ReadModelIdentityMember is the optional wire field for later delta support.
+	ReadModelIdentityMember string `json:"readModelIdentityMember,omitempty"`
 }
 
 // Identity returns the stable fully qualified query name used by subscriptions.

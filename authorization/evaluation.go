@@ -5,15 +5,83 @@ package authorization
 
 import (
 	"context"
+	"errors"
+	"slices"
 
 	"github.com/cratis/arc.go/execution"
 	"github.com/cratis/arc.go/identity"
+	"github.com/cratis/arc.go/metadata"
 	"github.com/cratis/arc.go/tenancy"
 )
 
 // Evaluator is immutable and concurrent-safe with concurrently callable policies.
 // It caches declarations, never decisions. Construct using Registry.Build.
-type Evaluator struct{ declarations map[Target]declaration }
+type Evaluator struct {
+	declarations map[Target]declaration
+	sources      map[Target][]*metadata.Authorization
+}
+
+// ErrScopeRequired identifies direct evaluation of an applicable scoped policy.
+var ErrScopeRequired = errors.New("authorization policy requires an operation scope")
+
+// ErrCatalogMismatch identifies missing targets or changed frozen declarations.
+var ErrCatalogMismatch = errors.New("authorization catalog mismatch")
+
+// CheckCatalog verifies coverage and exact declaration content, including absent
+// declarations and overridden model levels. Supersets are allowed. It does not
+// run policies, and never treats matching names alone as compatible authority.
+func (e *Evaluator) CheckCatalog(catalog metadata.Catalog) error {
+	if e == nil || catalog.Version != metadata.Version {
+		return ErrCatalogMismatch
+	}
+	seen := make(map[Target]bool)
+	check := func(target Target, levels ...*metadata.Authorization) error {
+		if seen[target] {
+			return ErrCatalogMismatch
+		}
+		seen[target] = true
+		frozen, exists := e.sources[target]
+		if !exists || len(frozen) != len(levels) {
+			return ErrCatalogMismatch
+		}
+		for i, level := range levels {
+			if !sameAuthorization(frozen[i], level) {
+				return ErrCatalogMismatch
+			}
+		}
+		return nil
+	}
+	for _, command := range catalog.Commands {
+		if !validType(command.Type) {
+			return ErrCatalogMismatch
+		}
+		if err := check(Target{Kind: Command, Identity: command.Type.Identity()}, command.Authorization); err != nil {
+			return err
+		}
+	}
+	for _, query := range catalog.Queries {
+		if !validType(query.ReadModel) || !validSegment(query.Name) {
+			return ErrCatalogMismatch
+		}
+		if err := check(Target{Kind: Query, Identity: query.Identity()}, query.Authorization, query.ReadModelAuthorization); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func cloneAuthorization(value *metadata.Authorization) *metadata.Authorization {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	copy.Requirements = slices.Clone(value.Requirements)
+	for i := range copy.Requirements {
+		copy.Requirements[i].Roles = slices.Clone(copy.Requirements[i].Roles)
+		copy.Requirements[i].AuthenticationSchemes = slices.Clone(copy.Requirements[i].AuthenticationSchemes)
+	}
+	return &copy
+}
 
 // Prepared captures a declaration and security metadata before dependencies run.
 // Zero is invalid. It is not an authorization token; Evaluate is required for
@@ -70,6 +138,26 @@ func (p Prepared) Check(ctx context.Context) error {
 // panics propagate to pipeline boundaries. Resource is borrowed, never retained.
 // This API is container-neutral; it neither creates nor validates service scopes.
 func (p Prepared) Evaluate(ctx context.Context, resource any) (Decision, error) {
+	return p.evaluate(ctx, nil, resource)
+}
+
+// EvaluateScoped admits evaluation for the scope's lifetime. All authentication
+// and role requirements run before any policy factory. Factories and policies
+// receive only a non-closing view; panics become execution.PanicError. A scope
+// grants no permission and decisions are never cached.
+func (p Prepared) EvaluateScoped(ctx context.Context, scope *execution.Scope, resource any) (decision Decision, err error) {
+	err = scope.Use(ctx, func(ctx context.Context, view *execution.Scope) error {
+		var evaluateErr error
+		decision, evaluateErr = p.evaluate(ctx, view, resource)
+		return evaluateErr
+	})
+	if err != nil {
+		return Decision{}, err
+	}
+	return decision, nil
+}
+
+func (p Prepared) evaluate(ctx context.Context, scope *execution.Scope, resource any) (Decision, error) {
 	if err := p.Check(ctx); err != nil {
 		return Decision{}, err
 	}
@@ -95,6 +183,13 @@ func (p Prepared) Evaluate(ctx context.Context, resource any) (Decision, error) 
 			return Deny("role required"), nil
 		}
 	}
+	if scope == nil {
+		for _, requirement := range declaration.requirements {
+			if requirement.registration.factory != nil {
+				return Decision{}, ErrScopeRequired
+			}
+		}
+	}
 	principal := p.principal
 	if !principal.IsAuthenticated() {
 		// Policies see a synthetic guest; Check still certifies the original caller.
@@ -103,16 +198,39 @@ func (p Prepared) Evaluate(ctx context.Context, resource any) (Decision, error) 
 	receivedAt, _ := execution.ReceivedAt(ctx)
 	value := Context{Principal: principal, Tenant: p.tenant, Target: p.target, Resource: resource, ReceivedAt: receivedAt}
 	for _, requirement := range declaration.requirements {
-		policy := requirement.registration.policy
-		if policy == nil {
-			continue
-		}
 		if err := p.Check(ctx); err != nil {
 			return Decision{}, err
 		}
+		if scope != nil {
+			if err := scope.CheckContext(ctx); err != nil {
+				return Decision{}, err
+			}
+		}
+		policy := requirement.registration.policy
+		if factory := requirement.registration.factory; factory != nil {
+			var err error
+			policy, err = factory(ctx, scope)
+			if check := p.Check(ctx); check != nil {
+				return Decision{}, errors.Join(err, check)
+			}
+			if err != nil {
+				return Decision{}, err
+			}
+		}
+		if policy == nil {
+			continue
+		}
 		decision, err := policy.Authorize(ctx, value)
+		if scope != nil {
+			if check := scope.CheckContext(ctx); check != nil {
+				return Decision{}, errors.Join(err, check)
+			}
+		}
 		if check := p.Check(ctx); check != nil {
-			return Decision{}, check
+			if err == nil {
+				return Decision{}, check
+			}
+			return Decision{}, errors.Join(err, check)
 		}
 		if err != nil {
 			return Decision{}, err

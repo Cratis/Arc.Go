@@ -41,6 +41,7 @@ func (e *CollisionError) Error() string {
 type artifact struct {
 	identity, namespace, name, path string
 	command                         bool
+	httpMethod                      QueryHTTPMethod
 }
 
 // Resolve validates descriptor identities and returns routes sorted by identity and
@@ -57,7 +58,7 @@ func Resolve(catalog Catalog, options Options) ([]Endpoint, error) {
 	}
 	artifacts := make([]artifact, 0, len(catalog.Commands)+len(catalog.Queries))
 	for _, c := range catalog.Commands {
-		artifacts = append(artifacts, artifact{c.Type.Identity(), c.Type.Namespace, c.Type.Name, c.Path, true})
+		artifacts = append(artifacts, artifact{identity: c.Type.Identity(), namespace: c.Type.Namespace, name: c.Type.Name, path: c.Path, command: true})
 	}
 	for _, q := range catalog.Queries {
 		if err := validateType(q.ReadModel); err != nil {
@@ -67,7 +68,13 @@ func Resolve(catalog Catalog, options Options) ([]Endpoint, error) {
 		if q.Path != nil {
 			path = *q.Path
 		}
-		artifacts = append(artifacts, artifact{q.Identity(), q.ReadModel.Namespace, q.Name, path, false})
+		if q.HTTPMethod != QueryHTTPDefault && q.HTTPMethod != QueryHTTPGet && q.HTTPMethod != QueryHTTPQuery {
+			return nil, fmt.Errorf("unsupported query HTTP method %q", q.HTTPMethod)
+		}
+		if q.HTTPMethod == QueryHTTPQuery && !options.EnableQueryHTTPMethod {
+			return nil, fmt.Errorf("QUERY support disabled for %s", q.Identity())
+		}
+		artifacts = append(artifacts, artifact{identity: q.Identity(), namespace: q.ReadModel.Namespace, name: q.Name, path: path, httpMethod: q.HTTPMethod})
 	}
 	slices.SortFunc(artifacts, func(a, b artifact) int { return strings.Compare(a.identity, b.identity) })
 	groups := make(map[string]int)
@@ -97,7 +104,9 @@ func Resolve(catalog Catalog, options Options) ([]Endpoint, error) {
 		routes := []Endpoint{{Identity: a.identity, Method: "GET", Path: path}}
 		if a.command {
 			routes = []Endpoint{{a.identity, "POST", path, false}, {a.identity, "POST", path + "/validate", true}}
-		} else if options.EnableQueryHTTPMethod {
+		} else if a.httpMethod == QueryHTTPQuery {
+			routes = []Endpoint{{Identity: a.identity, Method: "QUERY", Path: path}}
+		} else if options.EnableQueryHTTPMethod && a.httpMethod == QueryHTTPDefault {
 			routes = append(routes, Endpoint{Identity: a.identity, Method: "QUERY", Path: path})
 		}
 		for _, endpoint := range routes {
