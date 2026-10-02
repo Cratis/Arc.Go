@@ -1,6 +1,6 @@
 # Contributing to Arc for Go
 
-Thank you for helping build the Cratis Arc framework for Go. This repository is in early development: it contains a module scaffold, not framework APIs. Discuss larger changes before implementation, and document only capabilities that exist and have been verified.
+Thank you for helping build the Cratis Arc framework for Go. This repository is in early development: it provides foundation contracts, not command/query pipelines or HTTP hosting. Discuss larger changes before implementation, and document only capabilities that exist and have been verified.
 
 The [Cratis contribution guide](https://github.com/Cratis/.github/blob/main/contributing.md) and [code of conduct](https://github.com/Cratis/.github/blob/main/CODE_OF_CONDUCT.md) apply.
 
@@ -44,9 +44,9 @@ go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 govulncheck ./...
 ```
 
-Format Go source with `gofmt`; no files should appear in `gofmt -l doc.go` for the initial scaffold. Check all Go files as the codebase grows. After `go mod tidy`, also check `git status --short -- go.mod go.sum` for untracked manifests. Commit `go.sum` when dependencies require it. Do not commit nested modules, local `replace` directives, or personal `go.work` files: released modules must build without sibling checkouts.
+Format all Go source with `gofmt`; no source files should appear in `gofmt -l` output. After `go mod tidy`, also check `git status --short -- go.mod go.sum` for untracked manifests. Commit `go.sum` when dependencies require it. Do not commit nested modules, local `replace` directives, or personal `go.work` files: released modules must build without sibling checkouts.
 
-Hosted CI also runs the ordinary build, vet, and tests on macOS and Windows. Workflow lint invokes ShellCheck when it is available. The scaffold has no behavioral or integration tests yet; a passing empty package is not evidence of product compatibility. Add tests with behavior, and explicitly bounded integration checks before claiming HTTP contract conformance. CodeQL runs separately in GitHub Actions.
+Hosted CI also runs the ordinary build, vet, and tests on macOS and Windows. Workflow lint invokes ShellCheck when it is available. Foundation behavioral and wire-fixture tests run without external services. They are not HTTP integration tests; add explicitly bounded integration checks before claiming HTTP contract conformance. CodeQL runs separately in GitHub Actions.
 
 ## Conventions
 

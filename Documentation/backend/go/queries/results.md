@@ -33,8 +33,10 @@ error mapper.
 `PagingInfo` always appears as `{ page, size, totalItems, totalPages }`.
 Its zero value is not paged. `Page` is zero-based. `TotalPages()` uses the C#
 double-precision ceiling; zero size gives zero total pages. Page/size are int32,
-total items is int64. This is response metadata only: no request reader, sorting,
-validation or automatic slicing runs here.
+total items is int64. Page-count overflow returns MinInt32 deterministically;
+this is not a claim about a particular C# runtime's unchecked overflow behavior.
+This is response metadata only: no request reader, sorting, validation or automatic
+slicing runs here.
 
 `Details.ChangeSet` optionally supplies `queries.ChangeSet` with `Added`,
 `Replaced` and `Removed` item arrays. Empty arrays always serialize as `[]`.

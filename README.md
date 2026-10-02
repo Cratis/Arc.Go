@@ -9,9 +9,9 @@ The Go framework for [Cratis Arc](https://github.com/Cratis/Arc), bringing Arc's
 
 ## Status
 
-**Early development.** This repository currently contains the module and repository scaffold, not implemented framework APIs. Releases will remain **v0.x** while the API is experimental. There is no tagged Go release yet; the installation command and Go reference will become usable after the first release.
+**Early development.** Foundation packages now provide artifact metadata, route resolution, UUID/temporal codecs, presence-aware JSON and command/query/validation result envelopes. Releases will remain **v0.x** while the API is experimental. There is no tagged Go release yet; the installation command and Go reference will become usable after the first release.
 
-Usage examples will follow as APIs are implemented. No host adapters, HTTP contract conformance, or parity with other Arc implementations are claimed yet.
+See the [compiling foundation example](https://github.com/Cratis/Arc.Go/blob/main/example_test.go) and [feature-by-feature parity ledger](https://github.com/Cratis/Arc.Go/blob/main/Documentation/parity.md). Pipelines, HTTP hosting and Chronicle integration are not implemented; foundation tests do not establish whole-server conformance.
 
 ## Installation
 

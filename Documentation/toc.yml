@@ -1,4 +1,18 @@
 - name: Overview
   href: index.md
+- name: Go foundation
+  items:
+    - name: Concepts and JSON values
+      href: backend/go/concepts/index.md
+    - name: Command results
+      href: backend/go/commands/results.md
+    - name: Query results
+      href: backend/go/queries/results.md
+    - name: Validation findings
+      href: backend/go/validation/index.md
+    - name: Routes and identities
+      href: backend/go/configuration/routing.md
+- name: Parity
+  href: parity.md
 - name: Releases
   href: releases.md

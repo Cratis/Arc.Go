@@ -1,17 +1,70 @@
-# Arc for Go
+---
+title: Arc for Go
+description: Use Cratis Arc's foundation contracts from idiomatic, dependency-free Go packages.
+---
 
-Arc for Go is the Go framework for [Cratis Arc](https://github.com/Cratis/Arc), currently in early development.
+<!-- Copyright (c) Cratis. All rights reserved. -->
+<!-- Licensed under the MIT license. See LICENSE file in the project root for full license information. -->
 
-The repository contains a root Go module, package documentation, and development tooling. Framework APIs are not implemented yet; usage examples will follow as implementation progresses. Host support, HTTP contract conformance, and parity with other Arc implementations are not established.
+Arc for Go is the Go port of Cratis Arc's HTTP CQRS framework. Without these
+foundation packages, each application must recreate Arc's routes, scalar codecs
+and result envelopes; with them, you share those contracts explicitly.
 
-## Getting started
+**Start with the foundation example below.** Go 1.26 or later is required. This
+is early development: command/query pipelines, HTTP hosting and Chronicle
+integration are not implemented. Constructing metadata or a result does not
+execute a command or register a route.
 
-Go 1.26 or later is required. After the first tagged release:
+## Inspect a command route and result
 
-```sh
-go get github.com/cratis/arc.go@latest
+This is the body of the [compiled Example](../example_test.go). It uses packages
+`metadata`, `concepts` and `commands` under `github.com/cratis/arc.go`, plus `fmt`.
+
+```go
+command := metadata.Command{Type: metadata.TypeName{
+    Namespace: "Tasks.Registration", Name: "RegisterTask",
+}}
+catalog := metadata.Catalog{
+    Version: metadata.Version, Commands: []metadata.Command{command},
+}
+routes, err := metadata.Resolve(catalog, metadata.DefaultOptions())
+if err != nil {
+    fmt.Println(err)
+    return
+}
+id, err := concepts.ParseUUID("00112233-4455-4677-8899-aabbccddeeff")
+if err != nil {
+    fmt.Println(err)
+    return
+}
+result := commands.WithResponse(id, struct {
+    ID string `json:"id"`
+}{ID: "a1"})
+response, present := result.Response()
+fmt.Println(routes[0].Method, routes[0].Path)
+fmt.Println(result.StatusCode(), response.ID, present)
 ```
 
-The planned release series is v0.x; experimental APIs may change between minor releases. See the [README](../README.md), [contribution guide](../CONTRIBUTING.md), and [release policy](releases.md).
+Output:
 
-The [Go reference](https://pkg.go.dev/github.com/cratis/arc.go) will become available after publication. Inclusion on the central Cratis documentation site requires separate site integration.
+```text
+POST /api/tasks/registration/register-task
+200 a1 true
+```
+
+## Choose a contract
+
+- [Concepts and JSON values](backend/go/concepts/index.md): UUIDs, dates, ticks and missing/null input.
+- [Command results](backend/go/commands/results.md): success, rejection and response presence.
+- [Query results](backend/go/queries/results.md): readiness, paging and change-set values.
+- [Validation findings](backend/go/validation/index.md): severities and machine-readable reasons.
+- [Routes and stable identities](backend/go/configuration/routing.md): explicit metadata and collision diagnostics.
+- [Parity ledger](parity.md): pinned sources, executable evidence and deliberate differences.
+
+## Publication
+
+After the first tagged release, use `go get github.com/cratis/arc.go@latest`.
+The planned release series is v0.x; experimental APIs may change between minor
+releases. See the [contribution guide](../CONTRIBUTING.md) and
+[release policy](releases.md). No host or full-product parity claim follows from
+foundation fixture tests. Central documentation-site integration remains separate.

@@ -20,8 +20,9 @@ type PagingInfo struct {
 }
 
 // TotalPages follows C#'s double-precision ceiling, including signed values.
-// Overflow follows unchecked .NET int32 conversion (MinInt32); request validation
-// belongs to the pipeline. A zero size always returns zero.
+// Out-of-range totals return MinInt32 deterministically; parity with a particular
+// .NET runtime's unchecked overflow conversion is not established. Request
+// validation belongs to the pipeline. A zero size always returns zero.
 func (p PagingInfo) TotalPages() int32 {
 	if p.Size == 0 {
 		return 0
