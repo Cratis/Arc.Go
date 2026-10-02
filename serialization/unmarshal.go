@@ -5,11 +5,11 @@ package serialization
 
 import (
 	"bytes"
+	"encoding"
 	"encoding/json"
 	"fmt"
 	"reflect"
 	"strconv"
-	"strings"
 )
 
 // DuplicateMemberError identifies ambiguous supplied names for one declared field.
@@ -26,9 +26,9 @@ func (e *DuplicateMemberError) Error() string {
 
 // Unmarshal binds one complete JSON value into a non-nil pointer. It starts with a
 // fresh value and only replaces the target after success. Struct names are matched
-// case-insensitively, unknown members ignored, and duplicate declared keys rejected.
+// exactly, unknown members ignored, and exact duplicate declared keys rejected.
 // Optional preserves missing/null/zero. Non-nullable scalars reject null. Custom
-// json.Unmarshaler implementations own their binding rules. Untyped numbers become
+// JSON and text unmarshaler implementations own their binding rules. Untyped numbers become
 // json.Number to preserve integer precision. Inputs are not retained.
 func Unmarshal(data []byte, target any) error {
 	v := reflect.ValueOf(target)
@@ -50,12 +50,16 @@ func unmarshal(data []byte, v reflect.Value, depth int) error {
 	if depth > 64 {
 		return fmt.Errorf("JSON nesting exceeds 64 levels")
 	}
-	if v.CanAddr() {
+	if v.CanAddr() && v.Addr().CanInterface() {
 		if optional, ok := v.Addr().Interface().(interface{ bindOptional([]byte, int) error }); ok {
 			return optional.bindOptional(data, depth)
 		}
 		if custom, ok := v.Addr().Interface().(json.Unmarshaler); ok {
 			return custom.UnmarshalJSON(data)
+		}
+		if _, ok := v.Addr().Interface().(encoding.TextUnmarshaler); ok {
+			// encoding/json invokes text codecs for strings, ignores null, and rejects other tokens.
+			return json.Unmarshal(data, v.Addr().Interface())
 		}
 	}
 	if bytes.Equal(data, []byte("null")) {
@@ -123,7 +127,7 @@ func unmarshalStruct(data []byte, v reflect.Value, depth int) error {
 	if token != json.Delim('{') {
 		return fmt.Errorf("expected JSON object")
 	}
-	seen := make(map[int]bool)
+	seen := make(map[string]bool)
 	for decoder.More() {
 		token, err = decoder.Token()
 		if err != nil {
@@ -138,14 +142,18 @@ func unmarshalStruct(data []byte, v reflect.Value, depth int) error {
 			return err
 		}
 		for _, f := range members {
-			if !strings.EqualFold(name, f.name) {
+			if name != f.name {
 				continue
 			}
-			if seen[f.index] {
+			if seen[f.name] {
 				return &DuplicateMemberError{Member: f.name}
 			}
-			seen[f.index] = true
-			if err = unmarshal(raw, v.Field(f.index), depth+1); err != nil {
+			seen[f.name] = true
+			value, fieldErr := fieldValue(v, f.index, true)
+			if fieldErr != nil {
+				return fieldErr
+			}
+			if err = unmarshal(raw, value, depth+1); err != nil {
 				return fmt.Errorf("bind %s: %w", f.name, err)
 			}
 			break

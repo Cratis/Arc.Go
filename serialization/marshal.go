@@ -4,6 +4,7 @@
 package serialization
 
 import (
+	"encoding"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -11,10 +12,11 @@ import (
 )
 
 // Marshal encodes Arc camelCase structs, retaining zeros and omitting nil object
-// properties. Nil elements in collections remain null. Custom json.Marshaler
-// implementations own their wire format. String-key maps retain null entries.
-// Embedded fields and non-string map keys need a custom codec. Nesting is limited
-// to 64 levels; cycles fail rather than recursing indefinitely. No input is retained.
+// properties. Nil elements in collections remain null. Custom JSON and text
+// marshaler implementations own their wire format. String-key maps retain null
+// entries. Embedded structs promote exported fields using encoding/json precedence.
+// Non-string map keys need a custom codec. Framework nesting is limited to 64
+// levels; cycles fail rather than recursing indefinitely. No input is retained.
 func Marshal(value any) ([]byte, error) { return marshal(reflect.ValueOf(value), 0) }
 
 func marshal(v reflect.Value, depth int) ([]byte, error) {
@@ -32,7 +34,35 @@ func marshal(v reflect.Value, depth int) ([]byte, error) {
 			}
 			return marshal(reflect.ValueOf(value), depth+1)
 		}
+	}
+	// Framework envelopes use the same traversal budget for their nested payloads.
+	encode := func(value any) ([]byte, error) {
+		return marshal(reflect.ValueOf(value), depth+1)
+	}
+	if v.CanInterface() {
+		if custom, ok := v.Interface().(interface {
+			MarshalJSONWith(func(any) ([]byte, error)) ([]byte, error)
+		}); ok {
+			return custom.MarshalJSONWith(encode)
+		}
+	}
+	if v.Kind() != reflect.Pointer && v.CanAddr() && v.Addr().CanInterface() {
+		if custom, ok := v.Addr().Interface().(json.Marshaler); ok {
+			return json.Marshal(custom)
+		}
+	}
+	if v.CanInterface() {
 		if custom, ok := v.Interface().(json.Marshaler); ok {
+			return json.Marshal(custom)
+		}
+	}
+	if v.Kind() != reflect.Pointer && v.CanAddr() && v.Addr().CanInterface() {
+		if custom, ok := v.Addr().Interface().(encoding.TextMarshaler); ok {
+			return json.Marshal(custom)
+		}
+	}
+	if v.CanInterface() {
+		if custom, ok := v.Interface().(encoding.TextMarshaler); ok {
 			return json.Marshal(custom)
 		}
 	}
@@ -78,13 +108,18 @@ func marshalStruct(v reflect.Value, depth int) ([]byte, error) {
 	}
 	object := make(map[string]json.RawMessage, len(members))
 	for _, f := range members {
-		value := v.Field(f.index)
-		if nilValue(value) || f.omitEmpty && emptyValue(value) || f.omitZero && value.IsZero() {
+		value, err := fieldValue(v, f.index, false)
+		if err != nil {
+			return nil, err
+		}
+		if nilValue(value) || f.omitEmpty && emptyValue(value) || f.omitZero && zeroValue(value) {
 			continue
 		}
-		if optional, ok := value.Interface().(interface{ optionalValue() (any, bool, bool) }); ok {
-			if _, present, _ := optional.optionalValue(); !present {
-				continue
+		if value.CanInterface() {
+			if optional, ok := value.Interface().(interface{ optionalValue() (any, bool, bool) }); ok {
+				if _, present, _ := optional.optionalValue(); !present {
+					continue
+				}
 			}
 		}
 		data, err := marshal(value, depth+1)

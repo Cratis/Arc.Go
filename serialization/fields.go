@@ -22,31 +22,81 @@ func CamelCase(name string) string {
 }
 
 type field struct {
-	index     int
+	index     []int
 	name      string
+	tagged    bool
 	omitEmpty bool
 	omitZero  bool
 }
 
 func fields(t reflect.Type) ([]field, error) {
+	var candidates []field
+	if err := collectFields(t, nil, make(map[reflect.Type]bool), &candidates); err != nil {
+		return nil, err
+	}
 	var result []field
+	seen := make(map[string]bool)
+	for _, candidate := range candidates {
+		if seen[candidate.name] {
+			continue
+		}
+		seen[candidate.name] = true
+		best := candidate
+		count := 0
+		for _, other := range candidates {
+			if other.name != best.name {
+				continue
+			}
+			if len(other.index) < len(best.index) || len(other.index) == len(best.index) && other.tagged && !best.tagged {
+				best = other
+				count = 1
+			} else if len(other.index) == len(best.index) && other.tagged == best.tagged {
+				count++
+			}
+		}
+		if count > 1 {
+			if len(best.index) == 1 {
+				return nil, fmt.Errorf("ambiguous JSON members %q and %q", best.name, best.name)
+			}
+			// Equally dominant promoted fields cancel each other, like encoding/json.
+			continue
+		}
+		result = append(result, best)
+	}
+	return result, nil
+}
+
+func collectFields(t reflect.Type, prefix []int, ancestors map[reflect.Type]bool, result *[]field) error {
+	if ancestors[t] {
+		return nil
+	}
+	ancestors[t] = true
+	defer delete(ancestors, t)
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
-		if !f.IsExported() {
+		base := f.Type
+		if base.Kind() == reflect.Pointer {
+			base = base.Elem()
+		}
+		if !f.IsExported() && (!f.Anonymous || base.Kind() != reflect.Struct) {
 			continue
 		}
 		tag := strings.Split(f.Tag.Get("json"), ",")
 		if tag[0] == "-" {
 			continue
 		}
-		if f.Anonymous {
-			return nil, fmt.Errorf("embedded field %s requires a custom JSON codec", f.Name)
+		index := append(append([]int(nil), prefix...), i)
+		if f.Anonymous && tag[0] == "" && base.Kind() == reflect.Struct {
+			if err := collectFields(base, index, ancestors, result); err != nil {
+				return err
+			}
+			continue
 		}
 		name := tag[0]
 		if name == "" {
 			name = CamelCase(f.Name)
 		}
-		entry := field{index: i, name: name}
+		entry := field{index: index, name: name, tagged: tag[0] != ""}
 		for _, option := range tag[1:] {
 			switch option {
 			case "omitempty":
@@ -55,17 +105,31 @@ func fields(t reflect.Type) ([]field, error) {
 				entry.omitZero = true
 			case "":
 			default:
-				return nil, fmt.Errorf("unsupported JSON option %q", option)
+				return fmt.Errorf("unsupported JSON option %q", option)
 			}
 		}
-		for _, other := range result {
-			if strings.EqualFold(other.name, name) {
-				return nil, fmt.Errorf("ambiguous JSON members %q and %q", other.name, name)
-			}
-		}
-		result = append(result, entry)
+		*result = append(*result, entry)
 	}
-	return result, nil
+	return nil
+}
+
+func fieldValue(v reflect.Value, index []int, allocate bool) (reflect.Value, error) {
+	for _, i := range index {
+		if v.Kind() == reflect.Pointer {
+			if v.IsNil() {
+				if !allocate {
+					return reflect.Value{}, nil
+				}
+				if !v.CanSet() {
+					return reflect.Value{}, fmt.Errorf("cannot allocate unexported embedded pointer %s", v.Type())
+				}
+				v.Set(reflect.New(v.Type().Elem()))
+			}
+			v = v.Elem()
+		}
+		v = v.Field(i)
+	}
+	return v, nil
 }
 
 func nilValue(v reflect.Value) bool {
@@ -85,6 +149,32 @@ func emptyValue(v reflect.Value) bool {
 	switch v.Kind() {
 	case reflect.Array, reflect.Map, reflect.Slice, reflect.String:
 		return v.Len() == 0
+	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64, reflect.Interface, reflect.Pointer:
+		return v.IsZero()
+	}
+	return false
+}
+
+func zeroValue(v reflect.Value) bool {
+	if nilValue(v) {
+		return true
+	}
+	zeroer := reflect.TypeFor[interface{ IsZero() bool }]()
+	if v.CanInterface() && v.Type().Implements(zeroer) {
+		return v.Interface().(interface{ IsZero() bool }).IsZero()
+	}
+	if v.Kind() != reflect.Pointer && reflect.PointerTo(v.Type()).Implements(zeroer) {
+		if !v.CanAddr() {
+			// encoding/json boxes unaddressable values for pointer-receiver IsZero.
+			copy := reflect.New(v.Type()).Elem()
+			copy.Set(v)
+			v = copy
+		}
+		if v.Addr().CanInterface() {
+			return v.Addr().Interface().(interface{ IsZero() bool }).IsZero()
+		}
 	}
 	return v.IsZero()
 }

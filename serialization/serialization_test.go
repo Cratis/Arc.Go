@@ -25,7 +25,7 @@ func TestPresenceAwareBinding(t *testing.T) {
 		present, null bool
 		value         string
 	}{
-		{"missing", `{}`, false, false, ""}, {"null", `{"name":null}`, true, true, ""}, {"empty", `{"name":""}`, true, false, ""}, {"value", `{"NAME":"Ada","unknown":17}`, true, false, "Ada"},
+		{"missing", `{}`, false, false, ""}, {"null", `{"name":null}`, true, true, ""}, {"empty", `{"name":""}`, true, false, ""}, {"value", `{"name":"Ada","unknown":17}`, true, false, "Ada"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			value := input{Name: serialization.Some("stale")}
@@ -73,7 +73,7 @@ func TestPresenceAwareBinding(t *testing.T) {
 
 func TestDuplicateDeclaredKeysAndAtomicFailure(t *testing.T) {
 	value := input{Name: serialization.Some("original")}
-	err := serialization.Unmarshal([]byte(`{"name":"first","NAME":"second"}`), &value)
+	err := serialization.Unmarshal([]byte(`{"name":"first","name":"second"}`), &value)
 	var duplicate *serialization.DuplicateMemberError
 	if !errors.As(err, &duplicate) || duplicate.Member != "name" {
 		t.Fatalf("error = %v", err)
@@ -146,7 +146,7 @@ func TestNestedBindingAndCollections(t *testing.T) {
 		Optional *item
 	}
 	var value model
-	data := []byte(`{"items":[{"NAME":"Ada"}],"lookup":{"one":{"name":"Grace"},"absent":null},"flags":[true,false],"optional":{"name":"Linus"}}`)
+	data := []byte(`{"items":[{"name":"Ada"}],"lookup":{"one":{"name":"Grace"},"absent":null},"flags":[true,false],"optional":{"name":"Linus"}}`)
 	if err := serialization.Unmarshal(data, &value); err != nil {
 		t.Fatal(err)
 	}
@@ -164,20 +164,22 @@ func TestNestedBindingAndCollections(t *testing.T) {
 	if !reflect.DeepEqual(value, roundTrip) {
 		t.Fatal("nested round trip changed value")
 	}
-	if err = serialization.Unmarshal([]byte(`{"items":[{"name":"a","Name":"b"}]}`), &value); err == nil {
+	if err = serialization.Unmarshal([]byte(`{"items":[{"name":"a","name":"b"}]}`), &value); err == nil {
 		t.Fatal("nested duplicate accepted")
 	}
 }
 
 func TestUnsupportedShapesAndCyclesFail(t *testing.T) {
-	type Embedded struct{ Name string }
 	type cycle struct{ Next *cycle }
 	loop := &cycle{}
 	loop.Next = loop
-	for _, value := range []any{map[int]int{1: 2}, struct{ Embedded }{}, struct {
-		First  string `json:"same"`
-		Second string `json:"SAME"`
-	}{}, struct {
+	// Construct the deliberately invalid tag collision dynamically so go vet can
+	// still enforce unique JSON tags on the repository's ordinary DTO fixtures.
+	ambiguous := reflect.New(reflect.StructOf([]reflect.StructField{
+		{Name: "First", Type: reflect.TypeFor[string](), Tag: `json:"same"`},
+		{Name: "Second", Type: reflect.TypeFor[string](), Tag: `json:"same"`},
+	})).Interface()
+	for _, value := range []any{map[int]int{1: 2}, ambiguous, struct {
 		Name string `json:",string"`
 	}{}, loop, make(chan int)} {
 		if _, err := serialization.Marshal(value); err == nil {
