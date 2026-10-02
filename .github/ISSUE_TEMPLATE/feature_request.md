@@ -2,7 +2,7 @@
 name: Feature request
 about: Suggest an idea or improvement for Arc for Go
 title: ''
-labels: 'kind/feature'
+labels: 'enhancement'
 assignees: ''
 ---
 
