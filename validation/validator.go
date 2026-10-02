@@ -39,7 +39,10 @@ func Invoke[T any](ctx context.Context, validator Validator[T], value T) (result
 		}
 		if canceled := ctx.Err(); canceled != nil {
 			results = nil
-			err = canceled
+			// Preserve a callback's original cancellation wrapper and identity.
+			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+				err = canceled
+			}
 		}
 	}()
 	results, err = validator.Validate(ctx, value)
@@ -49,7 +52,7 @@ func Invoke[T any](ctx context.Context, validator Validator[T], value T) (result
 	if err != nil {
 		var failure Failure
 		if errors.As(err, &failure) {
-			if !validResults(failure.ValidationResults()) {
+			if !validResults(results) || !validResults(failure.ValidationResults()) {
 				return nil, &InvocationError{Cause: ErrInvalidSeverity}
 			}
 			return cloneResults(results), err

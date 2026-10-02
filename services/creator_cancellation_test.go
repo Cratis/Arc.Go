@@ -84,7 +84,7 @@ func TestFailedValueCleanupHasIndependentBoundedContext(t *testing.T) {
 					t.Error("cleanup inherited creator cancellation")
 				}
 				deadline, ok := cleanupCtx.Deadline()
-				if !ok || deadline.Sub(time.Now()) != 30*time.Second {
+				if !ok || time.Until(deadline) != 30*time.Second {
 					t.Error("missing 30s cleanup budget")
 				}
 				return cleanupFailure

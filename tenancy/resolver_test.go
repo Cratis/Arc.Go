@@ -142,9 +142,10 @@ func FuzzResolveHost(f *testing.F) {
 				t.Fatal("invalid selected label")
 			}
 			for _, c := range label {
-				if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
-					t.Fatal("invalid selected label")
+				if c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' {
+					continue
 				}
+				t.Fatal("invalid selected label")
 			}
 		}
 	})
