@@ -4,6 +4,55 @@
   items:
     - name: Concepts and JSON values
       href: backend/go/concepts/index.md
+    - name: Commands
+      href: backend/go/commands/index.md
+      items:
+        - name: Model-bound commands
+          href: backend/go/commands/model-bound/index.md
+        - name: Command authorization
+          href: backend/go/commands/model-bound/authorization.md
+        - name: Execute a command
+          href: backend/go/commands/command-pipeline.md
+        - name: Command context and keys
+          href: backend/go/commands/command-context.md
+        - name: Command filters
+          href: backend/go/commands/command-filters.md
+        - name: Command execution scopes
+          href: backend/go/commands/command-execution-scopes.md
+        - name: Validate commands
+          href: backend/go/commands/command-validation.md
+        - name: Validation severity filtering
+          href: backend/go/commands/validation-severity-filtering.md
+        - name: Response value handlers
+          href: backend/go/commands/response-value-handlers.md
+        - name: Command return shapes
+          href: backend/go/commands/response-examples.md
+    - name: Queries
+      href: backend/go/queries/index.md
+      items:
+        - name: Query pipeline
+          href: backend/go/queries/query-pipeline.md
+        - name: Model-bound queries
+          href: backend/go/queries/model-bound/index.md
+          items:
+            - name: Namespace methods and functions
+              href: backend/go/queries/model-bound/static-methods.md
+            - name: Dependencies
+              href: backend/go/queries/model-bound/dependency-injection.md
+            - name: Arguments
+              href: backend/go/queries/model-bound/query-arguments.md
+            - name: Return types
+              href: backend/go/queries/model-bound/return-types.md
+            - name: Paging and sorting
+              href: backend/go/queries/model-bound/paging.md
+            - name: Authorization
+              href: backend/go/queries/model-bound/authorization.md
+        - name: Read-model interception
+          href: backend/go/queries/read-model-interception.md
+        - name: GET and HTTP QUERY readers
+          href: backend/go/queries/using-the-http-query-method.md
+        - name: Query validation
+          href: backend/go/queries/validation.md
     - name: Command results
       href: backend/go/commands/results.md
     - name: Query results
