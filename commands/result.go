@@ -1,7 +1,11 @@
 // Copyright (c) Cratis. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-// Package commands defines Arc command outcomes. Execution pipelines are not yet provided.
+// Package commands executes explicitly registered, model-bound Arc commands.
+// Register composes typed adapters without reflective invocation or a required
+// container. Build freezes metadata and extensions; Execute owns resources and
+// completion, while Validate runs authorization and input validation only.
+// Failed results never publish a response. Cleanup is not proof of rollback.
 package commands
 
 import (
