@@ -1,7 +1,8 @@
 // Copyright (c) Cratis. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-// Package validation defines client-visible Arc validation findings, not validators.
+// Package validation defines Arc findings, typed validator invocation and command
+// severity policy. Automatic validator discovery and graph traversal are not provided.
 package validation
 
 import (
