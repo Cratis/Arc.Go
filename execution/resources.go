@@ -35,13 +35,34 @@ type ResourcesJoiner interface {
 // seam; supplying a container is optional.
 type OpenResources = func(context.Context) (Resources, error)
 
+// PendingScopeError retains an owning scope when failed OpenScope cleanup has
+// not joined. OpenScope still returns a nil scope with its error; callers must
+// inspect this error with errors.As and finish Scope().Close with a fresh budget.
+// The scope admits no new work. Closing it resumes only an explicit resource join,
+// never repeats disposal. A caller that transfers this error also transfers cleanup
+// ownership; ignoring it does not prove that resources have stopped.
+type PendingScopeError struct {
+	scope *Scope
+	err   error
+}
+
+// Error returns the original opening and cleanup diagnostics.
+func (e *PendingScopeError) Error() string { return e.err.Error() }
+
+// Unwrap preserves opening, context and ErrScopeJoinPending error identities.
+func (e *PendingScopeError) Unwrap() error { return e.err }
+
+// Scope returns the retained owning scope for cleanup, never for execution.
+func (e *PendingScopeError) Scope() *Scope { return e.scope }
+
 // ErrResourceType identifies an absent or incompatible resource holder.
 var ErrResourceType = errors.New("incompatible operation resources")
 
 // OpenScope captures security before opening resources and rechecks it afterward.
 // Nil openers and nil resources yield valid empty scopes; typed nils are invalid.
 // Failed opening disposes acquired resources with a detached 30-second cleanup
-// budget and joins errors. Panics at application boundaries become PanicError.
+// budget and joins errors. If cleanup is incomplete, PendingScopeError retains
+// the scope for the caller to finish joining. Panics become PanicError.
 func OpenScope(ctx context.Context, open OpenResources) (*Scope, error) {
 	if ctx == nil {
 		return nil, ErrInvalidArgument
@@ -66,7 +87,12 @@ func OpenScope(ctx context.Context, open OpenResources) (*Scope, error) {
 	if err != nil {
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
-		return nil, errors.Join(err, scope.Close(cleanup))
+		closeErr := scope.Close(cleanup)
+		err = errors.Join(err, closeErr)
+		if errors.Is(closeErr, ErrScopeJoinPending) {
+			return nil, &PendingScopeError{scope: scope, err: err}
+		}
+		return nil, err
 	}
 	return scope, nil
 }

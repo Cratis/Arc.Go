@@ -280,6 +280,11 @@ func (p *queryPipeline) openObservation(ctx context.Context, name FullyQualified
 		var err error
 		o.scope, err = execution.OpenScope(work, p.options.OpenResources)
 		if err != nil {
+			var pending *execution.PendingScopeError
+			if errors.As(err, &pending) {
+				// Failed resource opening still transfers its cleanup ownership.
+				o.scope = pending.Scope()
+			}
 			return err
 		}
 		return o.scope.Use(work, func(ctx context.Context, view *execution.Scope) error {

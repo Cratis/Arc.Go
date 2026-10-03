@@ -49,6 +49,13 @@ retry only Join. Non-context Join outcomes certify completion, even on failure.
 Plain holders without this capability have final, cached Close errors, including
 context errors; they must not return while leaving unowned background cleanup.
 `execution.ErrScopeJoinPending` distinguishes unfinished work from final failures.
+If resource opening itself fails and its cleanup cannot join, OpenScope returns
+nil plus an inspectable `*execution.PendingScopeError`. `Scope()` retains the
+closing scope; finish its Close with a fresh budget. Observable admission reclaims
+that scope automatically for later Shutdown. Other direct callers must handle the
+local error and its cleanup ownership explicitly; unary hosts do not automatically
+retain resource joins. Do not opt a holder into asynchronous cleanup there unless
+your host owns the pending error and its join.
 
 For embedded hosting, stop your external server as well. Arc owns its observable
 connections, not arbitrary raw hijacks; track those in your own lifecycle participant.
