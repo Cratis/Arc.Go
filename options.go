@@ -47,7 +47,7 @@ type Options struct {
 
 // ObservableOptions bounds owned query observations. Zero fields select defaults.
 // Limits include opening and retired-but-unjoined operations, not just active streams.
-// Transport-specific connection/writer limits are added with their transports.
+// Transport-specific connection/queue limits are added with their transports.
 type ObservableOptions struct {
 	// MaxObservations is the application-wide operation ceiling; default 1024.
 	MaxObservations int
@@ -56,6 +56,9 @@ type ObservableOptions struct {
 	// CloseGrace bounds initial stream cleanup; default five seconds. Timeouts
 	// remain owned and must be joined by a later application Shutdown.
 	CloseGrace time.Duration
+	// WriteTimeout bounds each streaming write and flush; default ten seconds.
+	// The absolute unary HTTP write deadline is cleared while awaiting emissions.
+	WriteTimeout time.Duration
 }
 
 // HTTPOptions controls bounded unary HTTP publication and owned-server timeouts.
@@ -122,7 +125,7 @@ func normalizeOptions(o Options) (Options, error) {
 		o.CleanupTimeout = 30 * time.Second
 	}
 	observable := &o.Observable
-	if observable.MaxObservations < 0 || observable.MaximumWait < 0 || observable.CloseGrace < 0 {
+	if observable.MaxObservations < 0 || observable.MaximumWait < 0 || observable.CloseGrace < 0 || observable.WriteTimeout < 0 {
 		return Options{}, ErrInvalidOptions
 	}
 	if observable.MaxObservations == 0 {
@@ -133,6 +136,9 @@ func normalizeOptions(o Options) (Options, error) {
 	}
 	if observable.CloseGrace == 0 {
 		observable.CloseGrace = 5 * time.Second
+	}
+	if observable.WriteTimeout == 0 {
+		observable.WriteTimeout = 10 * time.Second
 	}
 	h := &o.HTTP
 	if h.MaxBodyBytes < 0 || h.MaxQueryBytes < 0 || h.MaxResponseBytes < 0 || h.MaxHeaderBytes < 0 || h.ReadHeaderTimeout < 0 || h.ReadTimeout < 0 || h.WriteTimeout < 0 || h.IdleTimeout < 0 || h.ShutdownTimeout < 0 {

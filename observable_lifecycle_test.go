@@ -218,7 +218,9 @@ func TestObservableHTTPPendingWaitAndHEADDoNotActivateSource(t *testing.T) {
 			before := calls
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
-			r.Header.Set("Accept", "text/event-stream")
+			if tc.method == "HEAD" {
+				r.Header.Set("Accept", "text/event-stream")
+			}
 			a.ServeHTTP(w, r)
 			if w.Code != tc.status || !strings.Contains(w.Body.String(), tc.text) {
 				t.Fatalf("%s %s: %d %s", tc.method, tc.path, w.Code, w.Body.String())
@@ -260,7 +262,7 @@ func TestObservableHTTPEnumerableMessageAndHEAD(t *testing.T) {
 }
 
 func TestObservableOptionsRejectNegativeLimits(t *testing.T) {
-	for _, options := range []arc.ObservableOptions{{MaxObservations: -1}, {MaximumWait: -time.Second}, {CloseGrace: -time.Second}} {
+	for _, options := range []arc.ObservableOptions{{MaxObservations: -1}, {MaximumWait: -time.Second}, {CloseGrace: -time.Second}, {WriteTimeout: -time.Second}} {
 		if _, err := arc.NewBuilder(arc.Options{Observable: options}); !errors.Is(err, arc.ErrInvalidOptions) {
 			t.Fatal(err)
 		}

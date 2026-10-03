@@ -7,6 +7,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/cratis/arc.go/correlation"
 	"github.com/cratis/arc.go/internal/httptransport"
@@ -86,6 +87,11 @@ func (a *Application) queryEndpoint(w http.ResponseWriter, r *http.Request, e me
 		return
 	}
 	ctx := httpPipelineContext(r.Context())
+	registration, known := a.queries.Lookup(queries.FullyQualifiedQueryName(e.Identity))
+	if r.Method != "HEAD" && known && registration.Descriptor().Observable && acceptsSSE(r) {
+		a.directSSE(w, r.WithContext(ctx), queries.FullyQualifiedQueryName(e.Identity), request)
+		return
+	}
 	if r.Method == "HEAD" {
 		ctx = boundary.WithObservationProbe(ctx)
 	}
@@ -101,4 +107,13 @@ func (a *Application) queryEndpoint(w http.ResponseWriter, r *http.Request, e me
 		status = http.StatusRequestTimeout
 	}
 	a.publish(w, r, status, result)
+}
+
+func acceptsSSE(r *http.Request) bool {
+	for _, value := range headerValues(r.Header, "Accept") {
+		if strings.Contains(strings.ToLower(value), "text/event-stream") {
+			return true
+		}
+	}
+	return false
 }

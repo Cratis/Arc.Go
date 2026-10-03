@@ -34,13 +34,23 @@ func (w *responseWriter) Write(body []byte) (int, error) {
 	return w.ResponseWriter.Write(body)
 }
 
+type flushCapability interface {
+	http.Flusher
+	FlushError() error
+}
+
 type flushWriter struct{ w *responseWriter }
 
 func (w flushWriter) Flush() {
+	// The legacy Flusher interface cannot return an error. ResponseController
+	// uses FlushError instead, preserving streaming delivery acknowledgements.
+	_ = w.FlushError()
+}
+func (w flushWriter) FlushError() error {
 	if w.w.status == 0 {
 		w.w.WriteHeader(200)
 	}
-	w.w.ResponseWriter.(http.Flusher).Flush()
+	return http.NewResponseController(w.w.ResponseWriter).Flush()
 }
 
 type hijackWriter struct{ w *responseWriter }
@@ -69,20 +79,20 @@ func observingWriter(base *responseWriter) http.ResponseWriter {
 	case flush && hijack && push:
 		return struct {
 			*responseWriter
-			http.Flusher
+			flushCapability
 			http.Hijacker
 			http.Pusher
 		}{base, f, h, p}
 	case flush && hijack:
 		return struct {
 			*responseWriter
-			http.Flusher
+			flushCapability
 			http.Hijacker
 		}{base, f, h}
 	case flush && push:
 		return struct {
 			*responseWriter
-			http.Flusher
+			flushCapability
 			http.Pusher
 		}{base, f, p}
 	case hijack && push:
@@ -94,7 +104,7 @@ func observingWriter(base *responseWriter) http.ResponseWriter {
 	case flush:
 		return struct {
 			*responseWriter
-			http.Flusher
+			flushCapability
 		}{base, f}
 	case hijack:
 		return struct {

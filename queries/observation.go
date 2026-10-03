@@ -72,7 +72,13 @@ const (
 
 // ObservationOptions configures synchronous delivery. Currently only Full is
 // supported; other modes fail explicitly until the hub baseline engine is wired.
-type ObservationOptions struct{ TransferMode TransferMode }
+type ObservationOptions struct {
+	TransferMode TransferMode
+	// SkipEnumerableNull matches direct C# enumerable transports: null items
+	// are skipped without acknowledging delivery. Subject nulls remain emissions.
+	// Hubs leave this false to preserve nullable enumerable items.
+	SkipEnumerableNull bool
+}
 
 type observationSource struct {
 	open    func(context.Context) (observationStream, error)
@@ -516,6 +522,9 @@ func (o *Observation) Run(ctx context.Context, options ObservationOptions, deliv
 			}
 			result := o.pipeline.observableResult(work, o.metadata.name, o.admission, err)
 			return errors.Join(err, boundary.Call(work, func(context.Context) error { return deliver(result) }))
+		}
+		if options.SkipEnumerableNull && o.query.enumerable && nilValue(value) {
+			continue
 		}
 		result, verdict, err := o.candidate(work, value)
 		if work.Err() != nil {
