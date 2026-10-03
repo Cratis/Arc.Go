@@ -175,12 +175,10 @@ func (p *pipeline) run(ctx context.Context, borrowed *execution.Scope, command a
 	if clock == nil {
 		clock = time.Now
 	}
-	var received time.Time
-	err = boundary.Call(ctx, func(context.Context) error { received = clock(); return nil })
+	ctx, received, err := boundary.Receipt(ctx, clock)
 	if err != nil {
 		return FromError[any](id, err), err
 	}
-	ctx = execution.WithReceivedAt(ctx, received)
 	prepared, err := p.options.Authorization.Prepare(ctx, authorization.Target{Kind: authorization.Command, Identity: registration.descriptor.Type.Identity()})
 	if err != nil {
 		return FromError[any](id, err), err

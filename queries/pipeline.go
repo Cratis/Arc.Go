@@ -263,11 +263,10 @@ func (p *queryPipeline) perform(ctx context.Context, scope *execution.Scope, nam
 		}
 		ctx = correlation.WithID(ctx, id)
 	}
-	var receipt time.Time
-	if err := boundary.Call(ctx, func(context.Context) error { receipt = p.options.Clock(); return nil }); err != nil {
-		return finish(err)
+	ctx, receipt, receiptErr := boundary.Receipt(ctx, p.options.Clock)
+	if receiptErr != nil {
+		return finish(receiptErr)
 	}
-	ctx = execution.WithReceivedAt(ctx, receipt)
 	d := result.Details()
 	d.CorrelationID = id
 	result = NewResult(d, serialization.Optional[any]{})
