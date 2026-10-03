@@ -51,7 +51,7 @@ func tsName(name string) bool {
 		return false
 	}
 	switch name {
-	case "String", "Number", "Boolean", "Object", "Date", "Record", "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do", "else", "enum", "export", "extends", "false", "finally", "for", "function", "if", "import", "in", "instanceof", "new", "null", "return", "super", "switch", "this", "throw", "true", "try", "typeof", "var", "void", "while", "with", "yield", "let", "static", "implements", "interface", "package", "private", "protected", "public", "await", "eval", "arguments", "number", "string", "boolean", "any", "unknown", "never", "object", "undefined":
+	case "Symbol", "String", "Number", "Boolean", "Object", "Date", "Record", "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do", "else", "enum", "export", "extends", "false", "finally", "for", "function", "if", "import", "in", "instanceof", "new", "null", "return", "super", "switch", "this", "throw", "true", "try", "typeof", "var", "void", "while", "with", "yield", "let", "static", "implements", "interface", "package", "private", "protected", "public", "await", "eval", "arguments", "number", "string", "boolean", "any", "unknown", "never", "object", "undefined":
 		return false
 	}
 	return true
@@ -259,7 +259,7 @@ func (i *tsImports) resolve() []string {
 		}
 		return keys[a].name < keys[b].name
 	})
-	used := map[string]bool{i.own: true, "String": true, "Number": true, "Boolean": true, "Object": true, "Date": true, "Record": true}
+	used := map[string]bool{i.own: true, "Symbol": true, "String": true, "Number": true, "Boolean": true, "Object": true, "Date": true, "Record": true}
 	var lines []string
 	for _, key := range keys {
 		alias := key.name
