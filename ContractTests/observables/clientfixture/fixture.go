@@ -16,37 +16,51 @@ import (
 	"time"
 
 	arc "github.com/cratis/arc.go"
+	"github.com/cratis/arc.go/ContractTests/observables/generatedconsumerfixture"
 	"github.com/cratis/arc.go/execution"
 	"github.com/cratis/arc.go/metadata"
 	"github.com/cratis/arc.go/observable"
 	"github.com/cratis/arc.go/queries"
 )
 
-// Item has the stock client's conventional collection identity.
-type Item struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
-}
+// Item is shared by manual and generated registration modes.
+type Item = generatedconsumerfixture.Item
 
-type arguments struct {
-	Group string `json:"group" query:"required"`
+// Arguments is shared by both registration modes.
+type Arguments = generatedconsumerfixture.Arguments
+
+type arguments = Arguments
+
+// Signals counts cumulative lifecycle events, not merely the current active set.
+type Signals struct {
+	Resolve int `json:"resolve"`
+	Factory int `json:"factory"`
+	Open    int `json:"open"`
+	Close   int `json:"close"`
+	Dispose int `json:"dispose"`
 }
 
 // Fixture owns immutable subject values and tracks actual stream cleanup.
 // Control handlers never construct successful query results or transport frames.
 type Fixture struct {
-	App     *arc.Application
-	Names   map[string]string
-	states  map[string]*observable.State[[]Item]
-	deny    atomic.Bool
-	mu      sync.Mutex
-	active  map[string]int
-	changed chan struct{}
+	App          *arc.Application
+	Names        map[string]string
+	states       map[string]*observable.State[[]Item]
+	deny         atomic.Bool
+	mu           sync.Mutex
+	active       map[string]int
+	changed      chan struct{}
+	signals      Signals
+	shutdown     chan struct{}
+	shutdownOnce sync.Once
 }
 
 // New builds without starting a listener. The caller owns App.Serve and its join.
-func New() (*Fixture, error) {
-	f := &Fixture{Names: map[string]string{}, states: map[string]*observable.State[[]Item]{}, active: map[string]int{}, changed: make(chan struct{})}
+func New() (*Fixture, error) { return NewMode(false) }
+
+// NewMode preserves manual registration and optionally uses production-generated adapters.
+func NewMode(generated bool) (*Fixture, error) {
+	f := &Fixture{Names: map[string]string{}, states: map[string]*observable.State[[]Item]{}, active: map[string]int{}, changed: make(chan struct{}), shutdown: make(chan struct{})}
 	for _, group := range []string{"alpha", "beta", "pending", "nil", "guarded"} {
 		var state *observable.State[[]Item]
 		var err error
@@ -56,7 +70,15 @@ func New() (*Fixture, error) {
 		case "nil":
 			state, err = observable.NewState[[]Item](nil, observable.SubjectOptions[[]Item]{Buffer: 16})
 		default:
-			state, err = observable.NewState([]Item{{ID: "a", Title: group + "-old"}, {ID: "b", Title: group + "-gone"}}, observable.SubjectOptions[[]Item]{Buffer: 16})
+			items := []Item{{ID: "a", Title: group + "-old"}, {ID: "b", Title: group + "-gone"}}
+			if generated {
+				for i := range items {
+					items[i].CreatedAt = time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC)
+					items[i].Rank = 7 - i
+					items[i].Enabled = true
+				}
+			}
+			state, err = observable.NewState(items, observable.SubjectOptions[[]Item]{Buffer: 16})
 		}
 		if err != nil {
 			return nil, err
@@ -64,17 +86,20 @@ func New() (*Fixture, error) {
 		f.states[group] = state
 	}
 	// Explicit host-owned anonymous fixture session, not browser cookie evidence.
-	builder, err := arc.NewBuilder(arc.Options{HTTP: arc.HTTPOptions{ShutdownTimeout: 5 * time.Second}, Observable: arc.ObservableOptions{AnonymousOwner: func(context.Context, *http.Request) (string, error) { return "loopback-client-fixture", nil }}})
+	builder, err := arc.NewBuilder(arc.Options{OpenResources: func(context.Context) (execution.Resources, error) { return &feedResources{fixture: f}, nil }, HTTP: arc.HTTPOptions{ShutdownTimeout: 5 * time.Second}, Observable: arc.ObservableOptions{AnonymousOwner: func(context.Context, *http.Request) (string, error) { return "loopback-client-fixture", nil }}})
 	if err != nil {
 		return nil, err
 	}
-	err = queries.RegisterObservable[Item](builder, "All", queries.Function(func(_ context.Context, args arguments) (observable.Source[[]Item], error) {
-		state, ok := f.states[args.Group]
-		if !ok {
-			return nil, fmt.Errorf("unknown fixture group")
-		}
-		return &trackedSource{state: state, fixture: f, group: args.Group}, nil
-	}), queries.WithPath[arguments]("/items"), queries.WithAuthorization[arguments](metadata.Authorization{AllowAnonymous: true}))
+	if generated {
+		err = generatedconsumerfixture.RegisterArtifacts(builder, generatedconsumerfixture.ArcBindings{ResolveItemFeed: func(_ context.Context, scope *execution.Scope) (generatedconsumerfixture.ItemFeed, error) {
+			f.signal(func(s *Signals) { s.Resolve++ })
+			return scope.Resources().(*feedResources), nil
+		}})
+	} else {
+		err = queries.RegisterObservable[Item](builder, "All", queries.Function(func(ctx context.Context, args arguments) (observable.Source[[]Item], error) {
+			return (&feedResources{fixture: f}).ForGroup(ctx, args.Group)
+		}), queries.WithPath[arguments]("/items"), queries.WithAuthorization[arguments](metadata.Authorization{AllowAnonymous: true}))
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -93,6 +118,14 @@ func New() (*Fixture, error) {
 		"POST /fixture/publish": f.publish,
 		"POST /fixture/deny":    func(w http.ResponseWriter, _ *http.Request) { f.deny.Store(true); w.WriteHeader(http.StatusNoContent) },
 		"GET /fixture/wait":     f.wait,
+		"POST /fixture/shutdown": func(w http.ResponseWriter, _ *http.Request) {
+			f.shutdownOnce.Do(func() { close(f.shutdown) })
+			w.WriteHeader(http.StatusNoContent)
+		},
+		"GET /fixture/signals": func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(f.Signals())
+		},
 	} {
 		if err := builder.Handle(pattern, handler); err != nil {
 			return nil, err
@@ -140,14 +173,31 @@ func (f *Fixture) delta(group string, n int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.active[group] += n
+	if n > 0 {
+		f.signals.Open++
+	} else {
+		f.signals.Close++
+	}
 	close(f.changed)
 	f.changed = make(chan struct{})
 }
 func (f *Fixture) wait(w http.ResponseWriter, r *http.Request) {
-	target, err := strconv.Atoi(r.URL.Query().Get("active"))
+	value := r.URL.Query().Get("active")
+	if r.URL.Query().Get("event") != "" {
+		value = r.URL.Query().Get("count")
+	}
+	target, err := strconv.Atoi(value)
 	if err != nil || target < 0 {
 		http.Error(w, "invalid active count", http.StatusBadRequest)
 		return
+	}
+	event := r.URL.Query().Get("event")
+	if event != "" {
+		target, err = strconv.Atoi(r.URL.Query().Get("count"))
+		if err != nil || target < 0 {
+			http.Error(w, "invalid event count", 400)
+			return
+		}
 	}
 	group := r.URL.Query().Get("group")
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
@@ -158,6 +208,22 @@ func (f *Fixture) wait(w http.ResponseWriter, r *http.Request) {
 		for key, value := range f.active {
 			if group == "" || strings.EqualFold(key, group) {
 				count += value
+			}
+		}
+		if event != "" {
+			switch event {
+			case "factory":
+				count = f.signals.Factory
+			case "open":
+				count = f.signals.Open
+			case "close":
+				count = f.signals.Close
+			case "dispose":
+				count = f.signals.Dispose
+			default:
+				f.mu.Unlock()
+				http.Error(w, "unknown event", 400)
+				return
 			}
 		}
 		changed := f.changed
@@ -176,9 +242,10 @@ func (f *Fixture) wait(w http.ResponseWriter, r *http.Request) {
 }
 
 type trackedSource struct {
-	state   *observable.State[[]Item]
-	fixture *Fixture
-	group   string
+	state     *observable.State[[]Item]
+	fixture   *Fixture
+	group     string
+	resources *feedResources
 }
 
 func (s *trackedSource) Current(ctx context.Context) ([]Item, bool, error) {
@@ -188,6 +255,9 @@ func (s *trackedSource) Open(ctx context.Context) (observable.Stream[[]Item], er
 	stream, err := s.state.Open(ctx)
 	if err != nil {
 		return stream, err
+	}
+	if s.resources != nil {
+		s.resources.opened.Store(true)
 	}
 	s.fixture.delta(s.group, 1)
 	return &trackedStream{Stream: stream, source: s}, nil
@@ -202,7 +272,12 @@ type trackedStream struct {
 func (s *trackedStream) Close(ctx context.Context) error {
 	err := s.Stream.Close(ctx)
 	if err == nil {
-		s.once.Do(func() { s.source.fixture.delta(s.source.group, -1) })
+		s.once.Do(func() {
+			if s.source.resources != nil {
+				s.source.resources.closed.Store(true)
+			}
+			s.source.fixture.delta(s.source.group, -1)
+		})
 	}
 	return err
 }
