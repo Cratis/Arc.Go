@@ -87,9 +87,11 @@
           href: backend/go/queries/observable-emission-guards.md
         - name: Collection change streams
           href: backend/go/queries/change-stream.md
-    - name: Generate model-bound adapters
+    - name: Generate adapters and snapshot proxies
       href: backend/go/generation/index.md
       items:
+        - name: TypeScript snapshot proxies
+          href: backend/go/generation/typescript.md
         - name: Directives and signatures
           href: backend/go/generation/reference.md
     - name: Chronicle integration

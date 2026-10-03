@@ -33,7 +33,7 @@ The frontend authority is `Source/DotNET/Tools/ProxyGenerator` and
 `Source/JavaScript` at `7c1e78075b737df64f69fddfaae83374f75e3612`
 (Arc npm/NuGet `22.48.2`, Fundamentals npm `7.22.0`).
 
-- **Approved deviation**: sorting helpers will use declared sortable result
+- **Approved deviation**: sorting helpers use declared sortable result
   (read-model) wire fields, not query arguments, per
   [Arc issue 2998](https://github.com/Cratis/Arc/issues/2998). Captured C# evidence
   must retain its argument-based helpers unchanged.
@@ -44,8 +44,11 @@ The frontend authority is `Source/DotNET/Tools/ProxyGenerator` and
   application validators. UTF-16 length and JavaScript whitespace are used;
   unsupported rules, nonportable regex, unsafe numbers and dynamic severity fail
   explicitly. `validation/portable_test.go` characterizes the bounded foundation.
-  Register the compiled validator explicitly; a `rules` tag alone does not activate
-  server validation. Client projection and paired semantic coverage remain Partial.
+  Register the compiled validator explicitly for manual registrations; a `rules`
+  tag alone does not activate runtime validation. TypeScript-enabled generated
+  adapters register `NewPortable` for the supported command rules. The independent
+  Go/locked-JavaScript rule corpus and production server rejection provide bounded
+  paired evidence; query validation and other rule forms remain unsupported.
 - **Declared derivatives**: `serialization.RegisterDerivedTypes` supplies a
   concurrency-safe process-wide discriminator contract for named interface bases
   and assignable concrete structs/pointers. Exact repetitions are idempotent;
@@ -64,10 +67,10 @@ The frontend authority is `Source/DotNET/Tools/ProxyGenerator` and
   defaults, roles, HTTP preference and output selection from compiler attachments.
   `tools/internal/artifacts/graph_test.go` covers rich shared scalars, constants,
   argument presence, pages, result-field sorting declarations and conservative
-  rejection boundaries. TypeScript emission/publication remains not implemented;
-  configuration requesting it currently fails explicitly. Rich dictionaries and
-  non-string keys require an explicit executable codec/import mapping rather than
-  an unhydrated or `any` surface. Precision warnings are deterministic.
+  rejection boundaries. The actual CLI now emits supported model, command, and
+  snapshot-query families together with Go adapters. Rich dictionaries, non-string
+  keys, and unsupported import/codec mappings fail rather than becoming an
+  unhydrated or `any` surface. Precision warnings are deterministic.
 - **Shared concept compiler analysis**: tools pin released Fundamentals.Go
   `v0.2.0` (including the classifier delivered at
   `24d60f07b6090f195cd07b9f1045fb540ff49fd7`) and use
@@ -81,12 +84,15 @@ The frontend authority is `Source/DotNET/Tools/ProxyGenerator` and
   Enum member names use the shared acronym-friendly `naming.CamelCase`; field
   selection still uses Arc's authoritative shared kernel, not preservation of all
   Go field spelling. The root runtime remains on Fundamentals.Go `v0.1.0`.
-  Browser proxy parity is still Partial until TypeScript emission is exercised.
+  Emitted proxies have strict locked-TypeScript and Node runtime evidence;
+  browser and mounted React-hook behavior remain unverified.
 - **Pinned reference baseline**: `ContractTests/ProxyComparison` retains historical
   `22.45.0` captures and fresh `22.48.2` executable captures, locked NuGet/npm
   dependencies, strict untouched-proxy compilation and real-runtime
-  characterization tests. This is reference-only evidence: Go proxy comparison,
-  paired HTTP execution and rendered React hooks are not implemented yet.
+  characterization tests. Captures remain untouched reference evidence. Separate
+  Go-generated Models/Commands/Queries fixtures and the actual CLI Publication
+  fixture provide emitted-proxy evidence; rendered React hooks and paired .NET
+  hosts remain unverified.
 - **Adapter defaults**: narrow command/model name and namespace options preserve
   the actual composition namespace without the removed `Builder.CommandNamespace`
   accessor. `TestGeneratedRegistrationOptionsPreserveNamespaceDefaults` covers
@@ -98,7 +104,33 @@ The frontend authority is `Source/DotNET/Tools/ProxyGenerator` and
   against the final complete catalog at Build, including manual artifacts and
   `/validate`. `generated_contract_test.go` covers copied inputs, overlap rejection,
   namespace/path drift, additional manual commands changing conventional routes,
-  and terminal frozen registration. This prerequisite does not emit proxies.
+  and terminal frozen registration. TypeScript-enabled adapters now emit these
+  expectations and a fingerprint; the production CLI consumer accepts the agreed
+  profile and rejects mismatched routes without a new root API.
+- **Published families (Partial)**: `emit_typescript_models_test.go`,
+  `emit_typescript_commands_test.go`, and `emit_typescript_queries_test.go` cover
+  deterministic model/scalar/concept/enum, command, snapshot, and barrel plans.
+  Strict real declarations and Node fixtures exercise rich hydration, portable
+  command rules, signatures, defaults, and complete envelopes. The actual CLI
+  `Publication/runtime.test.mjs` executes generated adapters over loopback HTTP,
+  including command validation/execution, GET/QUERY snapshots, and independent
+  server rejection. Nullable-element/default-grammar regressions and the pinned
+  regex-key rejection (`Arc#3014`) remain explicit boundaries. Enumerable command
+  response annotations retain the pinned C# element generic; runtime arrays and
+  pinned null-write/numeric/temporal limits are characterized, not repaired.
+- **Mixed publication (Go-specific)**: `output_test.go` and
+  `production_cli_test.go` prove manifest owner/scope/hash checks, zero-write check
+  mode, complete physical-path preflight, stale ownership, and interrupted
+  write/rename/delete/manifest recovery. Empty files differ from absent files;
+  no unmanifested file is automatically adopted, even with identical marked
+  bytes. Publication is per-file atomic in a trusted single-writer workspace,
+  not a durable cross-root transaction or ownership migration.
+- **Remaining frontend gaps**: observable and proxy-only generation, query
+  validators, unsupported model/rule/default/provider forms, custom import,
+  interface/grouping/library modes, OpenAPI, browser hosts, mounted React hooks,
+  and full paired .NET parity. The locked Node manual observable-client proof
+  below is separate from generated snapshot proxies and independent Go delta
+  reconstruction; none proves generated observable proxies.
 
 ## Status vocabulary
 
@@ -172,7 +204,7 @@ The frontend authority is `Source/DotNET/Tools/ProxyGenerator` and
 | MongoDB bindings and BSON materialization | `MongoDB/DefaultMongoDatabaseNameResolver.cs`, `MongoCollectionAdapter.cs`, `ConceptSerializer.cs`, `MongoDBDefaults.cs`, `DateOnlySerializer.cs`, `TimeOnlySerializer.cs`, `TimeSpanSerializer.cs` (`7c1e780`, under `Source/DotNET`) | Optional `integrations/mongodb`: `Collection`, `NewCollection`, `DatabaseName`, `NewRegistry` | Partial | Module unit/race tests and independent literal BSON fixtures cover tenant defaults/case/Unicode, borrowed client/config snapshots, private registries, UUID subtype 4/RFC bytes, legacy concepts, checked numbers, null/zero/empty and failure-atomic decoding. Go uses required JSON names with optional BSON storage overrides, explicit collection names, UTC-noon DateOnly and checked rather than rounded numeric reads. Binding/registry construction performs no provider reads or publication; snapshot execution and the mandatory application-owned release callback are covered by the adjacent Partial MongoDB snapshot-rendering row. No reflection-invoked ConceptValue, global registry mutation or Optional/decimal/polymorphic mapping; real Chronicle sink layout/release remains unproved. See [storage profile](../integrations/mongodb/README.md) |
 | MongoDB snapshot rendering | `Arc.Core/Queries/QueryableQueryRenderer.cs`, MongoDB collection operations (`7c1e780`, under `Source/DotNET`) | Optional `integrations/mongodb`: `Find`, `RendererOptions`, `NewRenderer`, `Renderer.Execute` | Partial | `renderer_test.go` records frozen authorized count/find predicates, server sort/window, bounds, failures, detached cleanup and raw release-before-interception. `snapshot_example_test.go` executes external manual namespace registration through the real Arc pipeline and pinned driver's no-database wire mock. Primary/majority with simple collation is an explicit Go profile, not atomic count+find; retry configuration stays application-owned. Chronicle release mapping is application-owned, requires unchanged count/order/identity and unique decoded identities, and never decodes protected sink fields before release. `provider_*_integration_test.go` adds MongoDB 8.0.15 task-owned replica-set evidence through actual registered Arc renderer/HTTP: two tenants and forbidden rows, matching serialized count/find coordinates/predicates/collation, server sorting/windowing, multi-batch getMore, refetch insert/update/delete/filter entry/exit/reorder/refill, codec round trip/decode retraction, synthetic raw release, integer/string and UUID representation collisions, isolated count/find/getMore failpoints, canceled-request killCursors, empty/bounded pages, denied no-I/O ingress, borrowed-client reuse and outer resource-close failure against pushed root `4bd7dca`. Count overflow remains bounded fake evidence, not billions of live rows. Independent no-database and Linux Go 1.27 live CI lanes; see [MongoDB guide](backend/go/mongodb/index.md). Still no real Chronicle sink/compliance, sharded/multi-member/failover or watch claim |
 | MongoDB watches | MongoDB change streams (`7c1e780`) | None | Not implemented | Separate ARC-GO-24 work; no root database driver |
-| Proxy generation/OpenAPI | ProxyGenerator/OpenAPI | Route descriptors, generated Go adapters and generated-contract prerequisites | Partial | The generation ledger below records executable Go adapter evidence and captured C# proxy fixtures; TypeScript emission, OpenAPI and real browser-runtime conformance remain not implemented or unverified |
+| Proxy generation/OpenAPI | ProxyGenerator/OpenAPI | Route descriptors, generated Go adapters and generated-contract prerequisites | Partial | The generation ledger below records Go adapters, actual CLI model/command/snapshot-query publication, locked TypeScript/Node execution, and untouched C# captures; observable/proxy-only generation, OpenAPI and browser/React-hook conformance remain unsupported or unverified |
 | Chronicle integration | Arc Chronicle integration (`7c1e780`) | Optional `integrations/chronicle` module and `sdk` adapter | Partial | Returned events, command transactions, keyed models, aggregates, reactor command effects and append observation are covered in the Chronicle ledger below. No root Chronicle dependency; no protected decisions, watches or snapshots |
 | Operation resources and admission | `Authorization/AuthorizationEvaluation.cs`, `OperationContextScope.cs` (`7c1e780`) | `execution.Scope`, `OpenScope`, `BorrowScope`, `RunWithResources`, `Resolver`, `CheckOwner` | Go-specific | `execution/scope_test.go`, `resources_test.go`, `panic_test.go`, `dependencies_test.go`: owned/borrowed disposal, close-once forwarding, joined admitted resolutions, expiring non-closing resolver views, principal/tenant presence; `execution/resource_join_test.go` preserves at-most-once Close and explicitly retryable ResourcesJoiner.Join, caches ordinary failures including context errors, retains non-context Join failures and typed/panic diagnostics across resumptions, and exposes ErrScopeJoinPending only for incomplete joins; `execution/scope_startup_join_test.go` and root `TestShutdownRetainsExplicitJoinAfterPartialResourceStartup` retain pending resource-opening cleanup through PendingScopeError.Scope; every pending owned Scope.Close result exposes the same capability, including successful unary opening (`TestRunWithResourcesRetainsPendingScopeAfterSuccessfulOpening`), with automatic reclaim by observable admission and explicit caller ownership elsewhere; optional DI ContextChecker/ScopeOwner checks. Arc owns structural Resources/OpenResources; Fundamentals deliberately has no lifecycle package. Unreleased `Run` and `services` are removed; migrate to RunWithResources and optional ResourcesFrom |
 | Model declaration and field metadata | Model-bound command/read-model attributes and `Authorization/AuthorizationDeclarations.cs` (`7c1e780`) | `metadata.InspectModel`, `Model`, `ParseQueryTags`, descriptor additions | Go-specific | `metadata/model_test.go`, `internal/modelshape/fields_test.go`; optional blank-field declarations, explicit wire keys/identity, strict tag grammar, method selection and unchanged default routes. No runtime source-comment discovery or projections; build-time adapter generation is recorded below |
@@ -210,7 +242,10 @@ The frontend authority is `Source/DotNET/Tools/ProxyGenerator` and
 
 C# sources below use Arc `7c1e78075b737df64f69fddfaae83374f75e3612`, relative
 to `Source/DotNET/Arc.Core/`. The experimental [generator](backend/go/generation/index.md)
-provides Go adapter generation, not TypeScript proxies or OpenAPI.
+provides Go adapters and bounded TypeScript model/command/snapshot-query proxies.
+Frontend sources additionally use `Source/DotNET/Tools/ProxyGenerator` and
+`Source/JavaScript` at the same revision. OpenAPI and observable proxy generation
+remain unsupported.
 
 | Feature | C# source | Go surface | Status | Evidence and intentional boundary |
 | --- | --- | --- | --- | --- |
@@ -218,6 +253,9 @@ provides Go adapter generation, not TypeScript proxies or OpenAPI.
 | Read-model query discovery and metadata | `Queries/ModelBound/QueryPerformerProvider.cs`, `ModelBoundQueryPerformer.cs`, `Authorization/AuthorizationDeclarations.cs` | Generated namespace-method/function adapters and public registration options | Go-specific | `ContractTests/TestGeneratedMetadataMatchesManualMetadata`, `TestGeneratedAndManualAdaptersHaveEquivalentStaging`; command/query identity, authorization replacement, argument binding and runtime validation preserved. Unnamed value receivers or explicitly directed functions replace static CLR methods; snapshot return shapes only |
 | Dependency binding | `Commands/CommandHandlerArgumentResolver.cs`, `Queries/ModelBound/ModelBoundQueryPerformer.cs` | Generated exact dependency manifests, optional `ArcBindings`, `execution.Resolve` | Go-specific | `ContractTests/TestGeneratedDefaultBindingsRequireDependencyCatalog`, `TestGeneratedAndManualAdaptersHaveEquivalentStaging`; plain callbacks and Fundamentals container paths, denial/Validate-only suppression. No standalone validator/policy discovery or Chronicle-specific parameter injection |
 | Source diagnostics and regeneration | Model-bound discovery and configuration validation | `arc-gen -check`, source-position diagnostics, owned output | Go-specific | tools `TestDiagnostics`, `TestBuildTagsAndDeletedMethods`, `TestStaleOutputCleanupIsOwnedAndScoped`, `TestFailedPackageDoesNotPublishOtherOutputs`, `TestSymlinkOutputIsNeverFollowed`; selected packages/configuration only, no init execution, atomic per-file writes but no multi-file transaction. Unsupported signatures fail explicitly; tools tags remain deferred |
+| TypeScript models and command proxies | ProxyGenerator model/command templates and JavaScript Fields/Command (`7c1e780`) | CLI TypeScript profile, shared wire graph, portable generated validators | Partial | Tools fixture/renderer tests and strict locked Models/Commands fixtures cover rich constructors, concepts, numeric enums, declared derivatives, response cardinality, portable rules and exact wire names. Production CLI loopback tests execute actual generated adapters; no mounted React or browser claim |
+| TypeScript snapshot-query proxies | ProxyGenerator query template and JavaScript QueryFor (`7c1e780`) | Model-owned single/list/array/Page proxies, endpoint expectations, result-field sorting helpers | Partial | Tools query/analyzer regressions and strict Queries/Publication fixtures cover GET/QUERY exposure, required arguments, original-Go defaults, signatures and rich hydration. Sorting is the approved result-field allowlist deviation; no provider paging/sorting, query validators, nullable elements or observable output |
+| Mixed output ownership and recovery | ProxyGenerator publication boundary; Go-specific safety contract | Manifest, pending journal and zero-write `-check` | Go-specific | Actual CLI and publisher negative cases preserve user/recovery evidence on unsupported input, physical path collisions, intervening empty files and unmanifested identical output. Per-file atomicity/process recovery only; no durable cross-root transaction, automatic legacy adoption or concurrent-writer claim |
 
 ## Chronicle integration ledger
 
