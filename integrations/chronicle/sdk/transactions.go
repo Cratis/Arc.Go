@@ -68,6 +68,9 @@ func (p *participant) Stage(ctx context.Context, b integration.Batch) error {
 }
 func (o *completion) Commit(ctx context.Context) (integration.CommitResult, error) {
 	result, err := o.owner.Commit(auditContext(ctx))
+	return mapResult(result), err
+}
+func mapResult(result eventsequences.BatchResult) integration.CommitResult {
 	mapped := integration.CommitResult{Report: commands.CompletionReport{Disposition: commands.OutcomeUnknown}}
 	switch result.Disposition {
 	case eventsequences.Committed:
@@ -90,7 +93,7 @@ func (o *completion) Commit(ctx context.Context) (integration.CommitResult, erro
 	for _, failure := range result.Errors {
 		mapped.Errors = append(mapped.Errors, failure)
 	}
-	return mapped, err
+	return mapped
 }
 func (o *completion) Rollback() error { return o.owner.Rollback() }
 

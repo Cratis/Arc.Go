@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"reflect"
-	"strings"
 	"sync"
 
 	"github.com/cratis/arc.go/commands"
@@ -16,6 +15,9 @@ import (
 type transaction struct {
 	mu           sync.Mutex
 	busy, closed bool
+	bound        bool
+	unsubscribe  func()
+	immediate    commands.CompletionReport
 	coordinates  Coordinates
 	actor        Actor
 	participant  Participant
@@ -31,16 +33,26 @@ type transaction struct {
 type Metadata struct {
 	Actor  Actor
 	Causes []Cause
+	// Expected constrains reactor-origin commands to the mapped store/namespace.
+	Expected *Coordinates
 }
 type metadataKey struct{}
 
 func WithMetadata(ctx context.Context, value Metadata) context.Context {
 	value.Causes = cloneCauses(value.Causes)
+	if value.Expected != nil {
+		copy := *value.Expected
+		value.Expected = &copy
+	}
 	return context.WithValue(ctx, metadataKey{}, value)
 }
 func MetadataFrom(ctx context.Context) Metadata {
 	value, _ := ctx.Value(metadataKey{}).(Metadata)
 	value.Causes = cloneCauses(value.Causes)
+	if value.Expected != nil {
+		copy := *value.Expected
+		value.Expected = &copy
+	}
 	return value
 }
 func (frame *commandFrame) context(ctx context.Context) context.Context {
@@ -98,7 +110,7 @@ func (i *Integration) stage(ctx context.Context, inv *commands.Invocation, batch
 	if err != nil {
 		return err
 	}
-	if tx.owner != nil && (tx.coordinates != frame.coordinates || tx.actor != frame.actor) {
+	if tx.bound && (tx.coordinates != frame.coordinates || tx.actor != frame.actor) {
 		return ErrMismatch
 	}
 	// Preflight the complete enrollment before connection, scope reads or staging.
@@ -174,7 +186,7 @@ func (i *Integration) stage(ctx context.Context, inv *commands.Invocation, batch
 		if isNil(tx.participant) || isNil(tx.owner) {
 			return ErrInvalid
 		}
-		tx.coordinates, tx.actor = frame.coordinates, frame.actor
+		tx.coordinates, tx.actor, tx.bound = frame.coordinates, frame.actor, true
 	}
 	if err = inv.Execution().Check(ctx); err != nil {
 		return err
@@ -207,7 +219,14 @@ func (i *Integration) finish(ctx context.Context, inv *commands.Invocation, tx *
 	}
 	tx.closed = true
 	tx.result.Report.Disposition = commands.OutcomeUnknown
-	poison := tx.poisoned
+	stop := tx.unsubscribe
+	tx.unsubscribe = nil
+	tx.mu.Unlock()
+	if stop != nil {
+		stop()
+	}
+	tx.mu.Lock()
+	poison, immediate := tx.poisoned, tx.immediate
 	tx.mu.Unlock()
 	result := CommitResult{}
 	var err error
@@ -228,18 +247,9 @@ func (i *Integration) finish(ctx context.Context, inv *commands.Invocation, tx *
 	if success && poison == nil {
 		failure = result.Failure(inv.CommandContext().Command(), err)
 	}
+	result.Report = mergeObserved(result.Report, immediate)
 	tx.mu.Lock()
 	tx.result, tx.failure = result, failure
 	tx.mu.Unlock()
 	return result.Report, failure
-}
-
-func canonicalCoordinates(c Coordinates) (Coordinates, error) {
-	if c.Sequence == "" {
-		c.Sequence = "event-log"
-	}
-	if strings.TrimSpace(string(c.Store)) == "" || strings.TrimSpace(string(c.Namespace)) == "" {
-		return c, ErrInvalid
-	}
-	return c, nil
 }

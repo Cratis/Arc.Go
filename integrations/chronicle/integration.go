@@ -25,6 +25,7 @@ type Options struct {
 	Events        EventCatalog
 	History       HistoryReader
 	Models        ModelReader
+	Appends       AppendObserver
 	Concurrency   ScopeResolver
 	Actor         func(identity.Principal) Actor
 	Audit         func(commands.CommandContext) map[string]string
@@ -89,6 +90,11 @@ func (i *Integration) Install(builder *arc.Builder) error {
 	}
 	if err := registry.AddResponseValueHandler("chronicle", func(context.Context, *execution.Scope) (commands.ResponseValueHandler, error) { return i, nil }); err != nil {
 		return err
+	}
+	if !isNil(i.options.Appends) {
+		if err := registry.AddFilter("chronicle.appends", func(context.Context, *execution.Scope) (commands.Filter, error) { return i, nil }); err != nil {
+			return err
+		}
 	}
 	for _, bind := range i.bindings {
 		if err := bind(registry); err != nil {

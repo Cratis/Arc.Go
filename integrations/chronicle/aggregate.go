@@ -259,7 +259,7 @@ func (f *AggregateFactory[A]) Get(ctx context.Context, inv *commands.Invocation)
 	}
 	key := aggregateKey{factory: f, source: frame.source, coordinates: frame.coordinates, route: f.definition.route}
 	tx.mu.Lock()
-	if tx.closed || (tx.owner != nil && (tx.coordinates != frame.coordinates || tx.actor != frame.actor)) {
+	if tx.closed || (tx.bound && (tx.coordinates != frame.coordinates || tx.actor != frame.actor)) {
 		tx.mu.Unlock()
 		return zero, ErrMismatch
 	}

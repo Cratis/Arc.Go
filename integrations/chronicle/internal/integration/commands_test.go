@@ -45,7 +45,7 @@ func require(t *testing.T, err error) {
 		t.Fatal(err)
 	}
 }
-func clientFor(t *testing.T, register func(*chronicle.Registry)) (*chronicle.Client, chronicle.StoreName, context.Context) {
+func clientFor(t *testing.T, register func(*chronicle.Registry), names ...chronicle.StoreName) (*chronicle.Client, chronicle.StoreName, context.Context) {
 	t.Helper()
 	endpoint := os.Getenv("CHRONICLE_INTEGRATION_CONNECTION_STRING")
 	if endpoint == "" {
@@ -61,7 +61,11 @@ func clientFor(t *testing.T, register func(*chronicle.Registry)) (*chronicle.Cli
 	require(t, err)
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	t.Cleanup(cancel)
-	return client, chronicle.StoreName("arc-go-" + id.String()), ctx
+	name := chronicle.StoreName("arc-go-" + id.String())
+	if len(names) != 0 {
+		name = names[0]
+	}
+	return client, name, ctx
 }
 func authorClient(t *testing.T) (*chronicle.Client, chronicle.StoreName, context.Context) {
 	return clientFor(t, func(registry *chronicle.Registry) {

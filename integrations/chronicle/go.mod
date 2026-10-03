@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/cratis/arc.go v0.0.0-20261003021208-c3a7079c639a
-	github.com/cratis/chronicle.go v0.0.0-20261003015730-5412ecdc4d33
+	github.com/cratis/chronicle.go v0.0.0-20261003023726-bc6150b4dde9
 )
 
 require (

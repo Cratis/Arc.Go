@@ -50,7 +50,7 @@ func New(client *chronicle.Client, config Config) (*integration.Integration, err
 			}
 		}
 		return integration.Coordinates{Store: integration.StoreName(config.Store), Namespace: integration.Namespace(namespace), Sequence: "event-log"}, nil
-	}, Transactions: a, Events: a, History: a, Models: a, Concurrency: a, Actor: config.Actor, Audit: config.Audit, SemanticSource: func(value any) (integration.EventSourceID, bool) {
+	}, Transactions: a, Events: a, History: a, Models: a, Appends: a, Concurrency: a, Actor: config.Actor, Audit: config.Audit, SemanticSource: func(value any) (integration.EventSourceID, bool) {
 		switch id := value.(type) {
 		case events.SourceID:
 			return integration.EventSourceID(id), true
@@ -94,7 +94,16 @@ func auditContext(ctx context.Context) context.Context {
 	}
 	ctx = metadata.WithIdentity(ctx, actor)
 	// Preserve trusted SDK upstream chain, followed by Arc command causes.
-	for _, cause := range value.Causes {
+	existing := metadata.CausationChain(ctx)
+	common := 0
+	for common < len(existing) && common < len(value.Causes) {
+		cause := value.Causes[common]
+		if !reflect.DeepEqual(existing[common], metadata.Causation{Occurred: cause.Occurred, Type: cause.Type, Properties: cause.Properties}) {
+			break
+		}
+		common++
+	}
+	for _, cause := range value.Causes[common:] {
 		ctx = metadata.WithCausation(ctx, metadata.Causation{Occurred: cause.Occurred, Type: cause.Type, Properties: cause.Properties})
 	}
 	return ctx

@@ -133,6 +133,9 @@ func (i *Integration) Provide(ctx context.Context, inv *commands.Invocation) (co
 	if !validCoordinates(coordinates) {
 		return commands.ContextValues{}, ErrInvalid
 	}
+	if expected := MetadataFrom(ctx).Expected; expected != nil && (expected.Store != coordinates.Store || expected.Namespace != coordinates.Namespace) {
+		return commands.ContextValues{}, ErrMismatch
+	}
 	actor := Actor{}
 	if principal := command.Principal(); principal.IsAuthenticated() {
 		actor = Actor{Subject: principal.ID(), Name: principal.Name()}
