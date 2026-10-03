@@ -14,13 +14,14 @@ import (
 )
 
 type executionState struct {
-	mu         sync.Mutex
-	top        *frame
-	closed     bool
-	completing bool
-	values     map[*stateIdentity]any
-	report     CompletionReport
-	reports    uint64
+	mu                sync.Mutex
+	top               *frame
+	closed            bool
+	completing        bool
+	values            map[*stateIdentity]any
+	report            CompletionReport
+	reports           uint64
+	operationAttempts uint64
 }
 
 // Execution is a callback-scoped view of synchronous command ownership. It is not
@@ -141,6 +142,15 @@ func (b *boundPipeline) run(ctx context.Context, scope *execution.Scope, command
 	if err := b.invocation.owner.Check(ctx); err != nil {
 		return b.rejected(ctx, err, validate)
 	}
+	child, _ := b.pipeline.LookupCommand(command)
+	if b.frame.registration.operations || child.operations {
+		b.frame.owner.mu.Lock()
+		b.frame.owner.operationAttempts++
+		b.frame.owner.mu.Unlock()
+		// callWith observes the attempt even if the caller discards this result.
+		// Compensation uses a per-callback baseline, not the original failure.
+		return FromError[any](contextID(ctx), ErrInvalidOperation), ErrInvalidOperation
+	}
 	b.frame.owner.mu.Lock()
 	completing := b.frame.owner.completing
 	b.frame.owner.mu.Unlock()
@@ -170,6 +180,14 @@ func (b *boundPipeline) expire() error {
 }
 func (b *boundPipeline) rejected(ctx context.Context, err error, validate bool) (Result[any], error) {
 	result := FromError[any](contextID(ctx), err)
+	if b.frame.registration.operations {
+		b.frame.owner.mu.Lock()
+		if !b.frame.owner.closed {
+			b.frame.owner.operationAttempts++
+		}
+		b.frame.owner.mu.Unlock()
+		return result, err
+	}
 	if !validate || b.frame.snapshot.validationOnly {
 		b.record(result, err)
 	}

@@ -13,6 +13,7 @@ import (
 
 	"github.com/cratis/arc.go/authentication"
 	"github.com/cratis/arc.go/authorization"
+	"github.com/cratis/arc.go/commands"
 	"github.com/cratis/arc.go/correlation"
 	"github.com/cratis/arc.go/execution"
 	"github.com/cratis/arc.go/metadata"
@@ -38,6 +39,7 @@ type Options struct {
 	DependencyCatalog      di.Catalog
 	Clock                  func() time.Time
 	CleanupTimeout         time.Duration
+	CommandOperations      commands.OperationOptions // Separate cooperative recovery budget.
 	ExposeExceptionDetails bool
 	Logger                 *slog.Logger
 	HTTP                   HTTPOptions
@@ -154,7 +156,7 @@ func normalizeOptions(o Options) (Options, error) {
 		c := cloneCatalog(metadata.Catalog{Version: metadata.Version, Commands: []metadata.Command{{Authorization: o.Authorization.Fallback}}})
 		o.Authorization.Fallback = c.Commands[0].Authorization
 	}
-	if o.OpenResources != nil && o.ScopeFactory != nil || o.CleanupTimeout < 0 || o.TenantResolver != nil && o.Tenancy != (tenancy.Options{}) {
+	if o.OpenResources != nil && o.ScopeFactory != nil || o.CleanupTimeout < 0 || o.CommandOperations.CompensationTimeout < 0 || o.TenantResolver != nil && o.Tenancy != (tenancy.Options{}) {
 		return Options{}, ErrInvalidOptions
 	}
 	if o.Clock == nil {

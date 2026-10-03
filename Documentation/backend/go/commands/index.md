@@ -19,8 +19,9 @@ There is no runtime source discovery or reflective invocation. Source directives
 - [Context and keys](command-context.md) supplies invocation metadata without an ambient dependency resolver.
 - [Filters](command-filters.md) contributes ordered verdicts.
 - [Response value handlers](response-value-handlers.md) consumes returned effect values; [response examples](response-examples.md) explains the explicit return grammar.
+- [Operations](operations.md) declares immediate inline work with commit-aware, best-effort compensation.
 - [Execution scopes](command-execution-scopes.md) participates in root completion before resources are disposed.
 
 ## Know the boundary
 
-This is a backend command library, not an HTTP host. It preserves the command result envelope, but does not create endpoints or proxies. Chronicle append, persistence, command operations, compensation, and durable delivery remain separate integration slices. Returning an event-shaped struct does not append it automatically. A failed result is not proof that an external write did not commit.
+This is a backend command library, not an HTTP host. It preserves the command result envelope, but does not create endpoints or proxies. Chronicle operation participation and durable delivery remain separate integration slices; the manual flat operation core does not establish provider compatibility. Returning an event-shaped struct does not append it automatically. A failed result is not proof that an external write did not commit.

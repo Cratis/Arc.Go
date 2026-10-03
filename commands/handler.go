@@ -46,7 +46,7 @@ func returnAdapter[O any]() adapter {
 	t := reflect.TypeFor[O]()
 	a := adapter{returnType: t, valid: true, responseKind: ResponseUnknown}
 	var zero O
-	if t == reflect.TypeFor[NoResponse]() || t == reflect.TypeFor[validation.Result]() || t == reflect.TypeFor[authorization.Decision]() {
+	if operationReturn(t) || t == reflect.TypeFor[NoResponse]() || t == reflect.TypeFor[validation.Result]() || t == reflect.TypeFor[authorization.Decision]() {
 		a.responseKind = ResponseNone
 	}
 	if contract, ok := any(zero).(interface{ responseContract() reflect.Type }); ok {
