@@ -35,6 +35,7 @@ type Registry struct {
 	terminal      []extension[DeferredCommitParticipant]
 	admissions    []ReturnAdmission
 	models        map[reflect.Type][]readModelProvider
+	buildChecks   []func(BuildView) error
 }
 type extension[T any] struct {
 	name    string
@@ -82,6 +83,49 @@ func (r *Registry) Catalog() metadata.Catalog {
 		}
 	}
 	return catalog
+}
+
+// BuildView is an immutable snapshot of exact registered command types. Its zero
+// value contains no commands; it is safe to retain and read concurrently.
+type BuildView struct {
+	commandTypes map[reflect.Type]bool
+}
+
+// ContainsCommandType reports exact registration membership. Pointer and value
+// types are distinct; nil is never registered.
+func (v BuildView) ContainsCommandType(typ reflect.Type) bool {
+	return v.commandTypes[typ]
+}
+
+// ContainsCommandType reports exact registration membership without building or
+// freezing the registry. Pointer and value types are distinct; nil receivers and
+// nil types return false. Like registration, access requires a single owner.
+func (r *Registry) ContainsCommandType(typ reflect.Type) bool {
+	if r != nil && typ != nil {
+		for _, entry := range r.registrations {
+			if entry.commandType == typ {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// AddBuildCheck registers an integration configuration check. Build calls checks
+// in insertion order after declaration validation, before freezing or activating
+// factories, and returns the first error unchanged. Failed builds remain editable
+// and retry all checks on the next Build. Checks may be added before commands;
+// they must not mutate the registry or activate application services. Nil checks
+// or receivers return ErrInvalidRegistration; frozen registries return ErrFrozen.
+func (r *Registry) AddBuildCheck(check func(BuildView) error) error {
+	if r == nil || check == nil {
+		return ErrInvalidRegistration
+	}
+	if r.frozen {
+		return ErrFrozen
+	}
+	r.buildChecks = append(r.buildChecks, check)
+	return nil
 }
 
 // Build validates catalogs and shapes, without resolving services, and freezes
@@ -145,6 +189,15 @@ func (r *Registry) Build(options PipelineOptions) (Pipeline, error) {
 	// Reuse metadata's existing route/collision rules; no second route algorithm.
 	if _, err := metadata.Resolve(r.Catalog(), metadata.DefaultOptions()); err != nil {
 		return nil, err
+	}
+	view := BuildView{commandTypes: make(map[reflect.Type]bool, len(r.registrations))}
+	for _, entry := range r.registrations {
+		view.commandTypes[entry.commandType] = true
+	}
+	for _, check := range r.buildChecks {
+		if err := check(view); err != nil {
+			return nil, err
+		}
 	}
 	p := &pipeline{options: options, byType: make(map[reflect.Type]Registration), byName: make(map[string]Registration), providers: append([]extension[ContextValuesProvider](nil), r.providers...), keys: append([]extension[KeyResolver](nil), r.keys...), filters: append([]extension[Filter](nil), r.filters...), authFilters: append([]extension[AuthorizationFilter](nil), r.authFilters...), responses: append([]extension[ResponseValueHandler](nil), r.responses...), participants: append([]extension[ExecutionScope](nil), r.participants...)}
 	p.terminal = append([]extension[DeferredCommitParticipant](nil), r.terminal...)
