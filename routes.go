@@ -65,9 +65,9 @@ func (a *Application) compileRoutes(raw []rawHandler) error {
 			endpoints = append(endpoints, metadata.Endpoint{Identity: path, Method: method, Path: path})
 		}
 	}
-	for _, path := range []string{hubSSEPath, hubSSEPath + "/subscribe", hubSSEPath + "/unsubscribe"} {
+	for _, path := range []string{hubWSPath, hubSSEPath, hubSSEPath + "/subscribe", hubSSEPath + "/unsubscribe"} {
 		methods := []string{"POST"}
-		if path == hubSSEPath {
+		if path == hubSSEPath || path == hubWSPath {
 			methods = []string{"GET", "HEAD"}
 		}
 		for _, method := range methods {
@@ -213,6 +213,9 @@ func canonicalPath(r *http.Request) bool {
 }
 func (a *Application) dispatch(w http.ResponseWriter, r *http.Request, e metadata.Endpoint) {
 	switch e.Path {
+	case hubWSPath:
+		a.hubWebSocketEndpoint(w, r)
+		return
 	case hubSSEPath:
 		a.hubSSEEndpoint(w, r)
 		return

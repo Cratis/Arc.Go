@@ -49,7 +49,7 @@ func (a *Application) hubSSEEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	principal, _ := identity.PrincipalFrom(r.Context())
-	c := &hubConnection{id: id, peer: actualPeer(r), anonymous: !principal.IsAuthenticated(), owner: owner, ctx: ctx, cancel: cancel, subscriptions: subscriptions, workers: map[*streaming.Operation]*hubWorker{}, joinGate: make(chan struct{}, 1), connected: make(chan struct{})}
+	c := &hubConnection{frameOverhead: 8, id: id, peer: actualPeer(r), anonymous: !principal.IsAuthenticated(), owner: owner, ctx: ctx, cancel: cancel, subscriptions: subscriptions, workers: map[*streaming.Operation]*hubWorker{}, joinGate: make(chan struct{}, 1), connected: make(chan struct{})}
 	c.writer, err = streaming.NewWriter(ctx, streaming.WriterOptions{
 		MaxJobs: a.options.Observable.MaxOutboundJobs, MaxFrameBytes: a.options.HTTP.MaxResponseBytes,
 		MaxQueuedBytes: a.options.Observable.MaxQueuedBytes, Application: a.hubs.budget, Owners: subscriptions,
@@ -150,7 +150,7 @@ func (a *Application) hubSSEControl(w http.ResponseWriter, r *http.Request, subs
 		return
 	}
 	c := a.resolveHub(control.ConnectionID, owner)
-	if c == nil {
+	if c == nil || c.websocket {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
@@ -316,13 +316,13 @@ func (a *Application) sendHub(c *hubConnection, operation *streaming.Operation, 
 		message.QueryID, message.Revision = operation.QueryID(), operation.Revision()
 	}
 	body, err := encode(ctx, message)
-	if err != nil || int64(len(body))+8 > a.options.HTTP.MaxResponseBytes {
+	if err != nil || int64(len(body))+c.frameOverhead > a.options.HTTP.MaxResponseBytes {
 		if err == nil {
 			err = streaming.ErrFrameCapacity
 		}
 		if operation != nil {
 			fallback, fallbackErr := encode(ctx, streaming.Message{Type: "Error", QueryID: operation.QueryID(), Revision: operation.Revision(), Payload: "Unable to deliver observable query result."})
-			if fallbackErr == nil && int64(len(fallback))+8 <= a.options.HTTP.MaxResponseBytes {
+			if fallbackErr == nil && int64(len(fallback))+c.frameOverhead <= a.options.HTTP.MaxResponseBytes {
 				fallbackErr = c.writer.DeliverTerminal(ctx, fallback, operation)
 			}
 			return errors.Join(err, fallbackErr)

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"strings"
+	"unicode"
 )
 
 // Message is the hub wire envelope. Absent optional fields are omitted, not null.
@@ -83,6 +84,75 @@ func ParseSSEControl(body []byte, subscribe bool) (SSEControl, error) {
 	return control, nil
 }
 
+// WSControl uses payload for subscribe, unlike the SSE request envelope.
+// Absent Ping timestamps are filled by the transport clock.
+type WSControl struct {
+	Type      string
+	QueryID   string
+	Revision  *Revision
+	Request   *SubscriptionRequest
+	Timestamp *int64
+}
+
+// ParseWSControl accepts bounded, unique-member JSON controls. Socket identity
+// is fixed by the handshake; client-supplied connection/identity fields are not
+// used to authorize subscriptions.
+func ParseWSControl(body []byte, hub bool) (WSControl, error) {
+	if err := uniqueJSON(body); err != nil {
+		return WSControl{}, err
+	}
+	var envelope struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return WSControl{}, ErrControl
+	}
+	switch {
+	case strings.EqualFold(envelope.Type, "Ping"), strings.EqualFold(envelope.Type, "Pong"):
+		var ping struct {
+			Timestamp *int64 `json:"timestamp"`
+		}
+		if err := json.Unmarshal(body, &ping); err != nil {
+			return WSControl{}, ErrControl
+		}
+		kind := "Ping"
+		if strings.EqualFold(envelope.Type, "Pong") {
+			kind = "Pong"
+		}
+		return WSControl{Type: kind, Timestamp: ping.Timestamp}, nil
+	case hub && strings.EqualFold(envelope.Type, "Subscribe"):
+		var subscribe struct {
+			QueryID  string               `json:"queryId"`
+			Revision *Revision            `json:"revision"`
+			Payload  *SubscriptionRequest `json:"payload"`
+		}
+		if err := json.Unmarshal(body, &subscribe); err != nil {
+			return WSControl{}, ErrControl
+		}
+		request := subscribe.Payload
+		if subscribe.QueryID == "" || len(subscribe.QueryID) > 256 || request == nil || request.QueryName == "" || len(request.QueryName) > 1024 || len(request.Arguments) > 128 {
+			return WSControl{}, ErrControl
+		}
+		for name := range request.Arguments {
+			if name == "" {
+				return WSControl{}, ErrControl
+			}
+		}
+		return WSControl{Type: "Subscribe", QueryID: subscribe.QueryID, Revision: subscribe.Revision, Request: request}, nil
+	case hub && strings.EqualFold(envelope.Type, "Unsubscribe"):
+		var unsubscribe struct {
+			QueryID  string    `json:"queryId"`
+			Revision *Revision `json:"revision"`
+		}
+		if err := json.Unmarshal(body, &unsubscribe); err != nil || unsubscribe.QueryID == "" || len(unsubscribe.QueryID) > 256 {
+			return WSControl{}, ErrControl
+		}
+		return WSControl{Type: "Unsubscribe", QueryID: unsubscribe.QueryID, Revision: unsubscribe.Revision}, nil
+	default:
+		return WSControl{}, ErrControl
+	}
+}
+
 func uniqueJSON(body []byte) error {
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.UseNumber()
@@ -98,6 +168,22 @@ func uniqueJSON(body []byte) error {
 	}
 	return nil
 }
+
+// JSON's case-insensitive member matching uses Unicode simple folding, not
+// lowercase alone (for example ASCII s and long s). Canonicalize the whole fold
+// class so alternate spellings cannot override owner/revision fields.
+func foldedJSONName(name string) string {
+	return strings.Map(func(r rune) rune {
+		least := r
+		for next := unicode.SimpleFold(r); next != r; next = unicode.SimpleFold(next) {
+			if next < least {
+				least = next
+			}
+		}
+		return least
+	}, name)
+}
+
 func jsonMembers(decoder *json.Decoder, opening json.Delim, depth int) error {
 	if depth > 32 {
 		return ErrControl
@@ -107,10 +193,14 @@ func jsonMembers(decoder *json.Decoder, opening json.Delim, depth int) error {
 		if opening == '{' {
 			token, err := decoder.Token()
 			name, ok := token.(string)
-			if err != nil || !ok || seen[strings.ToLower(name)] {
+			if err != nil || !ok {
 				return ErrControl
 			}
-			seen[strings.ToLower(name)] = true
+			folded := foldedJSONName(name)
+			if seen[folded] {
+				return ErrControl
+			}
+			seen[folded] = true
 		}
 		token, err := decoder.Token()
 		if err != nil {

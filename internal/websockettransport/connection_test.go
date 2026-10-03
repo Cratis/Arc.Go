@@ -15,6 +15,43 @@ import (
 	"github.com/coder/websocket"
 )
 
+func TestCloseBudgetInterruptsUnresponsivePeerAndJoins(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	accepted := make(chan struct{})
+	closeNow := make(chan struct{})
+	joined := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := Accept(w, r, 64)
+		if err != nil {
+			joined <- err
+			return
+		}
+		close(accepted)
+		<-closeNow
+		budget, stop := context.WithTimeout(ctx, 20*time.Millisecond)
+		defer stop()
+		joined <- c.Close(budget)
+	}))
+	defer server.Close()
+	client, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = client.CloseNow() }()
+	<-accepted
+	close(closeNow)
+	// Deliberately do not read: the peer never processes or acknowledges Close.
+	select {
+	case err := <-joined:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("close = %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+}
+
 func TestCompleteTextMessagesAndBinaryRejection(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()

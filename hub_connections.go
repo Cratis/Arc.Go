@@ -29,6 +29,9 @@ type hubConnection struct {
 	id, peer      string
 	anonymous     bool
 	connected     chan struct{}
+	readerDone    <-chan struct{}
+	frameOverhead int64
+	websocket     bool
 	owner         streaming.ConnectionOwner
 	ctx           context.Context
 	cancel        context.CancelFunc
@@ -149,6 +152,13 @@ func (a *Application) closeHub(ctx context.Context, c *hubConnection) error {
 	case <-c.writer.Done():
 	case <-ctx.Done():
 		return errors.Join(err, ctx.Err())
+	}
+	if c.readerDone != nil {
+		select {
+		case <-c.readerDone:
+		case <-ctx.Done():
+			return errors.Join(err, ctx.Err())
+		}
 	}
 	c.mu.Lock()
 	workers := make(map[*streaming.Operation]*hubWorker, len(c.workers))

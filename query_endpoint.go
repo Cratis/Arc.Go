@@ -12,6 +12,7 @@ import (
 	"github.com/cratis/arc.go/correlation"
 	"github.com/cratis/arc.go/internal/httptransport"
 	boundary "github.com/cratis/arc.go/internal/pipeline"
+	"github.com/cratis/arc.go/internal/websockettransport"
 	"github.com/cratis/arc.go/metadata"
 	"github.com/cratis/arc.go/queries"
 )
@@ -88,6 +89,10 @@ func (a *Application) queryEndpoint(w http.ResponseWriter, r *http.Request, e me
 	}
 	ctx := httpPipelineContext(r.Context())
 	registration, known := a.queries.Lookup(queries.FullyQualifiedQueryName(e.Identity))
+	if r.Method != "HEAD" && known && registration.Descriptor().Observable && websockettransport.IsUpgrade(r) {
+		a.directWebSocket(w, r.WithContext(ctx), queries.FullyQualifiedQueryName(e.Identity), request)
+		return
+	}
 	if r.Method != "HEAD" && known && registration.Descriptor().Observable && acceptsSSE(r) {
 		a.directSSE(w, r.WithContext(ctx), queries.FullyQualifiedQueryName(e.Identity), request)
 		return
