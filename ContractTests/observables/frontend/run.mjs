@@ -35,7 +35,8 @@ async function stage(command, args, cwd, timeout = 120000) {
         process.off('SIGTERM', stop);
     }
 }
-async function runtime(generated = false) {
+async function runtime(name) {
+    const generated = name !== 'runtime';
     const host = spawn(executable, generated ? ['--generated'] : [], { cwd: root, env, stdio: ['ignore', 'pipe', 'inherit'] });
     const joined = new Promise((resolve, reject) => {
         host.once('error', reject);
@@ -67,7 +68,7 @@ async function runtime(generated = false) {
         assert.ok(names.All, 'Required registered query is missing');
         env.ARC_FIXTURE_ORIGIN = address.origin;
         env.ARC_FIXTURE_QUERY = names.All;
-        await stage(process.execPath, ['--test', '--test-timeout=45000', generated ? 'generated.test.mjs' : 'client.test.mjs'], directory, 60000);
+        await stage(process.execPath, ['--test', '--test-timeout=45000', name === 'react-runtime' ? 'react.test.mjs' : generated ? 'generated.test.mjs' : 'client.test.mjs'], directory, 60000);
         runtimePassed = true;
     } finally {
         clearTimeout(timer);
@@ -78,7 +79,7 @@ async function runtime(generated = false) {
             assert.equal(result.code, 0, `Fixture did not join cleanly: ${JSON.stringify(result)}`);
             assert.equal(shutdown?.joined, true, 'Host must report completed Arc shutdown');
             assert.equal(shutdown.signals.open, shutdown.signals.close, 'All opened sources joined');
-            if (generated && runtimePassed) assert.ok(shutdown.signals.open >= 5, 'Generated runtime must have exercised real sources');
+            if (name === 'generated-runtime' && runtimePassed) assert.ok(shutdown.signals.open >= 5, 'Generated runtime must have exercised real sources');
         } finally {
             clearTimeout(kill);
             lines.close();
@@ -88,8 +89,8 @@ async function runtime(generated = false) {
     }
 }
 const selected = process.argv.slice(2);
-assert.ok(selected.length <= 1 && (!selected.length || ['install', 'compile', 'compile-modern', 'generate', 'generate-check', 'fixture-build', 'generated-runtime', 'runtime'].includes(selected[0])), 'Unknown stage');
-const stages = selected.length ? selected : ['install', 'generate', 'generate-check', 'compile', 'compile-modern', 'fixture-build', 'generated-runtime', 'runtime'];
+assert.ok(selected.length <= 1 && (!selected.length || ['install', 'compile', 'compile-modern', 'generate', 'generate-check', 'fixture-build', 'generated-runtime', 'react-runtime', 'runtime'].includes(selected[0])), 'Unknown stage');
+const stages = selected.length ? selected : ['install', 'generate', 'generate-check', 'compile', 'compile-modern', 'fixture-build', 'generated-runtime', 'react-runtime', 'runtime'];
 for (const name of stages) {
     if (name === 'install') {
         await stage('npm', ['--version'], directory);
@@ -103,5 +104,5 @@ for (const name of stages) {
     else if (name === 'fixture-build') {
         await mkdir(output, { recursive: true });
         await stage('go', ['build', '-o', executable, './ContractTests/observables/fixturehost'], root);
-    } else await runtime(name === 'generated-runtime');
+    } else await runtime(name);
 }
