@@ -29,7 +29,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.27.x'
-          cache-dependency-path: go.sum
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
       - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version: '26.8.1'
@@ -37,17 +39,25 @@ jobs:
           cache-dependency-path: ContractTests/observables/frontend/package-lock.json
       - name: Install locked prerequisites
         run: node ContractTests/observables/frontend/run.mjs install
-      - name: Compile manual query against the actual client types
+      - name: Verify production-generated Go adapter, proxies and manifest
+        run: node ContractTests/observables/frontend/run.mjs generate-check
+      - name: Compile manual and generated queries against the locked client types
         run: node ContractTests/observables/frontend/run.mjs compile
+      - name: Compile generated hooks with standard decorators
+        run: node ContractTests/observables/frontend/run.mjs compile-modern
       - name: Build the real Arc fixture host
         run: node ContractTests/observables/frontend/run.mjs fixture-build
-      - name: Execute client transport cases and join the host
+      - name: Execute generated default WebSocket hub Delta case and join the host
+        run: node ContractTests/observables/frontend/run.mjs generated-runtime
+      - name: Execute unchanged manual client transport cases and join the host
         run: node ContractTests/observables/frontend/run.mjs runtime
       - name: Preserve exact request and frame evidence on failure
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: observable-client-failure
-          path: .ai-work/keep/observable-client-failure.json
+          path: |
+            .ai-work/keep/observable-client-failure.json
+            .ai-work/keep/generated-observable-client-failure.json
           if-no-files-found: warn
           retention-days: 7

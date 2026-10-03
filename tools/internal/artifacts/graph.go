@@ -165,7 +165,7 @@ func buildGraph(analyses []*analysis, profile ApplicationProfile, wire bool) (*G
 		}
 		for i := range a.queries {
 			q := &a.queries[i]
-			declaration := metadata.Query{ReadModel: metadata.TypeName{Namespace: a.namespace, Name: q.model.d.name}, Name: q.d.name, ReadModelPath: q.model.d.path, ReadModelAuthorization: q.model.d.auth, Authorization: q.d.auth, HTTPMethod: metadata.QueryHTTPMethod(q.d.http), ExcludeFromDiscovery: q.d.exclude || q.model.d.exclude}
+			declaration := metadata.Query{ReadModel: metadata.TypeName{Namespace: a.namespace, Name: q.model.d.name}, Name: q.d.name, Observable: q.emission != nil, ReadModelPath: q.model.d.path, ReadModelAuthorization: q.model.d.auth, Authorization: q.d.auth, HTTPMethod: metadata.QueryHTTPMethod(q.d.http), ExcludeFromDiscovery: q.d.exclude || q.model.d.exclude}
 			if q.d.hasPath {
 				value := q.d.path
 				declaration.Path = &value
@@ -181,7 +181,11 @@ func buildGraph(analyses []*analysis, profile ApplicationProfile, wire bool) (*G
 			if q.d.http == "QUERY" && (preference == "Get" || preference == "Auto") || preference == "Query" && (q.d.http == "GET" || !profile.routeOptions().EnableQueryHTTPMethod) {
 				return nil, diagnostic(a.pkg, q.call.decl.Pos(), "client HTTP preference is incompatible with exposed endpoints")
 			}
-			descriptor := QueryDescriptor{Declaration: declaration, TypeKey: typeKey(q.model.typ), Source: filepath.Base(a.pkg.Fset.Position(q.call.decl.Pos()).Filename), ClientHTTP: preference, Delivery: "snapshot", Roles: roles(q.d.auth, q.model.d.auth), Excluded: excluded(profile, declaration.Identity())}
+			delivery := "snapshot"
+			if q.emission != nil {
+				delivery = "observable"
+			}
+			descriptor := QueryDescriptor{Declaration: declaration, TypeKey: typeKey(q.model.typ), Source: filepath.Base(a.pkg.Fset.Position(q.call.decl.Pos()).Filename), ClientHTTP: preference, Delivery: delivery, Roles: roles(q.d.auth, q.model.d.auth), Excluded: excluded(profile, declaration.Identity())}
 			graph.Queries = append(graph.Queries, descriptor)
 			q.descriptor = &graph.Queries[len(graph.Queries)-1]
 		}

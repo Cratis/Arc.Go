@@ -1,0 +1,93 @@
+{
+  "format": 1,
+  "owner": "observable-fixture",
+  "scope": "237b3b481f147a352ff1922e36c748a581ff4ff9d9d53948efc50c864571c0a8",
+  "fingerprint": "6470612a42dd7e92cbd445f9bf5235b0c49631ca10d14f1e07731795dbd0f0f9",
+  "files": [
+    {
+      "root": "go",
+      "path": "zz_arc_generated.go",
+      "hash": "5153dfc018f68f2d7964a8e3877527349b53dd58191778810141a8b5bd721d7c"
+    },
+    {
+      "root": "ts",
+      "path": "Shop/Tasks/Alias.ts",
+      "hash": "772fc0f48b45dee3c41bd1dd98a0e6cac07307171c4f23b2b9de304800461831"
+    },
+    {
+      "root": "ts",
+      "path": "Shop/Tasks/All.ts",
+      "hash": "8f5c5bcbe6b4eda2a53980dfd8fd179681217896fcbda53604a40c860d34586a"
+    },
+    {
+      "root": "ts",
+      "path": "Shop/Tasks/Array.ts",
+      "hash": "f500cfdfb86885aeaffb0b813e34cd6747f6b259dbac60aa0e89d3b810632c8b"
+    },
+    {
+      "root": "ts",
+      "path": "Shop/Tasks/Changes.ts",
+      "hash": "24ffab435e660bc929575ed16ff20e9a9d9eae69c54cda0e4ed6a62ffd8c68dd"
+    },
+    {
+      "root": "ts",
+      "path": "Shop/Tasks/Current.ts",
+      "hash": "ce460206393775919cd3cb27d1ecd6b56fe6cc343825643548d4b8d74a2b2958"
+    },
+    {
+      "root": "ts",
+      "path": "Shop/Tasks/Nullable.ts",
+      "hash": "f22415d751e497804e2f556d1e3a98220754e0e1d9c2ff1935141f2399084c33"
+    },
+    {
+      "root": "ts",
+      "path": "Shop/Tasks/Options.ts",
+      "hash": "1b7e3f1537fb74dac9f2d8c5f83afd2ade7a172a09e23ac5100a963d7e2b11b4"
+    },
+    {
+      "root": "ts",
+      "path": "Shop/Tasks/Page.ts",
+      "hash": "619343904b236ef5ee04639a37d937f0a108befa595e6e2c834b21ce4ae1a49f"
+    },
+    {
+      "root": "ts",
+      "path": "Shop/Tasks/Pending.ts",
+      "hash": "197a152d385a15fe03f73f3c69d50400202ca5404ecc1a6ef3c727131c573a40"
+    },
+    {
+      "root": "ts",
+      "path": "Shop/Tasks/Private.ts",
+      "hash": "b15405712ee498c9f21ae9a05a77e3b9665612de47fe8a874e5beb5db3955fde"
+    },
+    {
+      "root": "ts",
+      "path": "Shop/Tasks/Rename.ts",
+      "hash": "69d51b83a72febb5a3033469c1d56bcb7023b5e360a65e415f99dde3c02825d8"
+    },
+    {
+      "root": "ts",
+      "path": "Shop/Tasks/Single.ts",
+      "hash": "ac860af38025358c9850f74307952fbf52608ad148896bbfdc0ab25fdec2f004"
+    },
+    {
+      "root": "ts",
+      "path": "Shop/Tasks/Subject.ts",
+      "hash": "4be5e957b310ac92538d0302fd7fe96f17c8000db4d132e5d644b224bb9bbcbe"
+    },
+    {
+      "root": "ts",
+      "path": "Shop/Tasks/Task.ts",
+      "hash": "529a28072911b78a10127d30a0af9932d3fa4d2d3d264a73529ecc24b14710ed"
+    },
+    {
+      "root": "ts",
+      "path": "Shop/Tasks/Watch.ts",
+      "hash": "7d4f3de2d3a1c9a9ceb1e2213d1b2931d1b9091ecdc1b587ec29711767acb9a3"
+    },
+    {
+      "root": "ts",
+      "path": "Shop/Tasks/index.ts",
+      "hash": "86f465fc834d9d43c86fc50eae959bb15a4af669ac169786456793b63c63fed5"
+    }
+  ]
+}

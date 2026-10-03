@@ -10,5 +10,5 @@
     "lib": ["ES2022", "DOM"],
     "experimentalDecorators": true
   },
-  "include": ["queries.ts"]
+  "include": ["queries.ts", "Generated/**/*.ts", "generated.consumer.ts"]
 }

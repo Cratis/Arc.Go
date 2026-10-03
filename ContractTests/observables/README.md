@@ -40,21 +40,27 @@ GOWORK=off GOTOOLCHAIN=local node ContractTests/observables/frontend/run.mjs
 
 It requires Node **26.8.1**, npm **12.0.2**, and local Go **1.26+**. Missing
 prerequisites fail; no tests silently skip. The script runs `npm ci --engine-strict`,
-compiles the manual query subclass against the actual package types, builds
+generates and checks the model-bound Go adapter and TypeScript proxies through
+production `arc-gen`, strictly compiles the manual and generated queries with both
+decorator modes, builds
 `./ContractTests/observables/fixturehost`, and starts that executable on
 `127.0.0.1:0`. It checks readiness through Arc HTTP admission, executes the Node
 client cases, signals shutdown and awaits the host's real exit. Each producer has
 a separate exit check and bound (120 seconds; runtime 60 seconds). Announcement,
 readiness, requests/callbacks and shutdown have shorter bounds. To run one stage,
-append `install`, `compile`, `fixture-build` or `runtime`; later stages require the
-previous stages' outputs. CI runs these stages in a dedicated frontend job, not
+append `install`, `generate`, `generate-check`, `compile`, `compile-modern`,
+`fixture-build`, `generated-runtime` or `runtime`; later stages require the previous
+stages' outputs. `generated-runtime` uses generated registration; `runtime` keeps
+the existing manual registration and eleven client tests. CI runs these stages in a dedicated frontend job, not
 the native Go matrix.
 
 The client uses exactly the ProxyComparison pins: `@cratis/arc` **22.48.2**,
 `@cratis/fundamentals` **7.22.0**, TypeScript **5.9.3** and esbuild **0.25.10**.
 Its separate lock also pins Node polyfills `ws` **8.22.0** and `eventsource`
 **3.0.7**. Arc and Fundamentals tarball integrity values match the existing
-harness. No captured C# proxies or protocol goldens are rewritten. The authority
+harness. Generated hook compilation adds only the existing ProxyComparison
+`@cratis/arc.react` **22.48.2**, React/React DOM **18.3.1** and their exact type pins
+and integrity values. No captured C# proxies or protocol goldens are rewritten. The authority
 is Arc `7c1e78075b737df64f69fddfaae83374f75e3612`, especially JavaScript
 `ObservableQueryFor.ts`, `ObservableQueryConnectionFactory.ts`, both hub
 connections and `Arc.React/queries/useObservableQuery.ts`.
@@ -82,12 +88,46 @@ Failures retain outgoing controls, incoming messages and callbacks in the ignore
 `.ai-work/keep/observable-client-failure.json`; CI uploads that file only on
 failure. This is diagnostic evidence, not a new golden capture.
 
+## Production-generated default client case
+
+`generatedconsumerfixture/model.go` is the authored model-bound input, not a
+handwritten TypeScript query subclass. Production generation owns
+`generatedconsumerfixture/zz_arc_generated.go`, `frontend/Generated/` and its
+manifest. `generate-check` verifies those actual bytes without rewriting them.
+The independent tools consumer test generates the same TypeScript files and
+executes the fixture contracts using released Fundamentals **v0.2.0** and pushed
+Arc **78ebbf8**, with `GOWORK=off`, `GOTOOLCHAIN=local`, and no `replace`.
+
+`frontend/generated.test.mjs` exercises untouched default WebSocket hub + Delta:
+
+- Two generated queries share a socket and hydrate rich models, including dates.
+- Exact added/replaced/removed envelopes produce independent final test-consumer
+  collections; revision-guaranteed baseline/delta callbacks occur once.
+- Argument replacement gets a fresh baseline and a new stock-client subscription
+  ID; outgoing Subscribe/Unsubscribe revisions match their actual owners.
+- Independent cancellation, later sibling delivery and Ping/Pong barriers prove
+  no retired callbacks. Terminal Unauthorized joins its source without revival.
+- A live pending source remains host-owned until explicit shutdown; the host joins
+  Arc Serve and reports cumulative opens equal closes before exiting.
+
+The client may send a pre-negotiation Subscribe and then a revisioned replacement
+on Connected. The focused case warms one genuine generated subscription first;
+exact callback counts apply to the subsequent negotiated-revision cases, not an
+invented once-only startup guarantee. Factory/open/close counters include that
+warm-up. Go fixture tests separately reject invalid and denied generated requests
+before dependency resolution or source factories, and resource holders fail if
+an opened source has not joined before disposal. Both registration modes use the
+same subjects, guards, controls and stream tracking.
+
+Generated-case failures retain exact frames and callbacks in
+`.ai-work/keep/generated-observable-client-failure.json`.
+
 ## Coverage boundaries
 
 This is **Node client-runtime evidence**, not browser or React-hook parity. No
 pinned browser harness is present, and no browser toolchain was added. The fixture
 uses an explicit loopback anonymous session owner, not browser EventSource cookie
-behavior. Browser credentials/origins, Guid/date hydration, React hooks/cache/
+behavior. Browser credentials/origins, Guid hydration, React hooks/cache/
 change-stream reconstruction, network-failure reconnect and normal source
 completion/error handling remain unverified by this lane.
 

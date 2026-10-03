@@ -191,7 +191,7 @@ func Generate(ctx context.Context, config Config) error {
 					adapters++
 				}
 			}
-			_, err := fmt.Fprintf(config.Report, "arc-gen: %d Go adapters and %d TypeScript model/command/snapshot-query/barrel files %s (profile %s, fingerprint %s); observable proxies unsupported\n", adapters, len(proxies), map[bool]string{true: "verified", false: "published"}[config.Check], profile.Name, graph.Fingerprint)
+			_, err := fmt.Fprintf(config.Report, "arc-gen: %d Go adapters and %d TypeScript model/command/query/barrel files %s (profile %s, fingerprint %s)\n", adapters, len(proxies), map[bool]string{true: "verified", false: "published"}[config.Check], profile.Name, graph.Fingerprint)
 			return err
 		}
 		return nil
