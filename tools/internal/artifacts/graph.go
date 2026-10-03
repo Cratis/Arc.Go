@@ -20,7 +20,11 @@ import (
 // GraphVersion versions the richer contract projection separately from metadata.
 const GraphVersion = 1
 
-// Graph is the normalized Go/TypeScript contract. Compiler attachments stay in
+// ContractGraphVersion adds directional wire contracts and application assertions.
+// The v1 projection remains stable for existing adapter and TypeScript profiles.
+const ContractGraphVersion = 2
+
+// Graph is the shared normalized Go/TypeScript/future OpenAPI contract. Compiler attachments stay in
 // analysis; this projection can be serialized without AST or go/types objects.
 type Graph struct {
 	FormatVersion   int `json:"formatVersion"`
@@ -34,6 +38,8 @@ type Graph struct {
 	Queries         []QueryDescriptor   `json:"queries"`
 	Diagnostics     []string            `json:"diagnostics,omitempty"`
 	Fingerprint     string              `json:"fingerprint"`
+	Assertions      *ProfileAssertions  `json:"assertions,omitempty"`
+	Framework       []FrameworkContract `json:"framework,omitempty"`
 }
 
 type PackageDescriptor struct {
@@ -44,10 +50,11 @@ type PackageDescriptor struct {
 
 // WireType separates optionality, cardinality and exact runtime constructors.
 type WireType struct {
-	Kind     string    `json:"kind"`
-	Target   string    `json:"target,omitempty"`
-	Element  *WireType `json:"element,omitempty"`
-	Nullable bool      `json:"nullable,omitempty"`
+	Kind     string        `json:"kind"`
+	Target   string        `json:"target,omitempty"`
+	Element  *WireType     `json:"element,omitempty"`
+	Nullable bool          `json:"nullable,omitempty"`
+	Contract *WireContract `json:"contract,omitempty"`
 }
 
 type FieldDescriptor struct {
@@ -62,6 +69,8 @@ type FieldDescriptor struct {
 	Sortable   bool                        `json:"sortable,omitempty"`
 	Identity   bool                        `json:"identity,omitempty"`
 	Rules      []validation.RuleDescriptor `json:"rules,omitempty"`
+	Presence   *FieldPresence              `json:"presence,omitempty"`
+	Binding    *QueryBinding               `json:"binding,omitempty"`
 }
 
 type EnumMember struct {
@@ -70,18 +79,23 @@ type EnumMember struct {
 }
 
 type TypeDescriptor struct {
-	Key         string            `json:"key"`
-	Name        metadata.TypeName `json:"name"`
-	Kind        string            `json:"kind"`
-	Source      string            `json:"source"`
-	Fields      []FieldDescriptor `json:"fields,omitempty"`
-	Members     []EnumMember      `json:"members,omitempty"`
-	Flags       bool              `json:"flags,omitempty"`
-	Import      *ImportMapping    `json:"import,omitempty"`
-	Base        string            `json:"base,omitempty"`
-	DerivedID   string            `json:"derivedId,omitempty"`
-	Interface   string            `json:"interface,omitempty"`
-	Derivatives []string          `json:"derivatives,omitempty"`
+	Key           string            `json:"key"`
+	Name          metadata.TypeName `json:"name"`
+	Kind          string            `json:"kind"`
+	Source        string            `json:"source"`
+	Fields        []FieldDescriptor `json:"fields,omitempty"`
+	Members       []EnumMember      `json:"members,omitempty"`
+	Flags         bool              `json:"flags,omitempty"`
+	EnumDomain    string            `json:"enumDomain,omitempty"`
+	Import        *ImportMapping    `json:"import,omitempty"`
+	Base          string            `json:"base,omitempty"`
+	DerivedID     string            `json:"derivedId,omitempty"`
+	Interface     string            `json:"interface,omitempty"`
+	Derivatives   []string          `json:"derivatives,omitempty"`
+	Scalar        *ScalarContract   `json:"scalar,omitempty"`
+	Schemas       *WireSchemas      `json:"schemas,omitempty"`
+	Discriminator *DerivedContract  `json:"discriminator,omitempty"`
+	TSIncluded    *bool             `json:"tsIncluded,omitempty"`
 }
 
 type CommandDescriptor struct {
@@ -89,6 +103,7 @@ type CommandDescriptor struct {
 	TypeKey       string            `json:"typeKey"`
 	Source        string            `json:"source"`
 	Fields        []FieldDescriptor `json:"fields,omitempty"`
+	Input         *WireType         `json:"input,omitempty"`
 	Response      *WireType         `json:"response,omitempty"`
 	ResponseKind  string            `json:"responseKind"`
 	Roles         []string          `json:"roles"`
@@ -106,6 +121,7 @@ type QueryDescriptor struct {
 	Paged         bool              `json:"paged"`
 	SortFields    []string          `json:"sortFields"`
 	ClientHTTP    string            `json:"clientHttp,omitempty"`
+	DataPresence  string            `json:"dataPresence,omitempty"`
 	Roles         []string          `json:"roles"`
 	Excluded      bool              `json:"excluded"`
 	PortableRules bool              `json:"portableRules,omitempty"`
@@ -116,9 +132,31 @@ func typeKey(t types.Type) string {
 }
 
 func buildGraph(analyses []*analysis, profile ApplicationProfile, wire bool) (*Graph, error) {
+	if err := validateProfile(profile); err != nil {
+		return nil, err
+	}
+	typescript := wire
+	wire = wire || profile.OpenAPI != nil
+	if !wire && (len(profile.WireSchemas) > 0 || len(profile.ResponseFields) > 0) {
+		return nil, fmt.Errorf("schema/response assertions require a wire-contract consumer (TypeScript or internal OpenAPI analysis)")
+	}
 	graph := &Graph{FormatVersion: GraphVersion, Profile: profile, Catalog: metadata.Catalog{Version: metadata.Version}, verifyEndpoints: wire}
+	if profile.FormatVersion == ContractGraphVersion {
+		graph.FormatVersion = ContractGraphVersion
+	}
 	// Output locations are operational, not contract identity or machine provenance.
 	graph.Profile.TypeScript.Out = ""
+	if profile.OpenAPI != nil {
+		copy := *profile.OpenAPI
+		copy.Out = ""
+		if len(copy.Servers) == 0 {
+			copy.Servers = []string{"/"}
+		}
+		if copy.Streaming == "" {
+			copy.Streaming = "error"
+		}
+		graph.Profile.OpenAPI = &copy
+	}
 	for _, a := range analyses {
 		if namespace, ok := profile.PackageNamespaces[a.pkg.PkgPath]; ok {
 			a.namespace = namespace
@@ -239,9 +277,28 @@ func buildGraph(analyses []*analysis, profile ApplicationProfile, wire bool) (*G
 		a.graph = graph
 	}
 	if wire {
-		if err := analyzeWireGraph(graph, analyses, profile); err != nil {
+		if err := analyzeWireGraph(graph, analyses, profile, typescript); err != nil {
 			return nil, err
 		}
+	}
+	if graph.FormatVersion == ContractGraphVersion {
+		if err := validateResponseReferences(graph); err != nil {
+			return nil, err
+		}
+	}
+	if profile.Server != nil {
+		assertions, err := normalizeAssertions(graph)
+		if err != nil {
+			return nil, err
+		}
+		graph.Assertions = assertions
+	}
+	if profile.OpenAPI != nil {
+		framework, err := frameworkContracts(graph)
+		if err != nil {
+			return nil, err
+		}
+		graph.Framework = framework
 	}
 	projection, err := json.Marshal(graph)
 	if err != nil {

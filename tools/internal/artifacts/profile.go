@@ -18,16 +18,20 @@ import (
 // retains metadata.DefaultOptions; omitted booleans retain documented defaults.
 // A namespace may be explicitly global (the empty string).
 type ApplicationProfile struct {
-	FormatVersion     int                      `json:"formatVersion"`
-	Name              string                   `json:"name"`
-	DefaultNamespace  *string                  `json:"defaultNamespace,omitempty"`
-	PackageNamespaces map[string]string        `json:"packageNamespaces,omitempty"`
-	Routes            *RouteProfile            `json:"routes,omitempty"`
-	TypeScript        TypeScriptProfile        `json:"typescript"`
-	Responses         map[string]string        `json:"responses,omitempty"`
-	ClientHTTP        map[string]string        `json:"clientHttp,omitempty"`
-	TypeRoots         []string                 `json:"typeRoots,omitempty"`
-	Imports           map[string]ImportMapping `json:"imports,omitempty"`
+	FormatVersion     int                                 `json:"formatVersion"`
+	Name              string                              `json:"name"`
+	DefaultNamespace  *string                             `json:"defaultNamespace,omitempty"`
+	PackageNamespaces map[string]string                   `json:"packageNamespaces,omitempty"`
+	Routes            *RouteProfile                       `json:"routes,omitempty"`
+	TypeScript        TypeScriptProfile                   `json:"typescript"`
+	Responses         map[string]string                   `json:"responses,omitempty"`
+	ClientHTTP        map[string]string                   `json:"clientHttp,omitempty"`
+	TypeRoots         []string                            `json:"typeRoots,omitempty"`
+	Imports           map[string]ImportMapping            `json:"imports,omitempty"`
+	OpenAPI           *OpenAPIProfile                     `json:"openapi,omitempty"`
+	Server            *ServerProfile                      `json:"server,omitempty"`
+	WireSchemas       map[string]WireSchemas              `json:"wireSchemas,omitempty"`
+	ResponseFields    map[string]map[string]ResponseField `json:"responseFields,omitempty"`
 }
 
 // RouteProfile overrides only explicitly supplied route values.
@@ -87,8 +91,14 @@ func readProfile(path string) (ApplicationProfile, error) {
 }
 
 func validateProfile(profile ApplicationProfile) error {
-	if profile.FormatVersion != GraphVersion {
+	if profile.FormatVersion != GraphVersion && profile.FormatVersion != ContractGraphVersion {
 		return fmt.Errorf("unsupported generator configuration format %d", profile.FormatVersion)
+	}
+	if profile.FormatVersion == GraphVersion && (profile.OpenAPI != nil || profile.Server != nil || len(profile.WireSchemas) > 0 || len(profile.ResponseFields) > 0) {
+		return fmt.Errorf("server/OpenAPI/schema assertions require explicit profile formatVersion 2")
+	}
+	if err := validateContractProfile(profile); err != nil {
+		return err
 	}
 	if profile.Name == "" {
 		return fmt.Errorf("generator profile requires a stable name")
