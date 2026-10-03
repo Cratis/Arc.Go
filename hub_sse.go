@@ -261,13 +261,6 @@ func (a *Application) runHubSubscription(c *hubConnection, operation, replaced *
 		admitted <- http.StatusBadRequest
 		return
 	}
-	// Delta/legacy are explicitly rejected until the delivered-baseline slice,
-	// never silently downgraded. This checkpoint supports full hub transfers.
-	if mode != queries.Full {
-		admitted <- http.StatusOK
-		_ = a.sendHub(c, operation, streaming.Message{Type: "Error", Payload: "Observable collection transfer mode is not supported."}, true)
-		return
-	}
 	p, ok := a.Queries().(queries.ObservablePipeline)
 	if !ok {
 		admitted <- http.StatusInternalServerError
@@ -296,7 +289,7 @@ func (a *Application) runHubSubscription(c *hubConnection, operation, replaced *
 		return
 	}
 	admitted <- http.StatusOK
-	err = worker.observation.Run(ctx, queries.ObservationOptions{TransferMode: mode}, func(result queries.Result[any]) error {
+	err = worker.observation.Run(ctx, queries.ObservationOptions{TransferMode: mode, MaxBaselineBytes: a.options.HTTP.MaxResponseBytes, ReserveBaseline: c.writer.ReserveBaseline}, func(result queries.Result[any]) error {
 		if !result.Details().Authorized {
 			return a.sendHub(c, operation, streaming.Message{Type: "Unauthorized"}, true)
 		}

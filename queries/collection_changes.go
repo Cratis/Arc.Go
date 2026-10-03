@@ -153,7 +153,7 @@ func (s *collectionShape) changes(previous, current *collectionSnapshot) *Change
 	}
 	if previous == nil {
 		for _, item := range current.items {
-			changes.Added = append(changes.Added, item.json)
+			changes.Added = append(changes.Added, json.RawMessage(bytes.Clone(item.json)))
 		}
 		return changes
 	}
@@ -164,12 +164,12 @@ func (s *collectionShape) changes(previous, current *collectionSnapshot) *Change
 		// Reference JSON-set comparison preserves repeated additions/removals.
 		for _, item := range current.items {
 			if _, exists := old[item.key]; !exists {
-				changes.Added = append(changes.Added, item.json)
+				changes.Added = append(changes.Added, json.RawMessage(bytes.Clone(item.json)))
 			}
 		}
 		for _, item := range previous.items {
 			if _, exists := next[item.key]; !exists {
-				changes.Removed = append(changes.Removed, item.json)
+				changes.Removed = append(changes.Removed, json.RawMessage(bytes.Clone(item.json)))
 			}
 		}
 		return changes
@@ -177,14 +177,14 @@ func (s *collectionShape) changes(previous, current *collectionSnapshot) *Change
 	for _, key := range nextOrder {
 		before, exists := old[key]
 		if !exists {
-			changes.Added = append(changes.Added, next[key])
+			changes.Added = append(changes.Added, json.RawMessage(bytes.Clone(next[key])))
 		} else if !bytes.Equal(before, next[key]) {
-			changes.Replaced = append(changes.Replaced, next[key])
+			changes.Replaced = append(changes.Replaced, json.RawMessage(bytes.Clone(next[key])))
 		}
 	}
 	for _, key := range oldOrder {
 		if _, exists := next[key]; !exists {
-			changes.Removed = append(changes.Removed, old[key])
+			changes.Removed = append(changes.Removed, json.RawMessage(bytes.Clone(old[key])))
 		}
 	}
 	return changes
@@ -237,15 +237,15 @@ func (s *collectionShape) knownChanges(previous, current *collectionSnapshot) *C
 		switch change.Kind {
 		case CollectionAdded:
 			if item, ok := next[key]; ok {
-				known.Added = append(known.Added, item)
+				known.Added = append(known.Added, json.RawMessage(bytes.Clone(item)))
 			}
 		case CollectionReplaced:
 			if item, ok := next[key]; ok {
-				known.Replaced = append(known.Replaced, item)
+				known.Replaced = append(known.Replaced, json.RawMessage(bytes.Clone(item)))
 			}
 		case CollectionRemoved:
 			if item, ok := old[key]; ok {
-				known.Removed = append(known.Removed, item)
+				known.Removed = append(known.Removed, json.RawMessage(bytes.Clone(item)))
 			}
 		default:
 			return ordinary

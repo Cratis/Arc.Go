@@ -101,8 +101,34 @@ func NewWriter(ctx context.Context, options WriterOptions, write WriteFrame) (*W
 // bytes. Close before Run closes it immediately without invoking any callbacks.
 func (w *Writer) Done() <-chan struct{} { return w.done }
 
-// RetainedBytes includes queued and in-flight frames until writer acknowledgement.
+// RetainedBytes includes queued/in-flight frames and caller-owned baselines until
+// their respective acknowledgement or explicit release.
 func (w *Writer) RetainedBytes() int64 { return w.budget.Used() }
+
+// ReserveBaseline accounts retained collection snapshots in the same connection
+// and application budgets as queued/in-flight frames. Callers discard the value
+// before releasing. Exhaustion closes the slow connection, never evicting state.
+// The returned release is idempotent and remains valid after Writer closes.
+func (w *Writer) ReserveBaseline(bytes int64) (func(), error) {
+	w.mu.Lock()
+	if w.closing {
+		w.mu.Unlock()
+		return nil, ErrWriterClosed
+	}
+	local, err := w.budget.Acquire(bytes)
+	var global *Reservation
+	if err == nil && w.options.Application != nil {
+		global, err = w.options.Application.Acquire(bytes)
+	}
+	w.mu.Unlock()
+	if err != nil {
+		local.Release()
+		global.Release()
+		w.stop(err)
+		return nil, err
+	}
+	return func() { local.Release(); global.Release() }, nil
+}
 
 // Deliver admits without blocking on a full queue and waits for acknowledged
 // delivery. Capacity rejection closes the writer; oversized frames affect only

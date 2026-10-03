@@ -62,7 +62,7 @@ type ObservablePipeline interface {
 type TransferMode uint8
 
 const (
-	// Legacy is full data plus changes, once a hub delta engine is configured.
+	// Legacy carries full data plus changes for identity-bearing collections.
 	Legacy TransferMode = iota
 	// Full carries complete results without changes.
 	Full
@@ -70,10 +70,18 @@ const (
 	Delta
 )
 
-// ObservationOptions configures synchronous delivery. Currently only Full is
-// supported; other modes fail explicitly until the hub baseline engine is wired.
+// ObservationOptions configures synchronous delivery. Its zero value selects
+// Legacy. Direct transports and Subscribe explicitly select Full.
 type ObservationOptions struct {
 	TransferMode TransferMode
+	// MaxBaselineBytes bounds each delivered/candidate immutable collection snapshot.
+	// Zero means 16 MiB. Full and identity-less transfers retain no baseline.
+	MaxBaselineBytes int64
+	// ReserveBaseline reserves candidate bytes against host-wide/connection limits.
+	// It returns a nonnil idempotent release callback, retained until replacement or
+	// Run joins. Nil uses the per-snapshot ceiling only. It runs synchronously, never
+	// under framework locks; callbacks must not reenter Close or mutate results.
+	ReserveBaseline func(int64) (func(), error)
 	// SkipEnumerableNull matches direct C# enumerable transports: null items
 	// are skipped without acknowledging delivery. Subject nulls remain emissions.
 	// Hubs leave this false to preserve nullable enumerable items.
@@ -496,8 +504,11 @@ func (o *Observation) Run(ctx context.Context, options ObservationOptions, deliv
 	if o == nil || deliver == nil {
 		return execution.ErrInvalidArgument
 	}
-	if options.TransferMode != Full {
-		return ErrUnsupportedObservable
+	if options.TransferMode > Delta || options.MaxBaselineBytes < 0 {
+		return execution.ErrInvalidArgument
+	}
+	if options.MaxBaselineBytes == 0 {
+		options.MaxBaselineBytes = 16 << 20
 	}
 	if err := o.begin(ctx); err != nil {
 		return err
@@ -510,6 +521,8 @@ func (o *Observation) Run(ctx context.Context, options ObservationOptions, deliv
 	stop := context.AfterFunc(ctx, cancel)
 	defer stop()
 	defer cancel()
+	transfer := collectionTransfer{shape: o.query.collection, mode: options.TransferMode, limit: options.MaxBaselineBytes, reserve: options.ReserveBaseline}
+	defer transfer.close()
 	for {
 		var value any
 		err := boundary.Call(work, func(ctx context.Context) error { var err error; value, err = o.stream.next(ctx); return err })
@@ -533,9 +546,26 @@ func (o *Observation) Run(ctx context.Context, options ObservationOptions, deliv
 		if verdict == Suppress && err == nil {
 			continue
 		}
-		if deliveryErr := boundary.Call(work, func(context.Context) error { return deliver(result) }); deliveryErr != nil {
+		var hints collectionHints
+		if observed, ok := value.(observedCollection); ok {
+			hints = observed.collectionHints()
+		}
+		var commit, discard func()
+		transferErr := boundary.Call(work, func(context.Context) error {
+			var prepareErr error
+			result, commit, discard, prepareErr = transfer.prepare(result, hints)
+			return prepareErr
+		})
+		if transferErr != nil {
+			result = o.pipeline.observableResult(work, o.metadata.name, o.admission, transferErr)
+			return errors.Join(err, transferErr, boundary.Call(work, func(context.Context) error { return deliver(result) }))
+		}
+		deliveryErr := boundary.Call(work, func(context.Context) error { return deliver(result) })
+		if deliveryErr != nil {
+			discard()
 			return errors.Join(err, deliveryErr)
 		}
+		commit()
 		if verdict == DenyAndTerminate || err != nil {
 			return err
 		}
