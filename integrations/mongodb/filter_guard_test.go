@@ -30,6 +30,25 @@ func (h filterJSONHook) MarshalJSON() ([]byte, error) {
 type namedFilterSlice []any
 type namedFilterMap map[string]any
 type filterNode struct{ Next *filterNode }
+type recursiveFilterPointer *recursiveFilterPointer
+
+func TestFilterGraphRejectsRecursivePointerTypes(t *testing.T) {
+	var self recursiveFilterPointer
+	self = &self
+	w, binding := testWatcher(t, WatcherOptions{}, newWatchTestCursor())
+	t.Cleanup(func() { testWatchClose(t, w) })
+	for name, value := range map[string]recursiveFilterPointer{"nil": nil, "self": self} {
+		t.Run(name, func(t *testing.T) {
+			filter := bson.D{{Key: "x", Value: value}}
+			if _, err := json.Marshal(Find[author]{Filter: filter}); !errors.Is(err, ErrValue) {
+				t.Fatalf("recursive pointer marshal = %v", err)
+			}
+			if _, err := Observe(w, binding, Find[author]{Filter: filter}); !errors.Is(err, ErrValue) {
+				t.Fatalf("recursive pointer observe = %v", err)
+			}
+		})
+	}
+}
 
 func TestFilterGraphRejectsCyclesBeforeEncoding(t *testing.T) {
 	d := bson.D{{Key: "self"}}

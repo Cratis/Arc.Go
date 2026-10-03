@@ -83,7 +83,14 @@ func (g *filterGuard) visit(v reflect.Value, depth, limit int) error {
 		}
 	}
 	base := v.Type()
+	pointerTypes := make(map[reflect.Type]bool)
 	for base.Kind() == reflect.Pointer {
+		// Legal named pointer types can refer back to themselves, even when
+		// the value is nil. Bound type traversal before any value fast path.
+		if pointerTypes[base] || depth+len(pointerTypes) >= maxFilterDepth {
+			return ErrValue
+		}
+		pointerTypes[base] = true
 		base = base.Elem()
 	}
 	known := base == reflect.TypeFor[bson.D]() || base == reflect.TypeFor[bson.DateTime]() ||
