@@ -14,13 +14,17 @@ import (
 )
 
 type directives struct {
-	kind, name, path, model, http string
-	namespace                     string
-	hasNamespace, hasPath         bool
-	ignore, exclude               bool
-	auth                          *metadata.Authorization
-	severity                      *validation.Severity
-	pos                           token.Pos
+	kind, name, path, model, http           string
+	namespace                               string
+	hasNamespace, hasPath                   bool
+	ignore, exclude                         bool
+	auth                                    *metadata.Authorization
+	severity                                *validation.Severity
+	pos                                     token.Pos
+	flags                                   bool
+	members                                 map[string]string
+	response                                string
+	derivedID, derivedBase, targetInterface string
 }
 
 func parseDirectives(group *ast.CommentGroup) (directives, error) {
@@ -50,9 +54,15 @@ func parseDirectives(group *ast.CommentGroup) (directives, error) {
 		var allowed string
 		switch name {
 		case "command":
-			allowed = " name path block-on "
+			allowed = " name path block-on response "
 		case "readmodel":
 			allowed = " name path "
+		case "model":
+			allowed = " name "
+		case "enum":
+			allowed = " name flags members "
+		case "derived":
+			allowed = " id base interface "
 		case "query":
 			allowed = " model name path http "
 		case "authorize":
@@ -82,13 +92,30 @@ func parseDirectives(group *ast.CommentGroup) (directives, error) {
 			opts[key] = value
 		}
 		switch name {
-		case "command", "readmodel", "query":
+		case "command", "readmodel", "query", "enum", "model":
 			if d.kind != "" {
 				return d, fmt.Errorf("conflicting artifact directives")
 			}
 			d.kind = name
 			d.name, d.model, d.http = opts["name"], opts["model"], opts["http"]
 			d.path, d.hasPath = opts["path"]
+			d.response = opts["response"]
+			if value, supplied := opts["flags"]; supplied {
+				if value != "true" && value != "false" {
+					return d, fmt.Errorf("flags must be true or false")
+				}
+				d.flags = value == "true"
+			}
+			if value := opts["members"]; value != "" {
+				d.members = map[string]string{}
+				for _, item := range strings.Split(value, ",") {
+					key, member, ok := strings.Cut(item, ":")
+					if !ok || key == "" || member == "" || d.members[key] != "" {
+						return d, fmt.Errorf("invalid enum member mapping")
+					}
+					d.members[key] = member
+				}
+			}
 			if d.http != "" && d.http != "GET" && d.http != "QUERY" {
 				return d, fmt.Errorf("http must be GET or QUERY")
 			}
@@ -98,6 +125,14 @@ func parseDirectives(group *ast.CommentGroup) (directives, error) {
 					return d, fmt.Errorf("invalid block-on severity %q", value)
 				}
 				d.severity = &severity
+			}
+		case "derived":
+			d.derivedID, d.derivedBase, d.targetInterface = opts["id"], opts["base"], opts["interface"]
+			if d.targetInterface == "" {
+				return d, fmt.Errorf("derived declaration requires an interface")
+			}
+			if d.derivedID != "" && d.derivedBase == "" {
+				return d, fmt.Errorf("derived declaration requires an explicit base model")
 			}
 		case "authorize":
 			if d.auth != nil && d.auth.AllowAnonymous {
@@ -122,7 +157,13 @@ func parseDirectives(group *ast.CommentGroup) (directives, error) {
 			d.ignore = true
 		}
 	}
-	if d.ignore && (d.kind != "" || d.auth != nil || d.exclude || d.hasNamespace) {
+	if d.targetInterface != "" && d.kind == "" {
+		d.kind = "model"
+	}
+	if d.targetInterface != "" && d.kind != "model" && d.kind != "readmodel" {
+		return d, fmt.Errorf("derived declarations require a wire model")
+	}
+	if d.ignore && (d.kind != "" || d.auth != nil || d.exclude || d.hasNamespace || d.targetInterface != "") {
 		return d, fmt.Errorf("arc:ignore cannot be combined with other directives")
 	}
 	return d, nil

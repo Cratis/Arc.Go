@@ -130,6 +130,50 @@ func TestNamespaceDefaults(t *testing.T) {
 	}
 }
 
+func TestDerivedOnlyPackageRegistersTheDeclaredWireContract(t *testing.T) {
+	dir := consumer(t)
+	put(t, filepath.Join(dir, "models.go"), `package consumer
+type Notice interface { notice() }
+//arc:model
+//arc:derived interface=Notice
+type Ordinary struct { Title string }
+func (Ordinary) notice() {}
+//arc:model
+//arc:derived id=1578f20a-cd63-456f-98aa-c97daf05d0fa base=Ordinary interface=Notice
+type Urgent struct { Ordinary; Priority int }
+`)
+	generate(t, Config{Dir: dir})
+	put(t, filepath.Join(dir, "models_test.go"), `package consumer
+import (
+ "testing"
+ arc "github.com/cratis/arc.go"
+ "github.com/cratis/arc.go/serialization"
+)
+func TestWireRegistry(t *testing.T) {
+ builder, err := arc.NewBuilder(arc.Options{})
+ if err != nil { t.Fatal(err) }
+ if err := RegisterArtifacts(builder); err != nil { t.Fatal(err) }
+ type envelope struct { Notice Notice }
+ for _, notice := range []Notice{Ordinary{Title:"ordinary"}, Urgent{Ordinary{Title:"urgent"},7}} {
+  body, err := serialization.Marshal(envelope{notice})
+  if err != nil { t.Fatal(err) }
+  var got envelope
+  if err := serialization.Unmarshal(body, &got); err != nil { t.Fatal(err) }
+  if got.Notice != notice { t.Fatal(got.Notice) }
+ }
+}
+`)
+	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "test", "-mod=mod", "-count=1", "-timeout=30s", "./...")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=local")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("derived-only consumer did not compile/run: %v\n%s", err, output)
+	}
+}
+
 func TestStaleOutputCleanupIsOwnedAndScoped(t *testing.T) {
 	dir := consumer(t)
 	put(t, filepath.Join(dir, "artifacts.go"), "package consumer\n")

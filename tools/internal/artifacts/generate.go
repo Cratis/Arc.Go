@@ -23,10 +23,12 @@ import (
 // Check verifies output without writing. Only the selected build configuration
 // is generated; use separate packages for incompatible artifact sets.
 type Config struct {
-	Dir      string
-	Patterns []string
-	Tags     string
-	Check    bool
+	Dir        string
+	Patterns   []string
+	Tags       string
+	Check      bool
+	ConfigFile string
+	Profile    *ApplicationProfile
 }
 
 // Generate type-checks selected main-module packages without executing user code.
@@ -35,6 +37,23 @@ type Config struct {
 // Existing owned output is overlaid during analysis, so stale adapters cannot
 // prevent regeneration. Handwritten files and dependency modules are never edited.
 func Generate(ctx context.Context, config Config) error {
+	profile := ApplicationProfile{FormatVersion: GraphVersion, Name: "adapter-only"}
+	if config.ConfigFile != "" {
+		loaded, err := readProfile(config.ConfigFile)
+		if err != nil {
+			return err
+		}
+		profile = loaded
+	}
+	if config.Profile != nil {
+		profile = *config.Profile
+		if err := validateProfile(profile); err != nil {
+			return err
+		}
+	}
+	if profile.TypeScript.Out != "" {
+		return fmt.Errorf("TypeScript publication is not implemented yet; the descriptor graph is preparatory")
+	}
 	patterns := config.Patterns
 	if len(patterns) == 0 {
 		patterns = []string{"."}
@@ -88,6 +107,7 @@ func Generate(ctx context.Context, config Config) error {
 		content []byte
 	}
 	var outputs []output
+	var analyses []*analysis
 	for _, pkg := range loaded {
 		if len(pkg.Errors) > 0 {
 			messages := make([]string, 0, len(pkg.Errors))
@@ -101,12 +121,18 @@ func Generate(ctx context.Context, config Config) error {
 		if err != nil {
 			return err
 		}
-		dir, err := packageDirectory(pkg)
+		analyses = append(analyses, a)
+	}
+	if _, err := buildGraph(analyses, profile, false); err != nil {
+		return err
+	}
+	for _, a := range analyses {
+		dir, err := packageDirectory(a.pkg)
 		if err != nil {
 			return err
 		}
 		var data []byte
-		if len(a.commands)+len(a.models) > 0 {
+		if len(a.commands)+len(a.models) > 0 || hasDerivedModels(a) {
 			data, err = emit(a)
 			if err != nil {
 				return err

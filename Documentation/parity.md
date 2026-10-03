@@ -50,16 +50,37 @@ The frontend authority is `Source/DotNET/Tools/ProxyGenerator` and
   and assignable concrete structs/pointers. Exact repetitions are idempotent;
   conflicts, reserved fields, custom codecs, absent/unknown discriminators and
   undeclared implementations fail. `serialization/derived_test.go` covers round
-  trips and failure atomicity. Go embedding alone does not declare inheritance.
+  trips and failure atomicity. An explicit default concrete model preserves
+  ordinary base payloads without a discriminator; unknown IDs never fall back to
+  that default. Go embedding alone does not declare inheritance.
 - **Shared field selection**: reflection and compiler adapters use
   `internal/modelshape.Select`, keeping wire visibility and dominance in one kernel.
   The existing reflection corpus remains executable; compiler corpus parity is
-  part of the forthcoming wire-graph analysis.
-- **Concepts remain blocked** by
+  covered by `TestCompilerAndReflectAdaptersUseTheSameFieldCorpus`.
+- **Descriptor graph and wire analysis**: tools coordinate the whole selected
+  catalog before resolving routes and preserve adapter-only generation. The
+  serialization-ready graph separates client fields, responses, cardinality,
+  defaults, roles, HTTP preference and output selection from compiler attachments.
+  `tools/internal/artifacts/graph_test.go` covers rich shared scalars, constants,
+  argument presence, pages, result-field sorting declarations and conservative
+  rejection boundaries. TypeScript emission/publication remains not implemented;
+  configuration requesting it currently fails explicitly. Rich dictionaries and
+  non-string keys require an explicit executable codec/import mapping rather than
+  an unhydrated or `any` surface. Precision warnings are deterministic.
+- **Shared concept compiler analysis**: tools pin Fundamentals.Go
+  `0ee8cd0a93cf88e86f6da9d1167ce13757590f25` (including the classifier delivered
+  at `24d60f07b6090f195cd07b9f1045fb540ff49fd7`) and use
+  `concepts/conceptstypes.Underlying`, switching only on shared `ScalarKind` values.
+  Valid concepts map to scalar constructors rather than wrappers; invalid
+  declarations retain shared `ErrInvalidConcept`, `TypeError` and reason values.
+  `TestConceptProjectionUsesTheSharedDeclarationCorpus` loads the pinned shared
+  declaration corpus, including aliases, pointer layers and conservative failures.
+  This replaces the former rejection-only seam from
   [Fundamentals.Go issue 15](https://github.com/Cratis/Fundamentals.Go/issues/15).
-  Shared UUID/calendar/duration scalars and plain named primitives may be mapped;
-  concept-backed fields must fail explicitly until the shared compiler classifier
-  is available. Arc must not introduce a second weaker concept recognizer.
+  Enum member names use the shared acronym-friendly `naming.CamelCase`; field
+  selection still uses Arc's authoritative shared kernel, not preservation of all
+  Go field spelling. The root runtime remains on Fundamentals.Go `v0.1.0`.
+  Browser proxy parity is still Partial until TypeScript emission is exercised.
 - **Pinned reference baseline**: `ContractTests/ProxyComparison` retains historical
   `22.45.0` captures and fresh `22.48.2` executable captures, locked NuGet/npm
   dependencies, strict untouched-proxy compilation and real-runtime

@@ -18,6 +18,7 @@ func main() {
 	var config artifacts.Config
 	flag.StringVar(&config.Dir, "dir", "", "module directory (default: current directory)")
 	flag.StringVar(&config.Tags, "tags", "", "comma-separated Go build tags")
+	flag.StringVar(&config.ConfigFile, "config", "", "versioned application profile configuration")
 	flag.BoolVar(&config.Check, "check", false, "verify generated output without writing")
 	flag.Parse()
 	config.Patterns = flag.Args()

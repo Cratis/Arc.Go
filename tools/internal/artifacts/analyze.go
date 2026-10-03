@@ -36,6 +36,7 @@ type method struct {
 }
 
 type command struct {
+	descriptor *CommandDescriptor
 	model
 	receiver types.Type
 	handle   method
@@ -45,18 +46,24 @@ type command struct {
 }
 
 type query struct {
-	model *model
-	d     directives
-	call  method
-	args  types.Type // nil means queries.NoArguments
+	descriptor *QueryDescriptor
+	model      *model
+	d          directives
+	call       method
+	args       types.Type // nil means queries.NoArguments
 }
 
 type analysis struct {
-	pkg       *packages.Package
-	namespace string
-	commands  []command
-	models    []*model
-	queries   []query
+	pkg             *packages.Package
+	namespace       string
+	commands        []command
+	models          []*model
+	queries         []query
+	exports         []*model
+	enums           []*model
+	graph           *Graph
+	staticNamespace bool
+	wireTypes       map[string]types.Type
 }
 
 func diagnostic(pkg *packages.Package, pos token.Pos, format string, args ...any) error {
@@ -113,12 +120,26 @@ func analyze(pkg *packages.Package) (*analysis, error) {
 					if d.ignore {
 						continue
 					}
-					if d.hasNamespace || d.kind != "command" && d.kind != "readmodel" {
+					if d.hasNamespace || d.kind != "command" && d.kind != "readmodel" && d.kind != "enum" && d.kind != "model" {
 						return nil, diagnostic(pkg, ts.Pos(), "type directives require arc:command or arc:readmodel")
 					}
 					named, ok := pkg.TypesInfo.Defs[ts.Name].Type().(*types.Named)
 					if !ok || ts.Assign.IsValid() || named.TypeParams().Len() > 0 {
 						return nil, diagnostic(pkg, ts.Pos(), "artifacts require a defined nongeneric struct")
+					}
+					if d.kind == "enum" {
+						if d.name == "" {
+							d.name = named.Obj().Name()
+						}
+						a.enums = append(a.enums, &model{typ: named, d: d, pos: ts.Pos()})
+						continue
+					}
+					if d.kind == "model" {
+						if d.name == "" {
+							d.name = named.Obj().Name()
+						}
+						a.exports = append(a.exports, &model{typ: named, d: d, pos: ts.Pos()})
+						continue
 					}
 					st, ok := named.Underlying().(*types.Struct)
 					if !ok {

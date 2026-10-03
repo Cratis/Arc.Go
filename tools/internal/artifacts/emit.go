@@ -77,6 +77,34 @@ func emit(a *analysis) ([]byte, error) {
 		e.line("var %s ArcBindings", e.bindings)
 		e.line("if len(%s) == 1 { %s = %s[0] }", e.supplied, e.bindings, e.supplied)
 	}
+	var derivatives []*model
+	for _, models := range [][]*model{a.models, a.exports} {
+		for _, model := range models {
+			if model.d.targetInterface != "" {
+				derivatives = append(derivatives, model)
+			}
+		}
+	}
+	if len(derivatives) > 0 {
+		serialization := e.imp(runtimePath + "/serialization")
+		e.line("if %s := %s.RegisterDerivedTypes(", e.err, serialization)
+		for _, model := range derivatives {
+			object := a.pkg.Types.Scope().Lookup(model.d.targetInterface)
+			if object == nil {
+				return nil, diagnostic(a.pkg, model.pos, "adapter derived interface must be declared in the owning package")
+			}
+			base := object.Type()
+			registered := types.Type(model.typ)
+			if !types.AssignableTo(registered, base) {
+				registered = types.NewPointer(model.typ)
+			}
+			if !types.AssignableTo(registered, base) {
+				return nil, diagnostic(a.pkg, model.pos, "derived model does not implement its declared interface")
+			}
+			e.line("%s.DerivedDeclaration{Default:%t, ID:%q, Base:%s.TypeFor[%s](), Type:%s.TypeFor[%s]()},", serialization, model.d.derivedID == "", model.d.derivedID, e.imp("reflect"), e.typ(base), e.imp("reflect"), e.typ(registered))
+		}
+		e.line("); %s != nil { return %s }", e.err, e.err)
+	}
 	for _, m := range a.models {
 		e.emitModel(m)
 	}
@@ -218,7 +246,7 @@ func (e *emitter) auth(a *metadata.Authorization) string {
 func (e *emitter) emitModel(m *model) {
 	q := e.imp(runtimePath + "/queries")
 	e.line("if %s := %s.RegisterReadModel[%s](%s, %s.WithModelName(%q), %s.WithModelPath(%q),", e.err, q, e.typ(m.typ), e.builder, q, m.d.name, q, m.d.path)
-	if e.analysis.namespace != "" {
+	if e.analysis.namespace != "" || e.analysis.staticNamespace {
 		e.line("%s.WithModelNamespace(%q),", q, e.analysis.namespace)
 	}
 	if m.d.exclude {
@@ -253,6 +281,10 @@ func (e *emitter) manifest(m method) string {
 	return name
 }
 func (e *emitter) emitCommand(c command) {
+	if c.descriptor != nil {
+		declaration := c.descriptor.Declaration
+		c.d.name, c.d.path, c.d.auth, c.d.exclude, c.d.severity = declaration.Type.Name, declaration.Path, declaration.Authorization, declaration.ExcludeFromDiscovery, declaration.BlockOnValidationSeverity
+	}
 	cmd := e.imp(runtimePath + "/commands")
 	context := e.imp("context")
 	ct := e.typ(c.receiver)
@@ -283,7 +315,7 @@ func (e *emitter) emitCommand(c command) {
 		e.line("}),")
 	}
 	e.line("%s.WithName[%s](%q), %s.WithPath[%s](%q),", cmd, ct, c.d.name, cmd, ct, c.d.path)
-	if e.analysis.namespace != "" {
+	if e.analysis.namespace != "" || e.analysis.staticNamespace {
 		e.line("%s.WithNamespace[%s](%q),", cmd, ct, e.analysis.namespace)
 	}
 	if c.d.auth != nil {
@@ -291,6 +323,25 @@ func (e *emitter) emitCommand(c command) {
 	}
 	if c.d.exclude {
 		e.line("%s.WithExcludeFromDiscovery[%s](true),", cmd, ct)
+	}
+	response := c.d.response
+	if e.analysis.graph != nil {
+		if override, exists := e.analysis.graph.Profile.Responses[(metadata.TypeName{Namespace: e.analysis.namespace, Name: c.d.name}).Identity()]; exists {
+			response = override
+		}
+	}
+	switch response {
+	case "none":
+		e.line("%s.WithNoResponse[%s](),", cmd, ct)
+	case "value":
+		if c.handle.output == nil {
+			return
+		}
+		responseType := c.handle.output
+		if namedType(responseType, runtimePath+"/commands", "Outcome") {
+			responseType = types.Unalias(responseType).(*types.Named).TypeArgs().At(0)
+		}
+		e.line("%s.WithResponseType[%s, %s](),", cmd, ct, e.typ(responseType))
 	}
 	if c.d.severity != nil {
 		e.line("%s.WithBlockOnValidationSeverity[%s](%s.Severity(%d)),", cmd, ct, e.imp(runtimePath+"/validation"), *c.d.severity)
@@ -304,6 +355,10 @@ func (e *emitter) emitCommand(c command) {
 	e.line("); %s != nil { return %s }", e.err, e.err)
 }
 func (e *emitter) emitQuery(q query) {
+	if q.descriptor != nil {
+		declaration := q.descriptor.Declaration
+		q.d.name, q.d.auth, q.d.http = declaration.Name, declaration.Authorization, string(declaration.HTTPMethod)
+	}
 	queries := e.imp(runtimePath + "/queries")
 	args := queries + ".NoArguments"
 	if q.args != nil {

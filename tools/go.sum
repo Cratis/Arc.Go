@@ -1,7 +1,7 @@
-github.com/cratis/arc.go v0.0.0-20261003065446-3c6bbbaacc06 h1:jSzF2aRPG7Vb7QHnYXQAhl+XBsdaFvLIhCShjLgNQLM=
-github.com/cratis/arc.go v0.0.0-20261003065446-3c6bbbaacc06/go.mod h1:NXZo3koeNCdRTxoFEAUr0/7ti7NBwtmBPX5rA1V/KiI=
-github.com/cratis/fundamentals.go v0.0.0-20261002221826-0fd6b51d12e4 h1:cN323+1L2EJI3rAhqNpZ0hTOnD2/z/Jfr6ZnkN/AUIU=
-github.com/cratis/fundamentals.go v0.0.0-20261002221826-0fd6b51d12e4/go.mod h1:upTRXscJLeH63NqzzY51bPvvsgjtDpfug6a6VAaT2fI=
+github.com/cratis/arc.go v0.0.0-20261003084526-d7afbc20396e h1:JPrF+L+hyHSESp2ovBuEIurczgd+ZLXvupxNyPqWMX0=
+github.com/cratis/arc.go v0.0.0-20261003084526-d7afbc20396e/go.mod h1:NXZo3koeNCdRTxoFEAUr0/7ti7NBwtmBPX5rA1V/KiI=
+github.com/cratis/fundamentals.go v0.1.1-0.20261003092705-0ee8cd0a93cf h1:6uCQbR7xHL8vqu5DbdfV1TIvSbRCu54mQUczhwA0EX0=
+github.com/cratis/fundamentals.go v0.1.1-0.20261003092705-0ee8cd0a93cf/go.mod h1:upTRXscJLeH63NqzzY51bPvvsgjtDpfug6a6VAaT2fI=
 github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
 github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
 golang.org/x/mod v0.41.0 h1:qJmnOUb4YB+FsEuM3HcWucdZASCPGhsX6uljO6pog0c=
