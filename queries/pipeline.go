@@ -42,9 +42,12 @@ type PipelineOptions struct {
 	// MaximumWait bounds observable waits; zero means five minutes.
 	MaximumWait time.Duration
 	// MaxObservations includes active and unjoined observations; zero means 1024.
-	MaxObservations        int
-	ExposeExceptionDetails bool
-	Logger                 *slog.Logger
+	MaxObservations int
+	// ObservationCleanupTimeout overrides CleanupTimeout for stream joining.
+	// Zero retains CleanupTimeout; root hosting supplies its five-second close grace.
+	ObservationCleanupTimeout time.Duration
+	ExposeExceptionDetails    bool
+	Logger                    *slog.Logger
 }
 
 // Pipeline is the public snapshot substitution boundary. Perform opens independent
@@ -75,7 +78,7 @@ func (r *Registry) Build(o PipelineOptions) (Pipeline, error) {
 	if r.frozen {
 		return nil, ErrFrozen
 	}
-	if o.CleanupTimeout < 0 || o.MaximumWait < 0 || o.MaxObservations < 0 || o.OpenResources != nil && o.ScopeFactory != nil {
+	if o.CleanupTimeout < 0 || o.MaximumWait < 0 || o.MaxObservations < 0 || o.ObservationCleanupTimeout < 0 || o.OpenResources != nil && o.ScopeFactory != nil {
 		return nil, ErrInvalidRegistration
 	}
 	if o.ScopeFactory != nil && nilValue(o.ScopeFactory) || o.DependencyCatalog != nil && nilValue(o.DependencyCatalog) || o.Membership != nil && nilValue(o.Membership) {

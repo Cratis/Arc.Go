@@ -126,6 +126,7 @@ type Observation struct {
 	consumed, closing, closed, streamClosed bool
 	closeGate                               chan struct{}
 	closeErr                                error
+	release                                 func()
 	first                                   bool
 }
 
@@ -256,6 +257,7 @@ func (p *queryPipeline) openObservation(ctx context.Context, name FullyQualified
 		cancel()
 		return failure(err)
 	}
+	o.release = boundary.TakeObservationAdmission(work)
 	subscription := &subscriptionScope{}
 	work = context.WithValue(work, queryContextKey{}, c)
 	work = context.WithValue(work, subscriptionScopeKey{}, subscription)
@@ -309,7 +311,11 @@ func (p *queryPipeline) openObservation(ctx context.Context, name FullyQualified
 }
 
 func (o *Observation) cleanup() error {
-	ctx, cancel, err := boundary.CleanupContext(o.ctx, o.pipeline.options.CleanupTimeout)
+	timeout := o.pipeline.options.ObservationCleanupTimeout
+	if timeout == 0 {
+		timeout = o.pipeline.options.CleanupTimeout
+	}
+	ctx, cancel, err := boundary.CleanupContext(o.ctx, timeout)
 	if err != nil {
 		return err
 	}
@@ -362,6 +368,10 @@ func (o *Observation) Close(ctx context.Context) error {
 	}
 	o.closed = true
 	o.pipeline.forget(o)
+	if o.release != nil {
+		o.release()
+		o.release = nil
+	}
 	return o.closeErr
 }
 

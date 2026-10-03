@@ -47,11 +47,14 @@ func formatSeconds(d time.Duration) string {
 
 func (p *queryPipeline) observableSnapshot(ctx context.Context, name FullyQualifiedQueryName, request Request) (Result[any], error) {
 	q, _ := p.Lookup(name)
-	o, result, err := p.openObservation(ctx, name, request, !q.enumerable)
+	probe := boundary.IsObservationProbe(ctx)
+	o, result, err := p.openObservation(ctx, name, request, !q.enumerable && !probe)
 	if o == nil {
 		return result, err
 	}
-	if q.enumerable {
+	if probe {
+		result = NotReady[any](o.metadata.correlationID)
+	} else if q.enumerable {
 		// Admission still protects the capability error; no source is activated.
 		err = ErrEnumerableRequiresStreaming
 		result = p.observableResult(ctx, name, result, err)

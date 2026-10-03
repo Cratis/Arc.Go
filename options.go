@@ -40,8 +40,22 @@ type Options struct {
 	ExposeExceptionDetails bool
 	Logger                 *slog.Logger
 	HTTP                   HTTPOptions
+	Observable             ObservableOptions
 	Introspection          IntrospectionOptions
 	Identity               IdentityOptions
+}
+
+// ObservableOptions bounds owned query observations. Zero fields select defaults.
+// Limits include opening and retired-but-unjoined operations, not just active streams.
+// Transport-specific connection/writer limits are added with their transports.
+type ObservableOptions struct {
+	// MaxObservations is the application-wide operation ceiling; default 1024.
+	MaxObservations int
+	// MaximumWait is the maximum first-result wait budget; default five minutes.
+	MaximumWait time.Duration
+	// CloseGrace bounds initial stream cleanup; default five seconds. Timeouts
+	// remain owned and must be joined by a later application Shutdown.
+	CloseGrace time.Duration
 }
 
 // HTTPOptions controls bounded unary HTTP publication and owned-server timeouts.
@@ -106,6 +120,19 @@ func normalizeOptions(o Options) (Options, error) {
 	}
 	if o.CleanupTimeout == 0 {
 		o.CleanupTimeout = 30 * time.Second
+	}
+	observable := &o.Observable
+	if observable.MaxObservations < 0 || observable.MaximumWait < 0 || observable.CloseGrace < 0 {
+		return Options{}, ErrInvalidOptions
+	}
+	if observable.MaxObservations == 0 {
+		observable.MaxObservations = 1024
+	}
+	if observable.MaximumWait == 0 {
+		observable.MaximumWait = 5 * time.Minute
+	}
+	if observable.CloseGrace == 0 {
+		observable.CloseGrace = 5 * time.Second
 	}
 	h := &o.HTTP
 	if h.MaxBodyBytes < 0 || h.MaxQueryBytes < 0 || h.MaxResponseBytes < 0 || h.MaxHeaderBytes < 0 || h.ReadHeaderTimeout < 0 || h.ReadTimeout < 0 || h.WriteTimeout < 0 || h.IdleTimeout < 0 || h.ShutdownTimeout < 0 {

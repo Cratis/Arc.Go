@@ -57,18 +57,17 @@ func (a *Application) queryEndpoint(w http.ResponseWriter, r *http.Request, e me
 	}
 	id := correlation.FromContext(r.Context())
 	var input queries.ReaderInput
-	if method == "GET" {
-		if len(r.URL.RawQuery) > a.options.HTTP.MaxQueryBytes {
-			a.publish(w, r, 413, queries.FromError[any](id, &queries.ReadError{Malformed: true}))
-			return
-		}
-		values, err := url.ParseQuery(r.URL.RawQuery)
-		if err != nil {
-			a.publish(w, r, 400, queries.FromError[any](id, &queries.ReadError{Malformed: true, Cause: err}))
-			return
-		}
-		input.Query = values
-	} else {
+	if len(r.URL.RawQuery) > a.options.HTTP.MaxQueryBytes {
+		a.publish(w, r, 413, queries.FromError[any](id, &queries.ReadError{Malformed: true}))
+		return
+	}
+	values, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		a.publish(w, r, 400, queries.FromError[any](id, &queries.ReadError{Malformed: true, Cause: err}))
+		return
+	}
+	input.Query = values
+	if method != "GET" {
 		body, status, err := httptransport.ReadBody(w, r, a.options.HTTP.MaxBodyBytes)
 		if err != nil {
 			a.publish(w, r, status, queries.FromError[any](id, &queries.ReadError{Malformed: true, Cause: err}))
@@ -77,7 +76,7 @@ func (a *Application) queryEndpoint(w http.ResponseWriter, r *http.Request, e me
 		input.Body = body
 	}
 	var request queries.Request
-	err := boundary.Call(r.Context(), func(ctx context.Context) error {
+	err = boundary.Call(r.Context(), func(ctx context.Context) error {
 		var err error
 		request, err = reader.reader.Read(ctx, input)
 		return err
@@ -86,6 +85,20 @@ func (a *Application) queryEndpoint(w http.ResponseWriter, r *http.Request, e me
 		a.publish(w, r, 400, queries.FromError[any](id, err))
 		return
 	}
-	result, _ := a.queries.Perform(httpPipelineContext(r.Context()), queries.FullyQualifiedQueryName(e.Identity), request)
-	a.publish(w, r, result.StatusCode(), result)
+	ctx := httpPipelineContext(r.Context())
+	if r.Method == "HEAD" {
+		ctx = boundary.WithObservationProbe(ctx)
+	}
+	result, err := a.queries.Perform(ctx, queries.FullyQualifiedQueryName(e.Identity), request)
+	if err == queries.ErrEnumerableRequiresStreaming {
+		a.publish(w, r, http.StatusBadRequest, struct {
+			Message string `json:"message"`
+		}{Message: err.Error()})
+		return
+	}
+	status := result.StatusCode()
+	if _, timeout := err.(*queries.WaitTimeoutError); timeout {
+		status = http.StatusRequestTimeout
+	}
+	a.publish(w, r, status, result)
 }

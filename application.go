@@ -48,7 +48,8 @@ func (a *Application) Endpoints() []metadata.Endpoint { return slices.Clone(a.en
 // Commands exposes the backend command substitution seam.
 func (a *Application) Commands() commands.Pipeline { return admittedCommands{a} }
 
-// Queries exposes the backend snapshot query substitution seam.
+// Queries exposes the admitted backend query seam, including the optional
+// queries.ObservablePipeline capability for the whole observation lifetime.
 func (a *Application) Queries() queries.Pipeline { return admittedQueries{a} }
 
 // ServeHTTP requires explicit application startup before accepting work.

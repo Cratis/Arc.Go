@@ -9,6 +9,7 @@ import (
 	"github.com/cratis/arc.go/commands"
 	"github.com/cratis/arc.go/correlation"
 	"github.com/cratis/arc.go/execution"
+	boundary "github.com/cratis/arc.go/internal/pipeline"
 	"github.com/cratis/arc.go/queries"
 )
 
@@ -77,6 +78,27 @@ func (p admittedQueries) run(ctx context.Context, s *execution.Scope, name queri
 	}
 	return p.a.queries.Perform(work, name, r)
 }
+func (p admittedQueries) Open(ctx context.Context, name queries.FullyQualifiedQueryName, r queries.Request) (*queries.Observation, queries.Result[any], error) {
+	work, release, err := p.a.admit(ctx)
+	if err != nil {
+		return nil, queries.FromError[any](contextID(ctx), err), err
+	}
+	work, lease := boundary.WithObservationAdmission(work, release)
+	defer lease.ReleaseUnused()
+	capability, ok := p.a.queries.(queries.ObservablePipeline)
+	if !ok {
+		return nil, queries.FromError[any](contextID(ctx), queries.ErrObservableCapability), queries.ErrObservableCapability
+	}
+	return capability.Open(work, name, r)
+}
+func (p admittedQueries) CloseObservations(ctx context.Context) error {
+	capability, ok := p.a.queries.(queries.ObservablePipeline)
+	if !ok {
+		return queries.ErrObservableCapability
+	}
+	return capability.CloseObservations(ctx)
+}
+
 func contextID(ctx context.Context) correlation.ID {
 	if ctx == nil {
 		return correlation.ID{}
