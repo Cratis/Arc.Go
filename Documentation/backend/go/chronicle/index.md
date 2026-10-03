@@ -150,6 +150,8 @@ History is loaded once per root, aggregate type, source and route. Empty history
 
 The default stream type is the aggregate's simple type name. `WithAggregateRoute` overrides routing; `ConfigureCommand.Sequence` selects the shared command sequence. History and dispatch must agree. Unknown generations and missing handlers fail explicitly. History is buffered, not a bounded-memory stream.
 
+Returned-event snapshots and aggregate history use the selected store's frozen SDK event descriptors, preserving explicit JSON names, configured naming and field codecs. Each historical event uses its exact registered ID and generation; register that historical shape and its aggregate handler. The adapter does not guess a current shape, use alternate-generation content or migrate locally. A decode failure returns the SDK error and prevents folding any of that history.
+
 Explicit `Commit` checks the root execution's `CheckRecordedFailures` guard before persistence. Already-recorded failures in this frame or an ancestor, including ignored nested authorization, validation and command-lookup failures, prevent commitment. Nested Validate remains advisory during Execute; the guard cannot predict failures that occur after commitment.
 
 Explicit `Commit` finalizes the **whole shared owner**, not only this aggregate's events. Later staging fails without creating a successor. Its positions describe the shared batch and cannot be attributed to one aggregate in a mixed command. Returning `AggregateCommitResult` adopts its diagnostics into the Arc envelope, including warning findings after successful persistence. A later command failure retracts the response but retains the committed completion report; it cannot undo already-persisted events.
@@ -195,4 +197,4 @@ python3 scripts/check-boundaries.py
 
 Integration-tagged tests fail when the endpoint variable is absent. They exercise HTTP commands, atomic rejection/readback, tenants, shared projection/query models, projection injection, aggregate competition, reactor-returned commands, failed observer partitions and ignored immediate-append rejection. Root and tools gates run separately; `./...` does not cross module boundaries.
 
-Protected decisions/enrollment tokens, watches, aggregate snapshots, historical-generation aggregate decoding, full compliance authoring and general operation compensation remain unsupported. None is implied by an ordinary injected model or a successful snapshot test.
+Protected decisions/enrollment tokens, watches, aggregate snapshots, automatic historical-generation migration, full compliance authoring and general operation compensation remain unsupported. None is implied by an ordinary injected model or a successful snapshot test.

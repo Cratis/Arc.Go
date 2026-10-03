@@ -5,7 +5,6 @@ package sdk
 
 import (
 	"context"
-	"encoding/json"
 	"reflect"
 	"slices"
 	"strings"
@@ -91,7 +90,7 @@ func (a *adapter) Descriptors() []integration.EventDescriptor {
 	for _, d := range a.events.Descriptors() {
 		result = append(result, integration.EventDescriptor{Type: d.GoType(), Identity: integration.EventType{ID: string(d.Ref().ID), Generation: uint32(d.Ref().Generation)}, Validate: func(value any) error { _, err := d.Marshal(value); return err }, Decode: func(body []byte) (any, error) {
 			value := reflect.New(d.GoType())
-			if err := json.Unmarshal(body, value.Interface()); err != nil {
+			if err := d.Unmarshal(body, value.Interface()); err != nil {
 				return nil, err
 			}
 			return value.Elem().Interface(), nil
