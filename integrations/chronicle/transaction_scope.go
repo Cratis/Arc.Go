@@ -263,8 +263,8 @@ func (i *Integration) finish(ctx context.Context, inv *commands.Invocation, tx *
 	result := CommitResult{}
 	var err error
 	if !success || poison != nil {
-		result.Report.Disposition = commands.NotCommitted
 		if tx.owner != nil {
+			result.Report.Disposition = commands.NotCommitted
 			err = tx.owner.Rollback()
 		}
 	} else if tx.owner != nil {
@@ -282,6 +282,11 @@ func (i *Integration) finish(ctx context.Context, inv *commands.Invocation, tx *
 		failure = result.Failure(inv.CommandContext().Command(), err)
 	}
 	result.Report = mergeObserved(result.Report, immediate)
+	if failure != nil && result.Report.Disposition == commands.NoPersistedWork {
+		// Explicit no-work evidence prevents Arc from treating an errored terminal
+		// callback with no observation as an uncertain persistence attempt.
+		failure = errors.Join(failure, commands.ReportCommit(ctx, inv, result.Report))
+	}
 	if logger := i.options.Logger; logger != nil && (result.Report.Disposition == commands.OutcomeUnknown || result.Report.Disposition == commands.MixedCommit) {
 		logger.ErrorContext(ctx, "Chronicle outcome unknown; reconcile before resubmission", "correlationId", inv.CommandContext().CorrelationID(), "store", tx.coordinates.Store, "namespace", tx.coordinates.Namespace, "sequence", tx.coordinates.Sequence)
 	}
