@@ -43,10 +43,18 @@ The frontend authority is `Source/DotNET/Tools/ProxyGenerator` and
   Shared UUID/calendar/duration scalars and plain named primitives may be mapped;
   concept-backed fields must fail explicitly until the shared compiler classifier
   is available. Arc must not introduce a second weaker concept recognizer.
+- **Pinned reference baseline**: `ContractTests/ProxyComparison` retains historical
+  `22.45.0` captures and fresh `22.48.2` executable captures, locked NuGet/npm
+  dependencies, strict untouched-proxy compilation and real-runtime
+  characterization tests. This is reference-only evidence: Go proxy comparison,
+  paired HTTP execution and rendered React hooks are not implemented yet.
 - **Adapter defaults**: narrow command/model name and namespace options preserve
   the actual composition namespace without the removed `Builder.CommandNamespace`
   accessor. `TestGeneratedRegistrationOptionsPreserveNamespaceDefaults` covers
-  the supported runtime options.
+  the supported runtime options. The independent tools consumer regression
+  `TestNamespaceLessAdaptersUseSupportedRegistrationDefaults` covers both global
+  and configured composition namespaces, renamed artifacts and excluded queries;
+  existing stale-output bootstrap coverage remains executable.
 - **Profile agreement**: `Builder.ExpectGeneratedEndpoints` checks owned endpoints
   against the final complete catalog at Build, including manual artifacts and
   `/validate`. `generated_contract_test.go` covers copied inputs, overlap rejection,
