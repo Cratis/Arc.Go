@@ -223,31 +223,18 @@ func analyzeWireGraph(graph *Graph, analyses []*analysis, profile ApplicationPro
 				return err
 			}
 			descriptor.Result = result
-			if !types.Identical(types.Unalias(query.call.output), query.model.typ) {
-				switch output := types.Unalias(query.call.output).(type) {
-				case *types.Slice:
-					element, err := w.describe(output.Elem())
-					if err != nil {
-						return err
-					}
-					descriptor.Result = WireType{Kind: "array", Element: &element}
-				case *types.Array:
-					element, err := w.describe(output.Elem())
-					if err != nil {
-						return err
-					}
-					descriptor.Result = WireType{Kind: "array", Element: &element}
-				case *types.Named:
-					if namedType(output, runtimePath+"/queries", "Page") {
-						descriptor.Paged = true
-						element, err := w.describe(output.TypeArgs().At(0))
-						if err != nil {
-							return err
-						}
-						descriptor.Result = WireType{Kind: "array", Element: &element}
-					}
-				case *types.Pointer:
-					descriptor.Result.Nullable = true
+			descriptor.Result.Nullable = query.shape.nullable
+			descriptor.Paged = query.shape.paged
+			if query.shape.collection {
+				element, err := w.describe(query.shape.element)
+				if err != nil {
+					return err
+				}
+				descriptor.Result = WireType{Kind: "array", Element: &element}
+			}
+			if query.emission != nil && query.shape.collection {
+				if err := validateObservableGoIdentity(query.model.typ); err != nil {
+					return diagnostic(a.pkg, query.call.decl.Pos(), "%v", err)
 				}
 			}
 			for _, field := range w.nodes[result.Target].Fields {

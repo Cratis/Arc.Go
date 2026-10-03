@@ -20,7 +20,7 @@ func main() {
 	flag.StringVar(&config.Tags, "tags", "", "comma-separated Go build tags")
 	flag.StringVar(&config.ConfigFile, "config", "", "versioned application profile configuration")
 	flag.BoolVar(&config.Check, "check", false, "verify generated output without writing")
-	flag.StringVar(&config.TypeScriptOut, "typescript-out", "", "enable supported TypeScript models, commands and snapshot queries at this output root")
+	flag.StringVar(&config.TypeScriptOut, "typescript-out", "", "enable supported TypeScript models, commands, snapshot and observable queries at this output root")
 	emitGo := flag.Bool("emit-go", true, "emit Go adapters (false is currently unsupported with TypeScript output)")
 	flag.Parse()
 	flag.Visit(func(f *flag.Flag) {

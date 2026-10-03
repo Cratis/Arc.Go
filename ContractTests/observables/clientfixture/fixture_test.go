@@ -9,14 +9,64 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/cratis/arc.go/ContractTests/observables/clientfixture"
 )
 
-func TestHostedFixtureReadinessSnapshotsAndJoinedShutdown(t *testing.T) {
-	fixture, err := clientfixture.New()
+func TestGeneratedRegistrationSuppressesFactoriesAndResolvesOnlyAcceptedSources(t *testing.T) {
+	fixture, err := clientfixture.NewMode(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fixture.Signals(); got != (clientfixture.Signals{}) {
+		t.Fatalf("registration/build activated dependencies: %+v", got)
+	}
+	if err := fixture.App.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := fixture.App.Shutdown(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	for _, path := range []string{"/items", "/api/contracts/items/private?group=alpha"} {
+		response := httptest.NewRecorder()
+		fixture.App.ServeHTTP(response, httptest.NewRequest("GET", path, nil))
+		var result struct {
+			IsSuccess bool `json:"isSuccess"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+			t.Fatalf("%s: %v %s", path, err, response.Body.String())
+		}
+		if result.IsSuccess {
+			t.Fatalf("rejected request succeeded: %s %s", path, response.Body.String())
+		}
+		got := fixture.Signals()
+		if got.Resolve != 0 || got.Factory != 0 || got.Open != 0 {
+			t.Fatalf("rejected request activated source: %s %+v", path, got)
+		}
+	}
+	response := httptest.NewRecorder()
+	fixture.App.ServeHTTP(response, httptest.NewRequest("GET", "/items?group=alpha", nil))
+	if response.Code != 200 {
+		t.Fatalf("valid generated snapshot: %d %s", response.Code, response.Body.String())
+	}
+	got := fixture.Signals()
+	if got.Resolve != 1 || got.Factory != 1 || got.Open != 1 || got.Close != 1 {
+		t.Fatalf("valid snapshot lifecycle: %+v", got)
+	}
+}
+
+func TestGeneratedHostReadinessSnapshotsAndJoinedShutdown(t *testing.T) { hostedFixture(t, true) }
+
+func TestHostedFixtureReadinessSnapshotsAndJoinedShutdown(t *testing.T) { hostedFixture(t, false) }
+
+func hostedFixture(t *testing.T, generated bool) {
+	t.Helper()
+	fixture, err := clientfixture.NewMode(generated)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,5 +168,9 @@ func TestHostedFixtureReadinessSnapshotsAndJoinedShutdown(t *testing.T) {
 		}
 	case <-time.After(7 * time.Second):
 		t.Fatal("fixture Serve did not join")
+	}
+	got := fixture.Signals()
+	if got.Open != 3 || got.Close != 3 {
+		t.Fatalf("shutdown source lifecycle: %+v", got)
 	}
 }

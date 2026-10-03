@@ -28,14 +28,14 @@ type tsQueryParameter struct {
 type tsQuerySort struct{ Name, WireName, Backing string }
 type tsQuery struct {
 	Name, Route, Identity, Roles, Data, Constructor, Base, Descriptor, HTTP string
-	ParametersName, Required, Actions, QueryActions                         string
+	ParametersName, Required, Actions, QueryActions, Item                   string
 	Imports, Hooks                                                          []string
 	Parameters                                                              []tsQueryParameter
 	SortFields                                                              []tsQuerySort
-	Enumerable                                                              bool
+	Enumerable, Observable                                                  bool
 }
 
-// renderTypeScriptQueries coordinates a complete in-memory snapshot/model/command
+// renderTypeScriptQueries coordinates a complete in-memory query/model/command
 // family. It delegates transport and hooks to the locked Arc runtime, and never
 // publishes outputs or infers a provider's paging/sorting contract.
 func renderTypeScriptQueries(graph *Graph) ([]typescriptOutput, error) {
@@ -183,13 +183,17 @@ func renderTypeScriptQueries(graph *Graph) ([]typescriptOutput, error) {
 
 func planQuery(query QueryDescriptor, file string, nodes map[string]TypeDescriptor, paths map[string]string, endpoints []metadata.Endpoint) (tsQuery, error) {
 	view := tsQuery{Name: query.Declaration.Name, Identity: tsQuote(query.Declaration.Identity()), Roles: tsQuoteList(query.Roles)}
-	if query.Delivery != "snapshot" {
+	if query.Delivery != "snapshot" && query.Delivery != "observable" {
 		return view, fmt.Errorf("unsupported query delivery %q", query.Delivery)
+	}
+	view.Observable = query.Delivery == "observable"
+	if view.Observable != query.Declaration.Observable {
+		return view, fmt.Errorf("query delivery disagrees with finalized observable declaration")
 	}
 	result := query.Result
 	if result.Kind == "array" {
 		if result.Element == nil || result.Element.Nullable {
-			return view, fmt.Errorf("unsupported snapshot collection result")
+			return view, fmt.Errorf("unsupported %s collection result", query.Delivery)
 		}
 		view.Enumerable = true
 		result = *result.Element
@@ -197,6 +201,14 @@ func planQuery(query QueryDescriptor, file string, nodes map[string]TypeDescript
 	model, exists := nodes[result.Target]
 	if result.Kind != "model" || !exists || model.Kind != "model" || result.Target != query.TypeKey || model.Name != query.Declaration.ReadModel {
 		return view, fmt.Errorf("snapshot result must match finalized model-owned wire data (no opaque provider or any)")
+	}
+	if view.Observable && view.Enumerable {
+		if identity := query.Declaration.ReadModelIdentityMember; identity != "" && identity != "id" {
+			return view, fmt.Errorf("observable collection identity metadata must select id; other identity layouts are unsupported")
+		}
+		if err := validateObservableIdentity(model); err != nil {
+			return view, err
+		}
 	}
 	if query.Paged && !view.Enumerable {
 		return view, fmt.Errorf("paged snapshot must have enumerable wire data")
@@ -238,7 +250,11 @@ func planQuery(query QueryDescriptor, file string, nodes map[string]TypeDescript
 	}
 	view.Route = tsQuote(route)
 	imports := &tsImports{requests: map[tsImport]bool{}, aliases: map[tsImport]string{}, own: view.Name, reserved: []string{view.Name + "Parameters", view.Name + "SortBy", view.Name + "SortByWithoutQuery"}}
-	base := imports.add("@cratis/arc/queries", "QueryFor", true)
+	baseName := "QueryFor"
+	if view.Observable {
+		baseName = "ObservableQueryFor"
+	}
+	base := imports.add("@cratis/arc/queries", baseName, true)
 	descriptor := imports.add("@cratis/arc/reflection", "ParameterDescriptor", true)
 	var http, actions, queryActions tsImport
 	if preference != "" {
@@ -276,28 +292,15 @@ func planQuery(query QueryDescriptor, file string, nodes map[string]TypeDescript
 	}
 	if len(view.SortFields) > 0 {
 		actions = imports.add("@cratis/arc/queries", "SortingActions", true)
-		queryActions = imports.add("@cratis/arc/queries", "SortingActionsForQuery", true)
+		actionsName := "SortingActionsForQuery"
+		if view.Observable {
+			actionsName = "SortingActionsForObservableQuery"
+		}
+		queryActions = imports.add("@cratis/arc/queries", actionsName, true)
 	}
 	// Hook imports must be registered before the shared type/constructor planner
 	// resolves aliases, including collisions with locally named result models.
-	hookImports := map[string]tsImport{}
-	for _, name := range []string{"useQuery", "useSuspenseQuery", "QueryWhen"} {
-		hookImports[name] = imports.add("@cratis/arc.react/queries", name, true)
-	}
-	for _, name := range []string{"PerformQuery", "SetSorting"} {
-		hookImports[name] = imports.add("@cratis/arc.react/queries", name, false)
-	}
-	hookImports["QueryResultWithState"] = imports.add("@cratis/arc/queries", "QueryResultWithState", false)
-	if view.Enumerable {
-		for _, name := range []string{"useQueryWithPaging", "useSuspenseQueryWithPaging"} {
-			hookImports[name] = imports.add("@cratis/arc.react/queries", name, true)
-		}
-		for _, name := range []string{"SetPage", "SetPageSize"} {
-			hookImports[name] = imports.add("@cratis/arc.react/queries", name, false)
-		}
-		hookImports["Sorting"] = imports.add("@cratis/arc/queries", "Sorting", false)
-		hookImports["Paging"] = imports.add("@cratis/arc/queries", "Paging", true)
-	}
+	hookImports := queryHookImports(view, imports)
 	required := []string{}
 	for _, field := range query.Parameters {
 		// Arc 22.48.2 UrlHelpers interpolates keys into a RegExp without
@@ -305,7 +308,7 @@ func planQuery(query QueryDescriptor, file string, nodes map[string]TypeDescript
 		if strings.ContainsAny(field.Name, `\.^$*+?()[]{}|`) {
 			return view, fmt.Errorf("query parameter %q is incompatible with Arc 22.48.2 route parameter helper", field.Name)
 		}
-		if queryReserved(field.Name) {
+		if queryReserved(field.Name) || view.Observable && observableQueryReserved(field.Name) {
 			return view, fmt.Errorf("parameter %q collides with query runtime", field.Name)
 		}
 		if len(field.Rules) != 0 {
@@ -337,6 +340,9 @@ func planQuery(query QueryDescriptor, file string, nodes map[string]TypeDescript
 	localPaths[key] = file
 	fields := append([]FieldDescriptor(nil), query.Parameters...)
 	fields = append(fields, FieldDescriptor{Name: "__arcResult", Type: query.Result})
+	if view.Observable && view.Enumerable {
+		fields = append(fields, FieldDescriptor{Name: "__arcItem", Type: *query.Result.Element})
+	}
 	planned, err := planModelUsingImports(TypeDescriptor{Key: key, Name: metadata.TypeName{Name: view.Name}, Kind: "model", Fields: fields}, nodes, localPaths, imports, false)
 	if err != nil {
 		return view, err
@@ -346,9 +352,12 @@ func planQuery(query QueryDescriptor, file string, nodes map[string]TypeDescript
 	if preference != "" {
 		view.HTTP = imports.aliases[http] + "." + preference
 	}
-	response := planned.Properties[len(planned.Properties)-1]
+	response := planned.Properties[len(query.Parameters)]
 	view.Data, view.Constructor = response.Type, response.Constructor
-	for index, property := range planned.Properties[:len(planned.Properties)-1] {
+	if view.Observable && view.Enumerable {
+		view.Item = planned.Properties[len(query.Parameters)+1].Type
+	}
+	for index, property := range planned.Properties[:len(query.Parameters)] {
 		optional := ""
 		if !query.Parameters[index].Required {
 			optional = "?"
@@ -359,7 +368,11 @@ func planQuery(query QueryDescriptor, file string, nodes map[string]TypeDescript
 	if len(view.Parameters) > 0 {
 		view.ParametersName = view.Name + "Parameters"
 	}
-	view.Hooks = queryHooks(view, hookImports, imports)
+	if view.Observable {
+		view.Hooks = observableQueryHooks(view, hookImports, imports)
+	} else {
+		view.Hooks = queryHooks(view, hookImports, imports)
+	}
 	return view, nil
 }
 

@@ -400,12 +400,20 @@ func (e *emitter) emitQuery(q query) {
 		args = e.typ(q.args)
 	}
 	keys := e.manifest(q.call)
-	e.line("if %s := %s.Register[%s](%s, %q, %s.Invoke(func(%s %s.Context, %s *%s.Invocation, %s %s) (%s, error) {", e.err, queries, e.typ(q.model.typ), e.builder, q.d.name, queries, e.ctx, e.imp("context"), e.inv, queries, e.args, args, e.typ(q.call.output))
+	register := "Register[" + e.typ(q.model.typ) + "]"
+	var out string
+	if q.emission != nil {
+		register = "RegisterObservable[" + e.typ(q.model.typ) + ", " + args + ", " + e.typ(q.emission) + "]"
+		out = e.imp(runtimePath+"/observable") + ".Source[" + e.typ(q.emission) + "]"
+	} else {
+		out = e.typ(q.call.output)
+	}
+	e.line("if %s := %s.%s(%s, %q, %s.Invoke(func(%s %s.Context, %s *%s.Invocation, %s %s) (%s, error) {", e.err, queries, register, e.builder, q.d.name, queries, e.ctx, e.imp("context"), e.inv, queries, e.args, args, out)
 	call := q.call.decl.Name.Name
 	if q.call.decl.Recv != nil {
 		call = "(" + e.typ(q.model.typ) + "{})." + call
 	}
-	e.emitCall(q.call, call, e.typ(q.call.output), false, "")
+	e.emitCall(q.call, call, out, false, "")
 	e.line("}),")
 	if q.d.auth != nil {
 		e.line("%s.WithAuthorization[%s](%s),", queries, args, strings.TrimPrefix(e.auth(q.d.auth), "&"))
