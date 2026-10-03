@@ -1,11 +1,11 @@
 // Copyright (c) Cratis. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-// Package arctest runs command and snapshot query scenarios through real Arc
-// pipelines without HTTP. Configure a normal arc.Builder with explicit test
+// Package arctest runs command, snapshot query and bounded observable query
+// scenarios through real Arc pipelines without HTTP. Configure a normal arc.Builder with explicit test
 // dependencies, then call New. No discovery, container, or assertion library is
-// required. HTTP binding, authentication middleware, and streaming are not tested
-// by these scenarios; use an HTTP contract test for those boundaries.
+// required. HTTP binding, authentication middleware and SSE/WebSocket transports
+// are not tested by these scenarios; use HTTP contract tests for those boundaries.
 package arctest
 
 import (
@@ -100,7 +100,8 @@ func (s *CommandScenario[C, R]) Validate(ctx context.Context, value C) (commands
 
 // QueryScenario performs a named registered snapshot query through the real query
 // pipeline, including binding, authorization, validation, rendering, interception
-// and operation-scope cleanup. It is not an observable/streaming scenario.
+// and operation-scope cleanup. Observable declarations use snapshot semantics;
+// use ObservableQueryScenario for multiple emissions and owned stream joining.
 type QueryScenario[R any] struct {
 	scenario *Scenario
 	name     queries.FullyQualifiedQueryName
