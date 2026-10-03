@@ -51,7 +51,14 @@ func SnapshotExample(client *mongo.Client, membership tenancy.Membership) (queri
 		return nil, err
 	}
 	var registry queries.Registry
-	err = queries.RegisterRenderer[mongodb.Find[Author], []Author](&registry, func(ctx context.Context, scope *execution.Scope) (queries.Renderer[mongodb.Find[Author], []Author], error) {
+	if err := registerAuthors(&registry, authors); err != nil {
+		return nil, err
+	}
+	return registry.Build(queries.PipelineOptions{RequireTenant: true, Membership: membership, OpenResources: func(context.Context) (execution.Resources, error) { return &authorResources{authors: authors}, nil }})
+}
+
+func registerAuthors(registry *queries.Registry, authors *mongodb.Collection[Author]) error {
+	err := queries.RegisterRenderer[mongodb.Find[Author], []Author](registry, func(ctx context.Context, scope *execution.Scope) (queries.Renderer[mongodb.Find[Author], []Author], error) {
 		resources, err := execution.ResourcesAs[*authorResources](ctx, scope)
 		if err != nil {
 			return nil, err
@@ -64,11 +71,7 @@ func SnapshotExample(client *mongo.Client, membership tenancy.Membership) (queri
 		}})
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
-	err = queries.Register[Author](&registry, "AllActive", queries.Function(Author{}.AllActive), queries.WithAuthorization[queries.NoArguments](metadata.Authorization{}))
-	if err != nil {
-		return nil, err
-	}
-	return registry.Build(queries.PipelineOptions{RequireTenant: true, Membership: membership, OpenResources: func(context.Context) (execution.Resources, error) { return &authorResources{authors: authors}, nil }})
+	return queries.Register[Author](registry, "AllActive", queries.Function(Author{}.AllActive), queries.WithAuthorization[queries.NoArguments](metadata.Authorization{}), queries.WithPath[queries.NoArguments]("/authors"))
 }
