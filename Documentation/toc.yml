@@ -77,6 +77,11 @@
           href: backend/go/queries/using-the-http-query-method.md
         - name: Query validation
           href: backend/go/queries/validation.md
+    - name: Generate model-bound adapters
+      href: backend/go/generation/index.md
+      items:
+        - name: Directives and signatures
+          href: backend/go/generation/reference.md
     - name: Chronicle integration
       href: backend/go/chronicle/index.md
     - name: Command results

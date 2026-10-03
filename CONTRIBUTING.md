@@ -1,6 +1,6 @@
 # Contributing to Arc for Go
 
-Thank you for helping build the Cratis Arc framework for Go. This repository is in early development: it provides foundation contracts, not command/query pipelines or HTTP hosting. Discuss larger changes before implementation, and document only capabilities that exist and have been verified.
+Thank you for helping build the Cratis Arc framework for Go. This repository is in early development: it provides foundation contracts, command and snapshot-query pipelines, HTTP hosting, `arctest` scenarios, an experimental model-bound adapter generator, and an optional Chronicle integration. Observable query transports and full product parity remain unsupported. Discuss larger changes before implementation, and document only capabilities that exist and have been verified.
 
 The [Cratis contribution guide](https://github.com/Cratis/.github/blob/main/contributing.md) and [code of conduct](https://github.com/Cratis/.github/blob/main/CODE_OF_CONDUCT.md) apply.
 
@@ -9,13 +9,13 @@ The [Cratis contribution guide](https://github.com/Cratis/.github/blob/main/cont
 - Open or identify a GitHub issue for the work; keep changes focused on it.
 - This is a library, not an application. Do not add application-style domains or UI structure to the package.
 - Match observable Arc behavior idiomatically in Go, rather than mechanically translating another language implementation. The [Arc HTTP contract](https://github.com/Cratis/Arc/blob/main/Documentation/http-contract.md) is a reference when implementing HTTP behavior.
-- Do not claim host support, HTTP contract conformance, or feature parity without corresponding tests. Chronicle integration is optional, not a dependency of the scaffold.
+- Do not claim host support, HTTP contract conformance, or feature parity without corresponding tests. Chronicle integration is an optional nested module, not a root runtime dependency.
 
 ## Layout and setup
 
-The runtime is the root module, `github.com/cratis/arc.go`, with package `arc`. The only nested module is `tools/go.mod` (`github.com/cratis/arc.go/tools`), containing the `arc-gen` artifact generator. Its `golang.org/x/tools` dependency must not enter the runtime module. The tools module pins a fetchable runtime revision and builds independently with `GOWORK=off`.
+The runtime is the root module, `github.com/cratis/arc.go`, with package `arc`. The supported nested modules are `tools/go.mod` (`github.com/cratis/arc.go/tools`), containing the `arc-gen` artifact generator, and `integrations/chronicle/go.mod` (`github.com/cratis/arc.go/integrations/chronicle`), containing the Chronicle integration and SDK adapter. Their `golang.org/x/tools` and Chronicle SDK dependencies must not enter the runtime module. Both nested modules pin fetchable runtime revisions and build independently with `GOWORK=off`.
 
-Product documentation lives in `Documentation/`. Add packages and examples only as implementation needs them; use lowercase package directories, co-located `_test.go` files, and compiling `Example` tests for public usage. Root releases remain `vX.Y.Z`. Future tooling releases need independent `tools/vX.Y.Z` tags; tagging and publishing tools is deferred pending the pattern in [Fundamentals.Go#16](https://github.com/Cratis/Fundamentals.Go/issues/16).
+Product documentation lives in `Documentation/`. Add packages and examples only as implementation needs them; use lowercase package directories, co-located `_test.go` files, and compiling `Example` tests for public usage. Root releases remain `vX.Y.Z`. Future nested-module releases need independent `tools/vX.Y.Z` and `integrations/chronicle/vX.Y.Z` tags; their tagging and publication are deferred pending the pattern in [Fundamentals.Go#16](https://github.com/Cratis/Fundamentals.Go/issues/16).
 
 Install Go 1.26 or later, golangci-lint v2.14.0, actionlint v1.7.12, ShellCheck, and markdownlint-cli2. CI tests Go 1.26 and 1.27, including the latest patches; golangci-lint must be built with a Go version at least as new as the code it analyzes.
 
@@ -49,7 +49,9 @@ govulncheck ./...
 
 Repeat the Go build, vet, ordinary and race tests, lint, tidy-diff, and vulnerability checks from `tools/`, also with `GOWORK=off` and `GOTOOLCHAIN=local`. Use `golangci-lint run --config=../.golangci.yml` there. Regenerate the checked-in consumer adapters from `tools/` with `go run ./cmd/arc-gen -dir .. ./ContractTests/generatedconsumer`; verify them with the same command plus `-check` before the package pattern. Generator tests also compile and execute independent consumers against the pinned runtime version.
 
-Format all Go source in both modules with `gofmt`; no source files should appear in `gofmt -l` output. After `go mod tidy -diff`, also check `git status --short -- go.mod go.sum tools/go.mod tools/go.sum` for untracked manifests. Commit `go.sum` when dependencies require it. Do not add other nested modules, local `replace` directives, or personal `go.work` files: both modules must build without sibling checkouts.
+Format all Go source in all three modules with `gofmt`; no source files should appear in `gofmt -l` output. After `go mod tidy -diff`, also check `git status --short -- go.mod go.sum tools/go.mod tools/go.sum integrations/chronicle/go.mod integrations/chronicle/go.sum` for untracked manifests. Commit `go.sum` when dependencies require it. Do not add other nested modules, local `replace` directives, or personal `go.work` files: all three modules must build without sibling checkouts.
+
+Repeat these Go checks from `integrations/chronicle/` with `--config=../../.golangci.yml` for lint. CI also runs its tagged kernel contracts and taskboard sample against `cratis/chronicle:19.29.4-development`; set `CHRONICLE_INTEGRATION_CONNECTION_STRING` for those tests.
 
 Hosted CI also runs the ordinary build, vet, and tests on macOS and Windows. Workflow lint invokes ShellCheck when it is available. Foundation behavioral and wire-fixture tests run without external services. They are not HTTP integration tests; add explicitly bounded integration checks before claiming HTTP contract conformance. CodeQL runs separately in GitHub Actions.
 
