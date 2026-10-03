@@ -3,12 +3,13 @@ module github.com/cratis/arc.go/integrations/mongodb
 go 1.26
 
 require (
-	github.com/cratis/arc.go v0.0.0-20261003123827-a094266ed6c0
+	github.com/cratis/arc.go v0.0.0-20261003144525-4bd7dca5e554
 	github.com/cratis/fundamentals.go v0.1.0
 	go.mongodb.org/mongo-driver/v2 v2.9.1
 )
 
 require (
+	github.com/coder/websocket v1.8.15 // indirect
 	github.com/klauspost/compress v1.19.2 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/scram v1.2.0 // indirect

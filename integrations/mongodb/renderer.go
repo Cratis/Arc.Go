@@ -265,6 +265,7 @@ func (r *Renderer[T]) materialize(ctx context.Context, raw []bson.Raw) ([]T, err
 		if len(data) != len(raw) {
 			return nil, ErrValue
 		}
+		decodedIdentities := make([]any, 0, len(raw))
 		for i := range raw {
 			if err := ctx.Err(); err != nil {
 				return nil, err
@@ -275,6 +276,15 @@ func (r *Renderer[T]) materialize(ctx context.Context, raw []bson.Raw) ([]T, err
 			if err := identities[i].UnmarshalWithRegistry(r.collection.registry, id.Addr().Interface()); err != nil {
 				return nil, ErrValue
 			}
+			// Distinct BSON IDs can coerce to the same typed identity (for
+			// example int32(1)/"1" or binary/string UUIDs). Correspondence is
+			// then ambiguous even if each released position appears equal.
+			for _, prior := range decodedIdentities {
+				if reflect.DeepEqual(prior, id.Interface()) {
+					return nil, ErrValue
+				}
+			}
+			decodedIdentities = append(decodedIdentities, id.Interface())
 			if !reflect.DeepEqual(id.Interface(), reflect.ValueOf(data[i]).Field(r.collection.id.index).Interface()) {
 				return nil, ErrValue
 			}
