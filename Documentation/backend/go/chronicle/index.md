@@ -33,6 +33,50 @@ The successful command envelope contains a generated source ID in `response`. Re
 
 Stop the example with Ctrl-C. Stop your development container with `docker stop arc-go-chronicle` when finished.
 
+## One model, two frameworks
+
+You do not need a projection DTO and a separate query DTO. The
+[shared-model example](https://github.com/Cratis/Arc.Go/blob/develop/integrations/chronicle/examples/sharedmodel/model.go)
+uses one `Inventory` struct with explicit JSON names, an unnamed `ByID` namespace
+method and a Fundamentals `ProductName` concept. Its declaration includes:
+
+```go
+type Inventory struct {
+    ID          string      `json:"id" arc:"identity" chronicle:"key" example:"shared"`
+    ProductName ProductName `json:"product_name" chronicle:"set(@registered,from=displayName)"`
+    URLValue    string      `json:"URL_value"`
+    Note        *string     `json:"note" chronicle:"set(@registered);clear(@cleared)"`
+    State       string      `json:"state" chronicle:"value(@registered,value=\"available\")"`
+    Transient   string      `json:"-"`
+}
+```
+
+This is a declaration excerpt; `ProductName`, events and registration helpers live
+in the example. `RegisterChronicle` registers events, the read model and a
+model-bound projection, binding the two event aliases explicitly. `RegisterArc`
+separately registers the same type and adapts `Inventory{}.ByID` through
+`queries.Function` on an Arc builder. The query takes a typed reader as a normal
+collaborator; composition selects the store and tenant namespace. There is no
+shared registry, `init` registration or framework state on the model.
+
+Chronicle maps `displayName` to `product_name`, automatically maps `URL_value`,
+and clears the nullable note after `NoteCleared`. Arc returns those exact names;
+a nil note is absent from the payload. Arc identity and Chronicle key metadata
+remain independent. Follow all seven [shared read-model rules](../queries/model-bound/index.md#shared-arc-and-chronicle-rules).
+
+Run the offline registration/query/HTTP tests with
+`go test ./examples/sharedmodel` from the integration module. With the development
+kernel configured as above, run the materialization test:
+
+```bash
+go test -tags=integration -count=1 -timeout=2m \
+  -run TestOneModelProjectsAndServesArcNamespaceQuery ./internal/integration
+```
+
+It appends events, waits for the active projection, then checks Arc's direct query
+and HTTP payload in two namespaces using the same key. Successful append alone
+is not proof that an eventually consistent projection is ready.
+
 ## Return events and semantic identities
 
 This excerpt is the command from the [task-board example](https://github.com/Cratis/Arc.Go/blob/develop/integrations/chronicle/examples/taskboard/main.go); a source comparison keeps it in sync:
@@ -130,6 +174,6 @@ go test -tags=integration -count=1 -timeout=2m ./internal/integration ./examples
 python3 scripts/check-boundaries.py
 ```
 
-Integration-tagged tests fail when the endpoint variable is absent. They exercise HTTP commands, atomic rejection/readback, tenants, projection injection, aggregate competition, reactor-returned commands, failed observer partitions and ignored immediate-append rejection. Root and tools gates run separately; `./...` does not cross module boundaries.
+Integration-tagged tests fail when the endpoint variable is absent. They exercise HTTP commands, atomic rejection/readback, tenants, shared projection/query models, projection injection, aggregate competition, reactor-returned commands, failed observer partitions and ignored immediate-append rejection. Root and tools gates run separately; `./...` does not cross module boundaries.
 
 Protected decisions/enrollment tokens, watches, aggregate snapshots, historical-generation aggregate decoding, full compliance authoring and general operation compensation remain unsupported. None is implied by an ordinary injected model or a successful snapshot test.

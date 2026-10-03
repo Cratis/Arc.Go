@@ -53,12 +53,14 @@ type Item struct {
 ```
 
 Namespace methods are ignored by serialization and projection field inspection.
-Chronicle owns future FromEvent/SetFrom-equivalent declarations. Arc registration
+Chronicle owns FromEvent/SetFrom-equivalent declarations. Arc registration
 implies neither projection ownership nor command-side model injection; projection
 ownership must not require Arc registration or invoke query methods.
 
-The joint registration integration test awaits Chronicle.Go's model-bound
-projection implementation. Query registration alone demonstrates no persistence.
+The [Chronicle integration](../../chronicle/index.md#one-model-two-frameworks)
+includes a shared model registered with both frameworks and a kernel test that
+projects events and serves the result through Arc. Query registration alone
+demonstrates no persistence.
 
 ## Pin public identity deliberately
 
