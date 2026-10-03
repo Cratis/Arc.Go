@@ -1,10 +1,11 @@
-# MongoDB snapshots and BSON codecs
+# MongoDB snapshots, observations and BSON codecs
 
 This experimental module provides borrowed typed collection bindings, isolated
 BSON mappings and bounded authorized snapshot rendering through Arc's query
 pipeline. MongoDB 8.0.15 single-member replica-set/HTTP contracts have task-owned
-provider evidence. Real Chronicle sink compatibility remains unproved. Change
-streams are not implemented. No constructor connects
+provider evidence. Real Chronicle sink compatibility remains unproved. Database
+invalidation sources have deterministic unit coverage only; live change-stream
+behavior remains unverified. No constructor connects
 to MongoDB, starts workers, runs application codecs, or takes ownership of a client.
 
 ## API and ownership
@@ -14,7 +15,7 @@ to MongoDB, starts workers, runs application codecs, or takes ownership of a cli
   `SortFields` is an optional list of top-level JSON scalar field names; duplicate,
   unknown, array/nested and ambiguous PascalCase transport aliases are rejected.
   T must declare a nonnullable scalar BSON `_id`. There is no pluralization,
-  exported driver handle, `Close`, or watch API.
+  exported driver handle or collection `Close`; `Observe` uses a separate watcher.
 - `ApplicationOwned` uses the binding's ordinary BSON codecs. `ChronicleOwned`
   requires an application `Release` callback on its renderer. It receives complete
   copied raw BSON, preserving ciphertext and lineage, before typed decoding or
@@ -174,6 +175,104 @@ count/find predicates, coordinates, collation, majority reads, server windowing,
 authorization denial and continued usability of the borrowed client. Those
 responses are boundary evidence, not a MongoDB server or live query-semantics test.
 
+## Database invalidation sources
+
+`NewWatcher(applicationLifetime, borrowedClient, WatcherOptions{})` constructs a
+lazy owner. `Observe(watcher, collection, Find[T]{Filter: applicationFilter})`
+freezes the trusted selection with the binding's registry; it performs no reads
+and retains no performer scope. Neither construction starts a reader. Never use
+a request context as the shared watcher's lifetime, and never bind `Find` from
+HTTP-authored BSON. Its JSON methods use a validated base64 BSON-byte envelope,
+not a lossy interface-valued JSON predicate. Decode is failure-atomic.
+
+Manually register `queries.RegisterObservable[M,A,mongodb.Find[M]]`, paired with
+`queries.WithRenderer[A,mongodb.Find[M],[]M]` for the **same collection binding**.
+The complete compiled
+[ObservationExample source](https://github.com/Cratis/Arc.Go/blob/develop/integrations/mongodb/examples/observation/observation.go)
+shows application lifetime, membership, a verified-subject row filter and fresh
+callback-scoped resource access on each emission. It supplies no HTTP host,
+authentication, database data or indexes. Its no-database registration example is:
+
+```bash
+GOWORK=off GOTOOLCHAIN=local go test -run ExampleObservationExample -v ./examples/observation
+```
+
+It prints `true []observation.Author`; this proves registration, not a live watch.
+Opaque provider emissions remain manually registered, not generated proxies.
+
+Each `Source.Open` reserves an independently owned subscriber. The shared owner
+establishes a database `$changeStream` with ordinary public `Aggregate` and
+`mongo.Cursor`, **not** `Database.Watch` with its hidden automatic resume. The
+initial immutable `Find` instruction becomes available only after cursor
+establishment. Registration, initial queueing and namespace fanout share one
+ordering lock. Inserts, updates, replacements and deletes invalidate the whole
+selection regardless of post-image membership. Arc rechecks authorization,
+executes the existing renderer/count/find/release, then interception and emission
+guards. Queued work is not cleared when rendering finishes. Count/find remain
+separate, non-atomic commands, and duplicate equivalent snapshots are allowed.
+
+This is **Source only**, not `CurrentSource`. Plain non-wait observable snapshots
+remain pending; waiting and streaming execute the initial renderer baseline. No
+synthetic model or empty-ready value is emitted. Ready empty results require a
+successful renderer, and out-of-range pages retain its authorized total. There
+is no authorized-row cache, incremental membership/page tracker or idle-policy
+revocation polling.
+
+Watch identity is the borrowed client pointer plus resolved database name.
+Different models/collections on one database share a reader; different clients
+or resolved tenant databases do not. There is no global registry or client cache.
+Without Arc query metadata, direct Open uses NotSet and an unnamed query key.
+Database selection is not tenant membership authorization.
+
+Zero options select: 32 databases, 1024 total subscribers, 64 subscribers per
+resolved database/collection/logical-query name, 16 queued markers, 64 KiB frozen
+filter, ten-second opening and five-second cursor-cleanup budgets. Negative
+options fail. Opening and retired-but-unclosed streams count against admission;
+new source instances cannot bypass a query limit. Idle live readers count against
+the database limit until owner shutdown. Driver batches are independently bounded
+to 64. Queues retain only markers, never read models or change payloads; projection
+keeps only namespace/operation metadata. No `UpdateLookup` or raw-content export
+is requested. Overflow terminates only the slow subscriber with `ErrOverflow`.
+
+Cursor loss, unknown operations and drop/rename/invalidate terminate the shared
+database generation with locally inspectable `ErrResnapshotRequired`. Queued
+markers are discarded. Already-admitted rendering may finish. Close/join the old
+observation, then explicitly Open a new one for a complete baseline and fresh
+transfer state. A generation hint alone does not reset Delta delivery. There is
+no automatic resume, durable checkpoint or browser-resubscription guarantee.
+Failed generations cannot be replaced before reader and cursor cleanup join.
+
+Stream Close detaches only its subscriber, wakes and joins its active Next, and
+never closes the shared cursor. Watcher Close stops admission and cancels **all**
+readers before waiting for their cursor cleanup and active consumers. A wait
+timeout retains ownership; repeat Close with a fresh budget. Cursor disposal runs
+at most once, after iteration ends. A failed disposal remains reported and blocks
+generation replacement; repeated joins do not retry a failed driver effect.
+Drain Arc observations/resources first, then close/join the watcher, then disconnect
+the application-owned client. Never disconnect underneath an unjoined reader.
+
+### C# differences and evidence limits
+
+Compared with C# `MongoDBWatcher.cs`, `MongoCollectionExtensions.cs` and
+`MongoDBJoinedObserveBuilder.cs` at `7c1e780`, Go shares database readers but uses
+bounded invalidation queues and complete authorized renderer execution. C# retains
+resume tokens, replays initial results, supports single/null observations and
+incremental membership/pages, and uses unbounded joined-observation channels.
+This checkpoint has none of that current/replay, single-result, join or automatic
+recovery parity. It retains no query scope for refetch callbacks.
+
+`find_snapshot_test.go`, `watcher_test.go` and `observe_test.go` provide native BSON
+detachment, deterministic handoff/fanout/limits, cancellation/continued joining,
+terminal recovery and existing-Arc-renderer unit evidence. `watch_driver_test.go`
+records ordinary aggregate/getMore/killCursors and borrowed-client usability
+through the pinned driver's test-only wire deployment. These tests do **not** prove
+live MongoDB watch behavior, missed-update convergence, failover, sharding, real
+Chronicle release, browser reconnection or C# current/replay parity. Change streams
+require a supported replica set/sharded deployment, database watch permissions,
+and the existing primary/majority assumptions. Standalone watch operation is not
+supported. Live-provider verification is the next checkpoint, with no CI changes
+in this one.
+
 ## Evidence and next steps
 
 `ExampleNewRegistry` compiles and executes the driver encoder workflow.
@@ -220,5 +319,5 @@ Linux Go 1.27 live contracts; publishing stays root-only.
 
 [Arc.Go#22](https://github.com/Cratis/Arc.Go/issues/22) remains Partial: synthetic
 release callbacks are not evidence of real Chronicle ciphertext layout, SDK
-release or compliance. Sharded/multi-member/failover profiles and separately
-specified watches remain outside this checkpoint.
+release or compliance. Sharded/multi-member/failover profiles and live watch evidence remain outside this
+checkpoint.
