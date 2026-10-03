@@ -139,8 +139,11 @@ func FromIterator[T any](open func(context.Context) iter.Seq2[T, error]) Source[
 
 // ChannelFactory opens a borrowed channel and returns a cleanup callback that
 // must cancel and join its producer. The callback must support repeated calls
-// after a timed-out attempt. Arc never closes the borrowed channel. Closing the
-// channel means normal completion; producer failures should use FromProducer.
+// after a timed-out attempt. A nonnil cleanup callback transfers ownership even
+// when startup fails or returns an invalid channel: Open returns a nonnil stream
+// alongside the error, and the caller must Close it with a separate cleanup budget.
+// Arc never closes the borrowed channel. Closing the channel means normal
+// completion; producer failures should use FromProducer.
 type ChannelFactory[T any] func(context.Context) (<-chan T, func(context.Context) error, error)
 
 type channelSource[T any] struct{ factory ChannelFactory[T] }
@@ -168,18 +171,22 @@ func (p channelSource[T]) Open(ctx context.Context) (Stream[T], error) {
 	}
 	work, cancel := context.WithCancel(ctx)
 	values, cleanup, err := p.factory(work)
-	if err != nil {
+	err = errors.Join(err, work.Err())
+	if cleanup == nil {
 		cancel()
-		return nil, err
-	}
-	if values == nil || cleanup == nil {
-		cancel()
-		if cleanup != nil {
-			return nil, errors.Join(ErrInvalidOptions, cleanup(ctx))
+		if err != nil {
+			return nil, err
 		}
 		return nil, ErrInvalidOptions
 	}
-	return &channelStream[T]{ctx: work, cancel: cancel, values: values, cleanup: cleanup, gate: make(chan struct{}, 1)}, nil
+	stream := &channelStream[T]{ctx: work, cancel: cancel, values: values, cleanup: cleanup, gate: make(chan struct{}, 1)}
+	if values == nil {
+		err = errors.Join(err, ErrInvalidOptions)
+	}
+	if err != nil {
+		cancel() // Stop startup work, but retain its handle until cleanup joins.
+	}
+	return stream, err
 }
 func (s *channelStream[T]) Next(ctx context.Context) (T, error) {
 	var zero T
