@@ -1,0 +1,4 @@
+- name: Generate model-bound adapters
+  href: index.md
+- name: Directives and signatures
+  href: reference.md
