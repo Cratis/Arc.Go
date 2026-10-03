@@ -27,6 +27,7 @@ type codec struct {
 	representation concepts.Representation
 	fields         []field
 	element        *codec
+	height         int // Longest downward path, independent of discovery order.
 }
 
 type discovery struct {
@@ -39,6 +40,9 @@ func (d *discovery) discover(t reflect.Type, depth int) (*codec, error) {
 		return nil, ErrUnsupportedModel
 	}
 	if c := d.codecs[t]; c != nil {
+		if depth+c.height > 64 {
+			return nil, ErrUnsupportedModel
+		}
 		return c, nil
 	}
 	if len(d.codecs)+len(d.active) >= 256 {
@@ -103,6 +107,12 @@ func (d *discovery) discover(t reflect.Type, depth int) (*codec, error) {
 				return nil, ErrUnsupportedModel
 			}
 		}
+	}
+	if c.element != nil {
+		c.height = c.element.height + 1
+	}
+	for _, field := range c.fields {
+		c.height = max(c.height, field.codec.height+1)
 	}
 	d.codecs[t] = c
 	return c, nil

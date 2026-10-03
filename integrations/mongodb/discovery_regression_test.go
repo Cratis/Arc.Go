@@ -134,6 +134,26 @@ func (*bsonValueSlice) MarshalBSONValue() (byte, []byte, error) {
 	return byte(bson.TypeNull), nil, errors.New("secret BSON hook")
 }
 
+func TestCachedSubtreeCannotBypassDepthLimit(t *testing.T) {
+	p64 := reflect.TypeFor[int32]()
+	for range 64 {
+		p64 = reflect.PointerTo(p64)
+	}
+	p65 := reflect.PointerTo(p64)
+	for _, roots := range [][]reflect.Type{{p64, p65}, {p65, p64}, {p64, reflect.SliceOf(p64)}, {reflect.SliceOf(p64), p64}} {
+		if _, err := mongodb.NewRegistry(roots...); !errors.Is(err, mongodb.ErrUnsupportedModel) {
+			t.Fatalf("cached depth accepted: %v", err)
+		}
+	}
+	p63 := p64.Elem()
+	// Shared subgraphs at the actual bound remain valid in either order.
+	for _, roots := range [][]reflect.Type{{p63, p64, reflect.SliceOf(p63)}, {reflect.SliceOf(p63), p64, p63}} {
+		if _, err := mongodb.NewRegistry(roots...); err != nil {
+			t.Fatalf("valid shared graph rejected: %v", err)
+		}
+	}
+}
+
 func TestBSONHooksRejectedBeforeAllDiscoveryFastPaths(t *testing.T) {
 	bsonHookCalls = 0
 	for _, typeOf := range []reflect.Type{reflect.TypeFor[bsonMarshalConcept](), reflect.TypeFor[bsonUnmarshalConcept](), reflect.TypeFor[bsonValueMarshalConcept](), reflect.TypeFor[bsonValueUnmarshalConcept]()} {
