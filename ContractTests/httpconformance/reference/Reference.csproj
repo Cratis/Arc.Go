@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>Arc.Go.HttpConformance</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RuntimeFrameworkVersion>10.0.12</RuntimeFrameworkVersion>
+    <RollForward>Disable</RollForward>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="$(ArcSourceRoot)/Source/DotNET/Arc/Arc.csproj" />
+  </ItemGroup>
+  <Target Name="RequireExactSourceSnapshot" BeforeTargets="Restore;PrepareForBuild">
+    <Error Condition="'$(ArcSourceRoot)' == ''" Text="ArcSourceRoot must identify the task-owned exact-source snapshot." />
+  </Target>
+</Project>
