@@ -39,9 +39,5 @@ func (a *Application) Queries() queries.Pipeline { return a.queries }
 
 // ServeHTTP requires explicit application startup before accepting work.
 func (a *Application) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if !canonicalPath(r) {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	a.handler.ServeHTTP(w, r)
+	a.serveIngress(w, r)
 }
