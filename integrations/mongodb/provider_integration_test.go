@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -159,7 +160,7 @@ type providerResources struct {
 
 func (r *providerResources) Close(context.Context) error { r.closes.Add(1); return r.failure }
 
-func registeredProvider[T any](t *testing.T, f *providerFixture, name string, ownership mongodb.Ownership, config mongodb.RendererOptions[T], filter bson.D, intercept queries.InterceptorFunc[T], resources *providerResources) *arc.Application {
+func registeredProvider[T any](t *testing.T, f *providerFixture, name string, ownership mongodb.Ownership, config mongodb.RendererOptions[T], filter bson.D, intercept queries.InterceptorFunc[T], resources *providerResources, httpOptions ...arc.HTTPOptions) *arc.Application {
 	t.Helper()
 	collection, err := mongodb.NewCollection[T](f.client, mongodb.CollectionOptions{Database: f.base, Name: name, Ownership: ownership, SortFields: []queries.SortField{"id", "name"}})
 	if err != nil {
@@ -172,7 +173,14 @@ func registeredProvider[T any](t *testing.T, f *providerFixture, name string, ow
 	if resources == nil {
 		resources = &providerResources{}
 	}
-	builder, err := arc.NewBuilder(arc.Options{Authentication: []authentication.Handler{providerAuthentication()}, RequireTenant: true, Membership: providerMembership(f.a, f.b), OpenResources: func(context.Context) (execution.Resources, error) { return resources, nil }})
+	var transport arc.HTTPOptions
+	if len(httpOptions) > 1 {
+		t.Fatal("at most one HTTP configuration is supported")
+	}
+	if len(httpOptions) == 1 {
+		transport = httpOptions[0]
+	}
+	builder, err := arc.NewBuilder(arc.Options{HTTP: transport, Authentication: []authentication.Handler{providerAuthentication()}, RequireTenant: true, Membership: providerMembership(f.a, f.b), OpenResources: func(context.Context) (execution.Resources, error) { return resources, nil }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -516,6 +524,78 @@ func TestLiveBoundsEmptyAndOuterScopeCleanupSuppressPublication(t *testing.T) {
 		t.Fatal("borrowed client was closed", err)
 	}
 }
+func TestLiveHTTPResponseSizeFailureClearsPaging(t *testing.T) {
+	f := liveProvider(t)
+	const collectionName = "HTTPResponseSize"
+	collection := f.collection(t, f.a, collectionName)
+	insertRows(t, collection, authorRows(1, 4))
+	name := strings.Repeat("private author name", 256)
+	if _, err := collection.UpdateMany(t.Context(), bson.D{{Key: "OwnerID", Value: "reader"}, {Key: "Active", Value: true}}, bson.D{{Key: "$set", Value: bson.D{{Key: "Name", Value: name}}}}); err != nil {
+		t.Fatal(err)
+	}
+	const maxResponseBytes = 1024
+	resources := &providerResources{}
+	app := registeredProvider[snapshot.Author](t, f, collectionName, mongodb.ApplicationOwned, mongodb.RendererOptions[snapshot.Author]{RowFilter: ownerFilter}, activeFilter(), nil, resources, arc.HTTPOptions{MaxResponseBytes: maxResponseBytes})
+
+	// The provider succeeds with a nonzero authorized count and window. Only
+	// HTTP publication should fail: ordinary Author data exceeds its JSON budget.
+	result, err := typedSnapshot[snapshot.Author](t, app, f.a, paged(1, 2))
+	data, present := result.Data()
+	if err != nil || !result.IsSuccess() || !present || len(data) != 2 || data[0].ID != 3 || data[1].ID != 4 || data[0].Name != name || data[1].Name != name || result.Details().Paging != (queries.PagingInfo{Page: 1, Size: 2, TotalItems: 4}) {
+		t.Fatal("expected successful paged provider render", result.Details(), err)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil || len(encoded) <= maxResponseBytes {
+		t.Fatal("successful response must exceed HTTP publication budget", len(encoded), err)
+	}
+
+	server := httptest.NewServer(app)
+	t.Cleanup(server.Close)
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/rows?page=1&pageSize=2&sortby=Name&sortDirection=asc", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const correlationID = "00112233-4455-4677-8899-aabbccddeeff"
+	request.Header.Set("X-Correlation-ID", correlationID)
+	request.Header.Set("x-cratis-tenant-id", f.a.String())
+	request.Header.Set("Authorization", "Bearer provider-fixture-reader")
+	f.record.reset()
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := response.Body.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		t.Fatalf("invalid fallback envelope: %v, body %s", err, body)
+	}
+	wantPaging := map[string]any{"page": float64(0), "size": float64(0), "totalItems": float64(0), "totalPages": float64(0)}
+	wantMessages := []any{"An internal error occurred while processing the request. See server logs for details."}
+	_, hasData := envelope["data"]
+	_, hasChanges := envelope["changeSet"]
+	if response.StatusCode != http.StatusInternalServerError || len(body) > maxResponseBytes || envelope["isSuccess"] != false || envelope["hasExceptions"] != true || envelope["exceptionStackTrace"] != "" || !reflect.DeepEqual(envelope["exceptionMessages"], wantMessages) || !reflect.DeepEqual(envelope["paging"], wantPaging) || hasData || hasChanges || strings.Contains(string(body), "private author name") {
+		t.Fatalf("unsafe publication fallback: status %d, body %s", response.StatusCode, body)
+	}
+	if response.Header.Get("X-Correlation-ID") != correlationID || envelope["correlationId"] != correlationID || response.Header.Get("Content-Type") != "application/json; charset=utf-8" {
+		t.Fatalf("fallback headers/correlation: %v, body %s", response.Header, body)
+	}
+	assertLivePushdown(t, f.record.snapshot(), collection.Database().Name(), collectionName, 2, 2)
+	if resources.closes.Load() != 2 {
+		t.Fatal("provider scope did not finalize successfully before publication", resources.closes.Load())
+	}
+	if err := f.client.Ping(t.Context(), nil); err != nil {
+		t.Fatal("borrowed client was closed", err)
+	}
+}
+
 func assertNoProviderPublication[T any](t *testing.T, result queries.Result[[]T], err error) {
 	t.Helper()
 	if err == nil || result.IsSuccess() {
