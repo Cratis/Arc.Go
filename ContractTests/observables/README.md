@@ -49,8 +49,9 @@ client cases, signals shutdown and awaits the host's real exit. Each producer ha
 a separate exit check and bound (120 seconds; runtime 60 seconds). Announcement,
 readiness, requests/callbacks and shutdown have shorter bounds. To run one stage,
 append `install`, `generate`, `generate-check`, `compile`, `compile-modern`,
-`fixture-build`, `generated-runtime` or `runtime`; later stages require the previous
-stages' outputs. `generated-runtime` uses generated registration; `runtime` keeps
+`fixture-build`, `generated-runtime`, `react-runtime` or `runtime`; later stages
+require the previous stages' outputs. Both generated runtime stages use generated
+registration in separate Node processes; `runtime` keeps
 the existing manual registration and eleven client tests. CI runs these stages in a dedicated frontend job, not
 the native Go matrix.
 
@@ -58,9 +59,11 @@ The client uses exactly the ProxyComparison pins: `@cratis/arc` **22.48.2**,
 `@cratis/fundamentals` **7.22.0**, TypeScript **5.9.3** and esbuild **0.25.10**.
 Its separate lock also pins Node polyfills `ws` **8.22.0** and `eventsource`
 **3.0.7**. Arc and Fundamentals tarball integrity values match the existing
-harness. Generated hook compilation adds only the existing ProxyComparison
-`@cratis/arc.react` **22.48.2**, React/React DOM **18.3.1** and their exact type pins
-and integrity values. No captured C# proxies or protocol goldens are rewritten. The authority
+harness. Generated hooks use the existing ProxyComparison `@cratis/arc.react` **22.48.2**,
+React/React DOM **18.3.1** and their exact type pins and integrity values. Mounted
+execution adds only test dependency `react-test-renderer` **18.3.1** (peer React
+`^18.3.1`) and its locked transitive dependencies. No Jest, jsdom or browser
+download is needed. No captured C# proxies or protocol goldens are rewritten. The authority
 is Arc `7c1e78075b737df64f69fddfaae83374f75e3612`, especially JavaScript
 `ObservableQueryFor.ts`, `ObservableQueryConnectionFactory.ts`, both hub
 connections and `Arc.React/queries/useObservableQuery.ts`.
@@ -122,18 +125,68 @@ same subjects, guards, controls and stream tracking.
 Generated-case failures retain exact frames and callbacks in
 `.ai-work/keep/generated-observable-client-failure.json`.
 
+## Mounted generated React hooks
+
+`frontend/react.test.mjs` mounts production-generated hooks with the real exported
+`ArcContext.Provider` and `QueryInstanceCacheContext.Provider`, explicit origin,
+and **explicit WebSocket hub/Delta configuration**. This is a non-StrictMode
+React-in-Node renderer lane, not the complete `<Arc>` wrapper: that wrapper defaults
+to SSE, whereas core `Globals` defaults to WebSocket. Generated application code
+is bundled with React and Cratis imports externalized to the same locked package
+instances; no handwritten hook or test reducer implements reconstruction.
+
+The mounted cases cover:
+
+- `All.use` and `All.useChangeStream` share one cache entry, two listeners and one
+  accepted server subscription/source. They return ready/successful initial
+  collections, generated `Item` instances and hydrated dates. Real replacement,
+  addition and removal deltas reconstruct the hook-returned collection and rich
+  change-set items; raw frames are asserted separately.
+- Fresh but unchanged arguments do not reopen a subscription. Changing both hooks
+  from alpha to previously unsubscribed beta receives a new baseline and retires
+  alpha. The pinned change-stream hook compares beta's baseline against alpha's
+  prior data rather than resetting to all-added. Retired-alpha publication followed
+  by live-beta delivery and a Pong barrier bounds the no-retired-frame assertion.
+- A separate `All.useWithPaging` mount returns the four-member tuple and sends
+  `page: 0`/`pageSize: 1`. It reconstructs deltas, replaces arguments and joins its
+  source on unmount. The fixture returns plain slices: two returned items are
+  **not evidence of server-side windowing or total counts**.
+- Paging, page-size and sorting setters update hook state but keep the existing
+  same-key subscription in **22.48.2**. A subsequent argument replacement sends
+  those updated values. This reproduces the existing open
+  [Arc issue 2869](https://github.com/Cratis/Arc/issues/2869), not setter correctness;
+  the test neither evicts the cache nor changes the Go host to compensate.
+- Fresh `QueryInstanceCache(0)` instances retire sources asynchronously after
+  unmount. Source-close and resource-dispose counters must advance before fallback
+  cleanup. A separate default-retention cache retains its data/subscription with
+  no listeners and reuses them on remount; explicit disposal then joins the source.
+  This is **not proof that the default 30 seconds elapsed**.
+
+A genuine warm subscription remains live for protocol barriers; factory/open/
+close/dispose counters include startup and its negotiated revision replacement.
+Event predicates have one absolute 3-second deadline, requests have 4 seconds,
+and fixture waits have 3 seconds. No fake global clock, retry loop, sleep-based
+success or render-count-as-delivery-count assertion is used. Mounted tests have a
+45-second bound and their child process 60 seconds. Finally paths unmount roots,
+dispose caches, cancel waiters/requests, reset the multiplexer and join socket
+closure. The runner signals SIGTERM and awaits the Go host's `joined` report and
+cumulative opens equal closes; a forced kill fails the lane. Failures retain frames,
+hook projections, cache diagnostics, counters and errors in
+`.ai-work/keep/react-observable-client-failure.json`, uploaded by CI on failure.
+
 ## Coverage boundaries
 
-This is **Node client-runtime evidence**, not browser or React-hook parity. No
-pinned browser harness is present, and no browser toolchain was added. The fixture
-uses an explicit loopback anonymous session owner, not browser EventSource cookie
-behavior. Browser credentials/origins, Guid hydration, React hooks/cache/
-change-stream reconstruction, network-failure reconnect and normal source
-completion/error handling remain unverified by this lane.
+These are **Node class-runtime and bounded mounted-hook cases**, not browser or
+complete React parity. No browser toolchain was added. The fixture uses an explicit
+loopback anonymous session owner, not browser EventSource cookie behavior. Browser
+credentials/origins, Guid hydration, DOM/StrictMode replay, suspense, network-failure
+reconnect, normal source completion/error handling and broader hook/transport
+combinations remain unverified by this lane.
 
 The core Arc package forwards deltas without maintaining a final collection.
-The test asserts the actual change-set envelope before applying a small independent
-consumer reducer; that final collection is **not** an executed React hook. Full
+The manual and generated class tests assert actual envelopes before applying a
+small independent consumer reducer; their final collections are **not** executed
+React hooks. Only the separate mounted lane asserts actual hook reconstruction. Full
 and Legacy assert the package-delivered full collection directly. Nil streaming
 and pending argument replacement execute on the WebSocket hub only. All other
 transport claims above name their executed cases; native frame tests alone do

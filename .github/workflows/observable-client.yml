@@ -19,9 +19,9 @@ env:
 
 jobs:
   frontend:
-    name: Locked Arc client transports (Node)
+    name: Locked Arc client transports and mounted hooks (Node)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -49,6 +49,8 @@ jobs:
         run: node ContractTests/observables/frontend/run.mjs fixture-build
       - name: Execute generated default WebSocket hub Delta case and join the host
         run: node ContractTests/observables/frontend/run.mjs generated-runtime
+      - name: Execute mounted generated React hooks with explicit WebSocket providers
+        run: node ContractTests/observables/frontend/run.mjs react-runtime
       - name: Execute unchanged manual client transport cases and join the host
         run: node ContractTests/observables/frontend/run.mjs runtime
       - name: Preserve exact request and frame evidence on failure
@@ -59,5 +61,6 @@ jobs:
           path: |
             .ai-work/keep/observable-client-failure.json
             .ai-work/keep/generated-observable-client-failure.json
+            .ai-work/keep/react-observable-client-failure.json
           if-no-files-found: warn
           retention-days: 7
