@@ -145,6 +145,8 @@ func (i *Integration) preflight(value EventValue) error {
 }
 func (i *Integration) admit(_ context.Context, _ *commands.Invocation, value any) (commands.ReturnClassification, error) {
 	switch value := value.(type) {
+	case AggregateCommitResult:
+		return commands.ServerConsumedReturn, nil
 	case EventValue:
 		return commands.ServerConsumedReturn, i.preflight(value)
 	case EventBatch:
@@ -177,7 +179,7 @@ func validateScope(scope LabeledScope) error {
 }
 func (i *Integration) CanHandle(_ commands.CommandContext, value any) bool {
 	switch value.(type) {
-	case EventValue, EventBatch, Subject:
+	case EventValue, EventBatch, Subject, AggregateCommitResult:
 		return true
 	}
 	_, ok := i.descriptor(value)
@@ -194,6 +196,9 @@ func (i *Integration) UpdateContext(_ context.Context, inv *commands.Invocation,
 }
 func (i *Integration) Handle(ctx context.Context, inv *commands.Invocation, value any) (commands.Result[commands.NoResponse], error) {
 	success := commands.Success(inv.CommandContext().CorrelationID())
+	if result, ok := value.(AggregateCommitResult); ok {
+		return commands.WithValidationResults(inv.CommandContext().CorrelationID(), result.Findings...), result.Failure(inv.CommandContext().Command(), nil)
+	}
 	if _, ok := value.(Subject); ok {
 		return success, nil
 	}

@@ -89,6 +89,7 @@ func (i *Integration) stage(ctx context.Context, inv *commands.Invocation, batch
 		return err
 	}
 	if err = tx.enter(); err != nil {
+		tx.poison(err)
 		return err
 	}
 	defer tx.leave()
@@ -196,7 +197,7 @@ func (i *Integration) Complete(ctx context.Context, inv *commands.Invocation, re
 func (i *Integration) finish(ctx context.Context, inv *commands.Invocation, tx *transaction, success bool) (commands.CompletionReport, error) {
 	tx.mu.Lock()
 	if tx.closed {
-		report, err := tx.result.Report, tx.failure
+		report, err := tx.result.Report, errors.Join(tx.failure, tx.poisoned)
 		tx.mu.Unlock()
 		return report, err
 	}

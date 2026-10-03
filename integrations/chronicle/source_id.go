@@ -175,6 +175,9 @@ func (i *Integration) Provide(ctx context.Context, inv *commands.Invocation) (co
 	}
 	causes = append(causes, Cause{Occurred: command.ReceivedAt(), Type: "Command", Properties: properties})
 	frame := &commandFrame{coordinates: coordinates, source: source, options: options, actor: actor, causes: causes, scopes: map[string]LabeledScope{}}
+	if err := commands.SetFrameState(ctx, inv, currentIntegration, i); err != nil {
+		return commands.ContextValues{}, err
+	}
 	if err := commands.SetFrameState(ctx, inv, i.frame, frame); err != nil {
 		return commands.ContextValues{}, err
 	}

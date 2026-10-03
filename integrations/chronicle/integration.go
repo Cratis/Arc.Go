@@ -80,7 +80,7 @@ func (i *Integration) Install(builder *arc.Builder) error {
 	if err := registry.AddContextValuesProvider("chronicle", func(context.Context, *execution.Scope) (commands.ContextValuesProvider, error) { return i, nil }); err != nil {
 		return err
 	}
-	types := []reflect.Type{reflect.TypeFor[EventBatch](), reflect.TypeFor[EventValue]()}
+	types := []reflect.Type{reflect.TypeFor[EventBatch](), reflect.TypeFor[EventValue](), reflect.TypeFor[AggregateCommitResult]()}
 	for typ := range i.events {
 		types = append(types, typ, reflect.PointerTo(typ))
 	}
