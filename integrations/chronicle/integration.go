@@ -5,6 +5,7 @@ package chronicle
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"reflect"
 	"strings"
@@ -41,15 +42,16 @@ type Options struct {
 // It retains no event payload buffer. Client closure requires explicit ownership
 // and an explicit Close call. Discard a builder after failed Install.
 type Integration struct {
-	options        Options
-	events         map[reflect.Type]EventDescriptor
-	configurations map[reflect.Type]CommandOptions
-	root           commands.StateKey[*transaction]
-	frame          commands.StateKey[*commandFrame]
-	bindings       []func(*commands.Registry) error
-	installed      bool
-	closeOnce      sync.Once
-	closeError     error
+	options         Options
+	events          map[reflect.Type]EventDescriptor
+	configurations  map[reflect.Type]CommandOptions
+	configuredTypes []reflect.Type
+	root            commands.StateKey[*transaction]
+	frame           commands.StateKey[*commandFrame]
+	bindings        []func(*commands.Registry) error
+	installed       bool
+	closeOnce       sync.Once
+	closeError      error
 }
 
 // New validates immutable catalog membership without network I/O.
@@ -81,6 +83,16 @@ func (i *Integration) Install(builder *arc.Builder) error {
 	}
 	i.installed = true
 	registry := builder.Commands()
+	if err := registry.AddBuildCheck(func(view commands.BuildView) error {
+		for _, typ := range i.configuredTypes {
+			if !view.ContainsCommandType(typ) {
+				return fmt.Errorf("%w: ConfigureCommand[%s] requires an exact registered command type (pointer and value types are distinct)", ErrInvalid, typ)
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
 	if err := registry.AddDeferredCommitParticipant("chronicle", func(context.Context, *execution.Scope) (commands.DeferredCommitParticipant, error) {
 		return terminalScope{i}, nil
 	}); err != nil {
@@ -152,7 +164,9 @@ type CommandOptions struct {
 	ConcurrencySourceType, ConcurrencyStreamType, ConcurrencyStreamID bool
 }
 
-// ConfigureCommand freezes per-command routing before Install. Duplicate declarations fail.
+// ConfigureCommand freezes per-command routing before Install. Duplicate declarations
+// fail. Arc Build rejects configuration whose exact C type is not registered;
+// pointer and value types are distinct. Install may precede command registration.
 func ConfigureCommand[C any](i *Integration, options CommandOptions) error {
 	if i == nil {
 		return ErrInvalid
@@ -165,6 +179,7 @@ func ConfigureCommand[C any](i *Integration, options CommandOptions) error {
 		return commands.ErrDuplicate
 	}
 	i.configurations[typ] = options
+	i.configuredTypes = append(i.configuredTypes, typ)
 	return nil
 }
 
