@@ -130,6 +130,9 @@ func (b *Builder) build() (*Application, error) {
 		return nil, err
 	}
 	a := &Application{options: o, catalog: cloneCatalog(catalog), endpoints: slices.Clone(endpoints), commands: cp, queries: qp}
+	if err := a.compileReaders(); err != nil {
+		return nil, err
+	}
 	if err := a.compileRoutes(b.rawHandlers); err != nil {
 		return nil, err
 	}

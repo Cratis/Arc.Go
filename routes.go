@@ -185,6 +185,10 @@ func (a *Application) dispatch(w http.ResponseWriter, r *http.Request, e metadat
 		a.commandEndpoint(w, r, e)
 		return
 	}
+	if !strings.HasPrefix(e.Identity, "/.cratis/") {
+		a.queryEndpoint(w, r, e)
+		return
+	}
 	w.WriteHeader(http.StatusServiceUnavailable)
 }
 

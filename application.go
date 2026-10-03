@@ -23,6 +23,7 @@ type Application struct {
 	handler    http.Handler
 	discovery  discoveryMode
 	routeTable map[string]map[string]metadata.Endpoint
+	readers    map[string]queries.RequestReader
 }
 
 // Catalog returns copied declarations, including artifacts excluded from discovery.
