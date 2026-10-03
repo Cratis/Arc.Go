@@ -5,8 +5,10 @@ description: Multiplex query subscriptions with revision ownership, bounded deli
 
 Use a hub to carry several subscriptions over one physical connection. Both hubs
 support full, delta and legacy collection transfer. The JavaScript runtime's
-default is one WebSocket hub with delta transfer; Go implements that wire path,
-but real locked `@cratis/arc` and browser execution remain unverified.
+default is one WebSocket hub with delta transfer. The locked Node client lane
+executes that default and both hubs' Full/Delta/Legacy transfers. Browser and
+React-hook reconstruction remain unverified; the Node delta case uses an
+independent test-consumer reducer, not a React hook.
 
 ## Routes and opening
 

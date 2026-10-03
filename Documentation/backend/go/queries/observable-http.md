@@ -6,8 +6,9 @@ description: Read current values, wait for a first result, or stream full result
 You can inspect a live query without writing a frontend. These examples assume a
 running application at `http://localhost:8080` with the observable task feed
 registered at `/tasks/all` in [Keep a query live](observable-queries.md). Supply
-your application's credentials when the query is protected. Actual browser/client
-compatibility is unverified; these are the implemented transport contracts.
+your application's credentials when the query is protected. The locked Node
+client lane executes both direct transports; browser compatibility remains
+unverified. These are the implemented transport contracts.
 
 ## Read or wait for a snapshot
 

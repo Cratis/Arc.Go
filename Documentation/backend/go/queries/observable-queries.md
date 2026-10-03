@@ -6,8 +6,9 @@ description: Register an owned source, publish current values, and consume obser
 Polling a list repeatedly wastes requests and still leaves your screen behind the
 latest state. An observable query keeps one admitted subscription open and sends
 new results as your application publishes them. You do not need Chronicle or a
-container. This is an experimental Go API; generated observable adapters and
-actual JavaScript/browser compatibility remain separate, unverified boundaries.
+container. This is an experimental Go API. A locked Node lane executes the real
+Arc client transports; generated observable adapters and browser/React-hook
+compatibility remain separate, unverified boundaries.
 
 ## Register an application-owned feed
 

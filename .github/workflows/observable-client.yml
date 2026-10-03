@@ -1,0 +1,53 @@
+# Keep npm out of the native Go matrix; this required lane runs real client code.
+name: Observable client conformance
+
+on:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: observable-client-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GOWORK: 'off'
+  GOTOOLCHAIN: local
+
+jobs:
+  frontend:
+    name: Locked Arc client transports (Node)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.x'
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: '26.8.1'
+          cache: npm
+          cache-dependency-path: ContractTests/observables/frontend/package-lock.json
+      - name: Install locked prerequisites
+        run: node ContractTests/observables/frontend/run.mjs install
+      - name: Compile manual query against the actual client types
+        run: node ContractTests/observables/frontend/run.mjs compile
+      - name: Build the real Arc fixture host
+        run: node ContractTests/observables/frontend/run.mjs fixture-build
+      - name: Execute client transport cases and join the host
+        run: node ContractTests/observables/frontend/run.mjs runtime
+      - name: Preserve exact request and frame evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: observable-client-failure
+          path: .ai-work/keep/observable-client-failure.json
+          if-no-files-found: warn
+          retention-days: 7
