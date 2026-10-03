@@ -232,6 +232,11 @@ func analyzeWireGraph(graph *Graph, analyses []*analysis, profile ApplicationPro
 				}
 				descriptor.Result = WireType{Kind: "array", Element: &element}
 			}
+			if query.emission != nil && query.shape.collection {
+				if err := validateObservableGoIdentity(query.model.typ); err != nil {
+					return diagnostic(a.pkg, query.call.decl.Pos(), "%v", err)
+				}
+			}
 			for _, field := range w.nodes[result.Target].Fields {
 				if field.Identity {
 					descriptor.Declaration.ReadModelIdentityMember = field.Name

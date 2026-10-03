@@ -1,0 +1,8 @@
+{
+  "formatVersion": 1,
+  "name": "observable-fixture",
+  "clientHttp": {
+    "Shop.Tasks.Task.All": "Get"
+  },
+  "typescript": { "out": "web" }
+}
