@@ -190,13 +190,6 @@ func (e *emitter) dep(t types.Type) dependency {
 	}
 	panic("missing analyzed dependency")
 }
-func (e *emitter) identity(m model) string {
-	namespace := e.builder + ".CommandNamespace()"
-	if e.analysis.namespace != "" {
-		namespace = strconv.Quote(e.analysis.namespace)
-	}
-	return fmt.Sprintf("%s.TypeName{Namespace:%s, Name:%q}", e.imp(runtimePath+"/metadata"), namespace, m.d.name)
-}
 func (e *emitter) auth(a *metadata.Authorization) string {
 	if a == nil {
 		return "nil"
@@ -224,7 +217,13 @@ func (e *emitter) auth(a *metadata.Authorization) string {
 }
 func (e *emitter) emitModel(m *model) {
 	q := e.imp(runtimePath + "/queries")
-	e.line("if %s := %s.RegisterReadModel[%s](%s, %s.WithModelIdentity(%s), %s.WithModelPath(%q),", e.err, q, e.typ(m.typ), e.builder, q, e.identity(*m), q, m.d.path)
+	e.line("if %s := %s.RegisterReadModel[%s](%s, %s.WithModelName(%q), %s.WithModelPath(%q),", e.err, q, e.typ(m.typ), e.builder, q, m.d.name, q, m.d.path)
+	if e.analysis.namespace != "" {
+		e.line("%s.WithModelNamespace(%q),", q, e.analysis.namespace)
+	}
+	if m.d.exclude {
+		e.line("%s.WithModelExcludeFromDiscovery(true),", q)
+	}
 	if m.d.auth != nil {
 		e.line("%s.WithModelAuthorization(%s),", q, strings.TrimPrefix(e.auth(m.d.auth), "&"))
 	}
@@ -283,7 +282,16 @@ func (e *emitter) emitCommand(c command) {
 		e.emitCall(c.handle, e.value+".Handle", out, false, "")
 		e.line("}),")
 	}
-	e.line("%s.WithDescriptor[%s](%s.Command{Type:%s, Path:%q, Authorization:%s, ExcludeFromDiscovery:%t}),", cmd, ct, e.imp(runtimePath+"/metadata"), e.identity(c.model), c.d.path, e.auth(c.d.auth), c.d.exclude)
+	e.line("%s.WithName[%s](%q), %s.WithPath[%s](%q),", cmd, ct, c.d.name, cmd, ct, c.d.path)
+	if e.analysis.namespace != "" {
+		e.line("%s.WithNamespace[%s](%q),", cmd, ct, e.analysis.namespace)
+	}
+	if c.d.auth != nil {
+		e.line("%s.WithAuthorization[%s](%s),", cmd, ct, strings.TrimPrefix(e.auth(c.d.auth), "&"))
+	}
+	if c.d.exclude {
+		e.line("%s.WithExcludeFromDiscovery[%s](true),", cmd, ct)
+	}
 	if c.d.severity != nil {
 		e.line("%s.WithBlockOnValidationSeverity[%s](%s.Severity(%d)),", cmd, ct, e.imp(runtimePath+"/validation"), *c.d.severity)
 	}
@@ -302,17 +310,22 @@ func (e *emitter) emitQuery(q query) {
 		args = e.typ(q.args)
 	}
 	keys := e.manifest(q.call)
-	// Inspect supported field tags through the same public metadata API as manual registration.
-	model := e.unique("arcModel")
-	e.line("%s, %s := %s.InspectModel(%s.TypeFor[%s](), \"\")", model, e.err, e.imp(runtimePath+"/metadata"), e.imp("reflect"), e.typ(q.model.typ))
-	e.line("if %s != nil { return %s }", e.err, e.err)
 	e.line("if %s := %s.Register[%s](%s, %q, %s.Invoke(func(%s %s.Context, %s *%s.Invocation, %s %s) (%s, error) {", e.err, queries, e.typ(q.model.typ), e.builder, q.d.name, queries, e.ctx, e.imp("context"), e.inv, queries, e.args, args, e.typ(q.call.output))
 	call := q.call.decl.Name.Name
 	if q.call.decl.Recv != nil {
 		call = "(" + e.typ(q.model.typ) + "{})." + call
 	}
 	e.emitCall(q.call, call, e.typ(q.call.output), false, "")
-	e.line("}), %s.WithDescriptor[%s](%s.Query{ReadModel:%s, Name:%q, ReadModelPath:%q, ReadModelAuthorization:%s, Authorization:%s, HTTPMethod:%q, ExcludeFromDiscovery:%t, ReadModelIdentityMember:%s.IdentityMember}),", queries, args, e.imp(runtimePath+"/metadata"), e.identity(*q.model), q.d.name, q.model.d.path, e.auth(q.model.d.auth), e.auth(q.d.auth), q.d.http, q.d.exclude || q.model.d.exclude, model)
+	e.line("}),")
+	if q.d.auth != nil {
+		e.line("%s.WithAuthorization[%s](%s),", queries, args, strings.TrimPrefix(e.auth(q.d.auth), "&"))
+	}
+	if q.d.http != "" {
+		e.line("%s.WithHTTPMethod[%s](%q),", queries, args, q.d.http)
+	}
+	if q.d.exclude {
+		e.line("%s.WithExcludeFromDiscovery[%s](true),", queries, args)
+	}
 	if q.d.hasPath {
 		e.line("%s.WithPath[%s](%q),", queries, args, q.d.path)
 	}

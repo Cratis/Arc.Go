@@ -83,6 +83,53 @@ func TestBootstrapRegenerationAndExecutableConsumer(t *testing.T) {
 	}
 }
 
+func TestNamespaceLessAdaptersUseSupportedRegistrationDefaults(t *testing.T) {
+	dir := consumer(t)
+	put(t, filepath.Join(dir, "artifacts.go"), `package consumer
+//arc:command name=Register
+//arc:allow-anonymous
+type Add struct{}
+func (Add) Handle() error { return nil }
+//arc:readmodel name=Detail
+//arc:exclude-from-discovery
+//arc:allow-anonymous
+type Item struct{}
+func (Item) All() ([]Item, error) { return nil, nil }
+`)
+	generate(t, Config{Dir: dir})
+	path := filepath.Join(dir, Filename)
+	if bytes.Contains(get(t, path), []byte("CommandNamespace")) || bytes.Contains(get(t, path), []byte("WithDescriptor")) {
+		t.Fatal("namespace-less adapter reads removed accessor or erases registrar defaults")
+	}
+	put(t, filepath.Join(dir, "namespace_test.go"), `package consumer
+import (
+ "testing"
+ arc "github.com/cratis/arc.go"
+)
+func TestNamespaceDefaults(t *testing.T) {
+ for _, namespace := range []string{"", "Shop.Tasks"} {
+  builder, err := arc.NewBuilder(arc.Options{Namespace:namespace})
+  if err != nil { t.Fatal(err) }
+  if err := RegisterArtifacts(builder); err != nil { t.Fatal(err) }
+  catalog := builder.Catalog()
+  command, query := catalog.Commands[0], catalog.Queries[0]
+  if command.Type.Namespace != namespace || command.Type.Name != "Register" { t.Fatal(command) }
+  if query.ReadModel.Namespace != namespace || query.ReadModel.Name != "Detail" || !query.ExcludeFromDiscovery { t.Fatal(query) }
+  if _, err := builder.Build(); err != nil { t.Fatal(err) }
+ }
+}
+`)
+	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "test", "-mod=mod", "-count=1", "-timeout=30s", "./...")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=local")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("namespace-less consumer did not compile/run: %v\n%s", err, output)
+	}
+}
+
 func TestStaleOutputCleanupIsOwnedAndScoped(t *testing.T) {
 	dir := consumer(t)
 	put(t, filepath.Join(dir, "artifacts.go"), "package consumer\n")

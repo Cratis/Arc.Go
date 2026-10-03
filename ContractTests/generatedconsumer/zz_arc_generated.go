@@ -14,7 +14,6 @@ import (
 	arcgenqueries "github.com/cratis/arc.go/queries"
 	arcgenvalidation "github.com/cratis/arc.go/validation"
 	arcgendependencyinjection "github.com/cratis/fundamentals.go/dependencyinjection"
-	arcgenreflect "reflect"
 )
 
 // ArcBindings optionally supplies typed, stage-local dependencies without a container.
@@ -59,7 +58,8 @@ func RegisterArtifacts(arcBuilder *arcgenarc.Builder, bindings ...ArcBindings) e
 	if len(bindings) == 1 {
 		arcBindings = bindings[0]
 	}
-	if arcErr := arcgenqueries.RegisterReadModel[Item](arcBuilder, arcgenqueries.WithModelIdentity(arcgenmetadata.TypeName{Namespace: "Generated.Shop", Name: "Item"}), arcgenqueries.WithModelPath(""),
+	if arcErr := arcgenqueries.RegisterReadModel[Item](arcBuilder, arcgenqueries.WithModelName("Item"), arcgenqueries.WithModelPath(""),
+		arcgenqueries.WithModelNamespace("Generated.Shop"),
 		arcgenqueries.WithModelAuthorization(arcgenmetadata.Authorization{AllowAnonymous: false, Requirements: []arcgenmetadata.AuthorizationRequirement{{Policy: "", Roles: []string{"Reader"}}}}),
 	); arcErr != nil {
 		return arcErr
@@ -88,7 +88,10 @@ func RegisterArtifacts(arcBuilder *arcgenarc.Builder, bindings ...ArcBindings) e
 			}
 			return arcValue.Handle(arcCtx, arcPrepared, arcDependency2)
 		}),
-		arcgencommands.WithDescriptor[AddItem](arcgenmetadata.Command{Type: arcgenmetadata.TypeName{Namespace: "Generated.Shop", Name: "AddItem"}, Path: "", Authorization: &arcgenmetadata.Authorization{AllowAnonymous: false, Requirements: []arcgenmetadata.AuthorizationRequirement{{Policy: "", Roles: []string{"Editor", "Admin"}}, {Policy: "", Roles: []string{"Verified"}}}}, ExcludeFromDiscovery: true}),
+		arcgencommands.WithName[AddItem]("AddItem"), arcgencommands.WithPath[AddItem](""),
+		arcgencommands.WithNamespace[AddItem]("Generated.Shop"),
+		arcgencommands.WithAuthorization[AddItem](arcgenmetadata.Authorization{AllowAnonymous: false, Requirements: []arcgenmetadata.AuthorizationRequirement{{Policy: "", Roles: []string{"Editor", "Admin"}}, {Policy: "", Roles: []string{"Verified"}}}}),
+		arcgencommands.WithExcludeFromDiscovery[AddItem](true),
 		arcgencommands.WithBlockOnValidationSeverity[AddItem](arcgenvalidation.Severity(2)),
 		arcgencommands.WithHandlingDependencies[AddItem](arcKeys...),
 		arcgencommands.WithPreparationDependencies[AddItem](arcKeys2...),
@@ -115,7 +118,9 @@ func RegisterArtifacts(arcBuilder *arcgenarc.Builder, bindings ...ArcBindings) e
 			}
 			return arcValue.Handle(arcCtx, arcDependency3)
 		}),
-		arcgencommands.WithDescriptor[Checked](arcgenmetadata.Command{Type: arcgenmetadata.TypeName{Namespace: "Generated.Shop", Name: "Checked"}, Path: "", Authorization: &arcgenmetadata.Authorization{AllowAnonymous: true}, ExcludeFromDiscovery: false}),
+		arcgencommands.WithName[Checked]("Checked"), arcgencommands.WithPath[Checked](""),
+		arcgencommands.WithNamespace[Checked]("Generated.Shop"),
+		arcgencommands.WithAuthorization[Checked](arcgenmetadata.Authorization{AllowAnonymous: true}),
 		arcgencommands.WithHandlingDependencies[Checked](arcKeys3...),
 	); arcErr != nil {
 		return arcErr
@@ -143,7 +148,9 @@ func RegisterArtifacts(arcBuilder *arcgenarc.Builder, bindings ...ArcBindings) e
 			}
 			return arcValue.Handle(arcCtx, arcDependency4)
 		}),
-		arcgencommands.WithDescriptor[Guarded](arcgenmetadata.Command{Type: arcgenmetadata.TypeName{Namespace: "Generated.Shop", Name: "Guarded"}, Path: "", Authorization: &arcgenmetadata.Authorization{AllowAnonymous: true}, ExcludeFromDiscovery: false}),
+		arcgencommands.WithName[Guarded]("Guarded"), arcgencommands.WithPath[Guarded](""),
+		arcgencommands.WithNamespace[Guarded]("Generated.Shop"),
+		arcgencommands.WithAuthorization[Guarded](arcgenmetadata.Authorization{AllowAnonymous: true}),
 		arcgencommands.WithHandlingDependencies[Guarded](arcKeys4...),
 	); arcErr != nil {
 		return arcErr
@@ -159,7 +166,9 @@ func RegisterArtifacts(arcBuilder *arcgenarc.Builder, bindings ...ArcBindings) e
 		}, func(arcCtx arcgencontext.Context, arcInv *arcgencommands.Invocation, arcValue Rename, arcPrepared State) (string, error) {
 			return arcValue.Handle(arcCtx, arcPrepared)
 		}),
-		arcgencommands.WithDescriptor[Rename](arcgenmetadata.Command{Type: arcgenmetadata.TypeName{Namespace: "Generated.Shop", Name: "Rename"}, Path: "", Authorization: &arcgenmetadata.Authorization{AllowAnonymous: true}, ExcludeFromDiscovery: false}),
+		arcgencommands.WithName[Rename]("Rename"), arcgencommands.WithPath[Rename](""),
+		arcgencommands.WithNamespace[Rename]("Generated.Shop"),
+		arcgencommands.WithAuthorization[Rename](arcgenmetadata.Authorization{AllowAnonymous: true}),
 	); arcErr != nil {
 		return arcErr
 	}
@@ -167,17 +176,15 @@ func RegisterArtifacts(arcBuilder *arcgenarc.Builder, bindings ...ArcBindings) e
 		arcgencommands.Invoke(func(arcCtx arcgencontext.Context, arcInv *arcgencommands.Invocation, arcValue *Reset) (arcgencommands.NoResponse, error) {
 			return arcgencommands.NoResponse{}, arcValue.Handle()
 		}),
-		arcgencommands.WithDescriptor[*Reset](arcgenmetadata.Command{Type: arcgenmetadata.TypeName{Namespace: "Generated.Shop", Name: "Reset"}, Path: "", Authorization: &arcgenmetadata.Authorization{AllowAnonymous: true}, ExcludeFromDiscovery: false}),
+		arcgencommands.WithName[*Reset]("Reset"), arcgencommands.WithPath[*Reset](""),
+		arcgencommands.WithNamespace[*Reset]("Generated.Shop"),
+		arcgencommands.WithAuthorization[*Reset](arcgenmetadata.Authorization{AllowAnonymous: true}),
 	); arcErr != nil {
 		return arcErr
 	}
 	var arcKeys5 []arcgendependencyinjection.Key
 	if arcBindings.ResolveItemQueries == nil {
 		arcKeys5 = append(arcKeys5, arcgendependencyinjection.KeyFor[ItemQueries]())
-	}
-	arcModel, arcErr := arcgenmetadata.InspectModel(arcgenreflect.TypeFor[Item](), "")
-	if arcErr != nil {
-		return arcErr
 	}
 	if arcErr := arcgenqueries.Register[Item](arcBuilder, "AllItems", arcgenqueries.Invoke(func(arcCtx arcgencontext.Context, arcInv *arcgenqueries.Invocation, arcArgs Arguments) ([]Item, error) {
 		arcDependency5, arcErr := arcBindings.arcResolveItemQueries(arcCtx, arcInv.Scope())
@@ -186,7 +193,7 @@ func RegisterArtifacts(arcBuilder *arcgenarc.Builder, bindings ...ArcBindings) e
 			return arcZero, arcErr
 		}
 		return (Item{}).AllItems(arcCtx, arcArgs, arcDependency5, arcInv.QueryContext(), arcInv.QueryContext().Parameters())
-	}), arcgenqueries.WithDescriptor[Arguments](arcgenmetadata.Query{ReadModel: arcgenmetadata.TypeName{Namespace: "Generated.Shop", Name: "Item"}, Name: "AllItems", ReadModelPath: "", ReadModelAuthorization: &arcgenmetadata.Authorization{AllowAnonymous: false, Requirements: []arcgenmetadata.AuthorizationRequirement{{Policy: "", Roles: []string{"Reader"}}}}, Authorization: nil, HTTPMethod: "", ExcludeFromDiscovery: false, ReadModelIdentityMember: arcModel.IdentityMember}),
+	}),
 		arcgenqueries.WithDependencies[Arguments](arcKeys5...),
 	); arcErr != nil {
 		return arcErr
@@ -195,10 +202,6 @@ func RegisterArtifacts(arcBuilder *arcgenarc.Builder, bindings ...ArcBindings) e
 	if arcBindings.ResolveItemQueries == nil {
 		arcKeys6 = append(arcKeys6, arcgendependencyinjection.KeyFor[ItemQueries]())
 	}
-	arcModel2, arcErr := arcgenmetadata.InspectModel(arcgenreflect.TypeFor[Item](), "")
-	if arcErr != nil {
-		return arcErr
-	}
 	if arcErr := arcgenqueries.Register[Item](arcBuilder, "Recent", arcgenqueries.Invoke(func(arcCtx arcgencontext.Context, arcInv *arcgenqueries.Invocation, arcArgs Arguments) ([]Item, error) {
 		arcDependency6, arcErr := arcBindings.arcResolveItemQueries(arcCtx, arcInv.Scope())
 		if arcErr != nil {
@@ -206,7 +209,9 @@ func RegisterArtifacts(arcBuilder *arcgenarc.Builder, bindings ...ArcBindings) e
 			return arcZero, arcErr
 		}
 		return RecentItems(arcCtx, arcArgs, arcDependency6)
-	}), arcgenqueries.WithDescriptor[Arguments](arcgenmetadata.Query{ReadModel: arcgenmetadata.TypeName{Namespace: "Generated.Shop", Name: "Item"}, Name: "Recent", ReadModelPath: "", ReadModelAuthorization: &arcgenmetadata.Authorization{AllowAnonymous: false, Requirements: []arcgenmetadata.AuthorizationRequirement{{Policy: "", Roles: []string{"Reader"}}}}, Authorization: &arcgenmetadata.Authorization{AllowAnonymous: true}, HTTPMethod: "QUERY", ExcludeFromDiscovery: false, ReadModelIdentityMember: arcModel2.IdentityMember}),
+	}),
+		arcgenqueries.WithAuthorization[Arguments](arcgenmetadata.Authorization{AllowAnonymous: true}),
+		arcgenqueries.WithHTTPMethod[Arguments]("QUERY"),
 		arcgenqueries.WithPath[Arguments]("/generated/recent"),
 		arcgenqueries.WithDependencies[Arguments](arcKeys6...),
 	); arcErr != nil {

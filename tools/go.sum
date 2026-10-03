@@ -1,5 +1,5 @@
-github.com/cratis/arc.go v0.0.0-20261003005349-c8bd4b7d0830 h1:uuxdA2+krF659fFFuea4swi3TEAaFQ85TptO2jA1t+w=
-github.com/cratis/arc.go v0.0.0-20261003005349-c8bd4b7d0830/go.mod h1:NXZo3koeNCdRTxoFEAUr0/7ti7NBwtmBPX5rA1V/KiI=
+github.com/cratis/arc.go v0.0.0-20261003065446-3c6bbbaacc06 h1:jSzF2aRPG7Vb7QHnYXQAhl+XBsdaFvLIhCShjLgNQLM=
+github.com/cratis/arc.go v0.0.0-20261003065446-3c6bbbaacc06/go.mod h1:NXZo3koeNCdRTxoFEAUr0/7ti7NBwtmBPX5rA1V/KiI=
 github.com/cratis/fundamentals.go v0.0.0-20261002221826-0fd6b51d12e4 h1:cN323+1L2EJI3rAhqNpZ0hTOnD2/z/Jfr6ZnkN/AUIU=
 github.com/cratis/fundamentals.go v0.0.0-20261002221826-0fd6b51d12e4/go.mod h1:upTRXscJLeH63NqzzY51bPvvsgjtDpfug6a6VAaT2fI=
 github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=

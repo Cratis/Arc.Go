@@ -3,7 +3,7 @@ module github.com/cratis/arc.go/tools
 go 1.26.0
 
 require (
-	github.com/cratis/arc.go v0.0.0-20261003005349-c8bd4b7d0830
+	github.com/cratis/arc.go v0.0.0-20261003065446-3c6bbbaacc06
 	golang.org/x/tools v0.51.0
 )
 
