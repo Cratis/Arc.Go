@@ -96,6 +96,42 @@ func safeOutputPath(path string) error {
 	return nil
 }
 
+// validateOutputGraph includes roots and every file ancestor, not just leaf
+// names. A file cannot also be a directory, even if neither exists yet.
+func validateOutputGraph(roots, files []string) error {
+	directories := map[string]string{}
+	paths := append([]string{}, roots...)
+	for _, path := range files {
+		paths = append(paths, filepath.Dir(path))
+	}
+	for _, path := range paths {
+		for {
+			folded := strings.ToLower(path)
+			if prior, exists := directories[folded]; exists && prior != path {
+				return fmt.Errorf("case/output directory collision: %s and %s", prior, path)
+			}
+			directories[folded] = path
+			parent := filepath.Dir(path)
+			if parent == path {
+				break
+			}
+			path = parent
+		}
+	}
+	leaves := map[string]string{}
+	for _, path := range files {
+		folded := strings.ToLower(path)
+		if directory, exists := directories[folded]; exists {
+			return fmt.Errorf("file/directory output collision: %s and %s", path, directory)
+		}
+		if prior, exists := leaves[folded]; exists && prior != path {
+			return fmt.Errorf("case/output collision: %s and %s", prior, path)
+		}
+		leaves[folded] = path
+	}
+	return nil
+}
+
 func decodeOwned(data []byte, value any) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -160,6 +196,8 @@ func publishOwned(ctx context.Context, moduleRoot, tsRoot string, profile Applic
 	}
 	next := ownedManifest{Format: outputFormat, Owner: profile.Name, Scope: contentHash(scopeData), Fingerprint: graph.Fingerprint, Files: []ownedEntry{}}
 	roots := map[string]string{"go": moduleRoot, "ts": tsRoot}
+	manifestPath, journalPath := filepath.Join(tsRoot, manifestName), filepath.Join(tsRoot, journalName)
+	physicalFiles := []string{manifestPath, journalPath}
 	destination := func(entry ownedEntry) (string, error) {
 		root, ok := roots[entry.Root]
 		if !ok || entry.Path == "" || !safeRelative(entry.Path) || entry.Path == manifestName || entry.Path == journalName {
@@ -201,6 +239,7 @@ func publishOwned(ctx context.Context, moduleRoot, tsRoot string, profile Applic
 			return fmt.Errorf("case/output collision: %s and %s", prior, actual)
 		}
 		physical[folded] = actual
+		physicalFiles = append(physicalFiles, actual)
 		entries[key(entry)] = entry
 		if output.Content == nil {
 			continue
@@ -213,7 +252,9 @@ func publishOwned(ctx context.Context, moduleRoot, tsRoot string, profile Applic
 		next.Files = append(next.Files, entry)
 	}
 	sort.Slice(next.Files, func(i, j int) bool { return key(next.Files[i]) < key(next.Files[j]) })
-	manifestPath, journalPath := filepath.Join(tsRoot, manifestName), filepath.Join(tsRoot, journalName)
+	if err := validateOutputGraph([]string{moduleRoot, tsRoot}, physicalFiles); err != nil {
+		return err
+	}
 	for _, path := range []string{manifestPath, journalPath} {
 		if err := safeOutputPath(path); err != nil {
 			return err
@@ -245,6 +286,7 @@ func publishOwned(ctx context.Context, moduleRoot, tsRoot string, profile Applic
 				return old, fmt.Errorf("invalid or duplicate manifest entry %q", entry.Path)
 			}
 			seen[folded] = true
+			physicalFiles = append(physicalFiles, path)
 		}
 		return old, nil
 	}
@@ -287,6 +329,7 @@ func publishOwned(ctx context.Context, moduleRoot, tsRoot string, profile Applic
 			if err != nil {
 				return err
 			}
+			physicalFiles = append(physicalFiles, path)
 			identity := key(change.Entry)
 			if _, duplicate := virtual[identity]; duplicate {
 				return fmt.Errorf("duplicate pending path")
@@ -321,6 +364,9 @@ func publishOwned(ctx context.Context, moduleRoot, tsRoot string, profile Applic
 	for _, entry := range old.Files {
 		oldEntries[key(entry)] = entry
 		entries[key(entry)] = entry
+	}
+	if err := validateOutputGraph([]string{moduleRoot, tsRoot}, physicalFiles); err != nil {
+		return err
 	}
 	if err := filepath.WalkDir(tsRoot, func(path string, item fs.DirEntry, walkErr error) error {
 		if errors.Is(walkErr, os.ErrNotExist) && path == tsRoot {

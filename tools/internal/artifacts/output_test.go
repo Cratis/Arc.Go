@@ -202,6 +202,58 @@ func TestOwnedPublicationRejectsEscapesAndUnsafeInventory(t *testing.T) {
 		})
 	}
 }
+func TestOwnedPublicationRejectsPhysicalFileDirectoryCollisions(t *testing.T) {
+	for _, kind := range []string{"adapter-root", "adapter-root-ancestor", "active-ancestor", "case-ancestor", "case-directory", "stale-ancestor", "stale-case", "manifest-ancestor", "journal-ancestor"} {
+		t.Run(kind, func(t *testing.T) {
+			module, root, profile, graph, outputs := publication(t)
+			if strings.HasPrefix(kind, "stale-") {
+				if err := publishOwned(t.Context(), module, root, profile, graph, "", outputs, false, nil); err != nil {
+					t.Fatal(err)
+				}
+				// Missing stale files remain in the physical ownership graph.
+				if err := os.Remove(outputs[1].Path); err != nil {
+					t.Fatal(err)
+				}
+			}
+			switch kind {
+			case "adapter-root", "adapter-root-ancestor":
+				root = filepath.Join(module, Filename)
+				if kind == "adapter-root-ancestor" {
+					root = filepath.Join(root, "web")
+				}
+				outputs[1].Path = filepath.Join(root, "A.ts")
+				outputs[2].Path = filepath.Join(root, "B.ts")
+			case "active-ancestor", "case-ancestor":
+				ancestor := "A.ts"
+				if kind == "case-ancestor" {
+					ancestor = "a.ts"
+				}
+				outputs[2].Path = filepath.Join(root, ancestor, "B.ts")
+			case "case-directory":
+				outputs[1].Path = filepath.Join(root, "One", "A.ts")
+				outputs[2].Path = filepath.Join(root, "one", "B.ts")
+			case "stale-ancestor":
+				outputs = append(outputs[:1], outputs[2:]...)
+				outputs[1].Path = filepath.Join(root, "A.ts", "B.ts")
+			case "stale-case":
+				outputs[1].Path = filepath.Join(root, "a.ts")
+			case "manifest-ancestor":
+				outputs[1].Path = filepath.Join(root, manifestName, "A.ts")
+			case "journal-ancestor":
+				outputs[1].Path = filepath.Join(root, journalName, "A.ts")
+			}
+			before := outputInventory(t, module)
+			for _, check := range []bool{false, true} {
+				err := publishOwned(t.Context(), module, root, profile, graph, "", outputs, check, nil)
+				if err == nil || !strings.Contains(err.Error(), "collision") {
+					t.Fatal("physical collision accepted", err)
+				}
+				assertOutputInventory(t, module, before)
+			}
+		})
+	}
+}
+
 func TestOwnedPublicationCancelledBeforeAnyWrite(t *testing.T) {
 	module, root, profile, graph, outputs := publication(t)
 	ctx, cancel := context.WithCancel(t.Context())

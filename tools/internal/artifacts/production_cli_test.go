@@ -15,6 +15,23 @@ import (
 	"time"
 )
 
+func TestProductionCLIRejectsAdapterAsTypeScriptRootWithoutMutation(t *testing.T) {
+	dir := consumer(t)
+	put(t, filepath.Join(dir, "input.go"), "package consumer\n//arc:command\ntype Echo struct { Name string `json:\"name\"` }\nfunc (Echo) Handle() error { return nil }\n")
+	put(t, filepath.Join(dir, "profile.json"), `{"formatVersion":1,"name":"collision","defaultNamespace":"Tasks","typescript":{"out":"zz_arc_generated.go"}}`)
+	before := outputInventory(t, dir)
+	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, "go", "run", "./cmd/arc-gen", "-dir", dir, "-config", filepath.Join(dir, "profile.json"), ".")
+	command.Dir = "../.."
+	command.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=local")
+	output, err := command.CombinedOutput()
+	if err == nil || !bytes.Contains(output, []byte("file/directory output collision")) {
+		t.Fatalf("production CLI accepted adapter/root collision: %v\n%s", err, output)
+	}
+	assertOutputInventory(t, dir, before)
+}
+
 func TestProductionCLIPlansPublishesAndChecksActualRuntimeContract(t *testing.T) {
 	fixture := filepath.Join("..", "..", "..", "ContractTests", "ProxyComparison", "Publication")
 	dir := consumer(t)
