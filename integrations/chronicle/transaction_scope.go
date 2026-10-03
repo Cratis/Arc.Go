@@ -17,6 +17,7 @@ type transaction struct {
 	busy, closed bool
 	bound        bool
 	unsubscribe  func()
+	observation  *appendObservation
 	immediate    commands.CompletionReport
 	coordinates  Coordinates
 	actor        Actor
@@ -253,7 +254,11 @@ func (i *Integration) finish(ctx context.Context, inv *commands.Invocation, tx *
 	tx.result.Report.Disposition = commands.OutcomeUnknown
 	stop := tx.unsubscribe
 	tx.unsubscribe = nil
+	observation := tx.observation
 	tx.mu.Unlock()
+	if observation != nil {
+		defer observation.release()
+	}
 	if stop != nil {
 		stop()
 	}
@@ -274,7 +279,11 @@ func (i *Integration) finish(ctx context.Context, inv *commands.Invocation, tx *
 			err = errors.Join(frameErr, tx.owner.Rollback())
 		} else {
 			// The factory/SDK owns the only production event buffer and single commit.
-			result, err = tx.owner.Commit(frame.context(ctx))
+			if observation != nil {
+				result, err = observation.commit(tx.owner, frame.context(ctx))
+			} else {
+				result, err = tx.owner.Commit(frame.context(ctx))
+			}
 		}
 	}
 	failure := errors.Join(poison, err)

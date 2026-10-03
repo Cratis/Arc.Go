@@ -18,11 +18,17 @@ func (a *adapter) Subscribe(ctx context.Context, c integration.Coordinates, id c
 	if err != nil {
 		return nil, err
 	}
+	return subscribeAppends(sequence.OnAppend, id, notify), nil
+}
+
+func subscribeAppends(onAppend func(func(eventsequences.AppendNotification)) func(), id correlation.ID, notify func(integration.CommitResult, error)) func() {
 	var mu sync.Mutex
 	var callbacks sync.WaitGroup
 	closed := false
-	unsubscribe := sequence.OnAppend(func(n eventsequences.AppendNotification) {
-		if n.CorrelationID != (metadata.CorrelationID{}) && n.CorrelationID != metadata.CorrelationID([16]byte(id)) {
+	unsubscribe := onAppend(func(n eventsequences.AppendNotification) {
+		// Zero is an exact correlation, never a broadcast. The integration owns
+		// in-flight ambiguity and owner-commit suppression for this subscription.
+		if n.CorrelationID != metadata.CorrelationID([16]byte(id)) {
 			return
 		}
 		mu.Lock()
@@ -36,5 +42,5 @@ func (a *adapter) Subscribe(ctx context.Context, c integration.Coordinates, id c
 		notify(mapResult(n.Result), n.Err)
 	})
 	var once sync.Once
-	return func() { once.Do(func() { mu.Lock(); closed = true; mu.Unlock(); unsubscribe(); callbacks.Wait() }) }, nil
+	return func() { once.Do(func() { mu.Lock(); closed = true; mu.Unlock(); unsubscribe(); callbacks.Wait() }) }
 }

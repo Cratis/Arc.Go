@@ -53,7 +53,7 @@ Source selection is deterministic: `EventSourceIDProvider`, configured selector,
 
 Use `Events(...)` for explicit event collections and `EventsWithScopes(...)` for ordered entries plus checks. Ordinary slices are not guessed to be events. Typed nil registered events, unregistered wrapped events, invalid metadata and incompatible scopes fail rather than disappearing. A completely empty batch has no append work; a scope-only batch executes its checks. Input values must not be mutated during staging; the SDK snapshots them before returning.
 
-`ConfigureCommand[C]` supplies route, sequence, source selector, compliance subject and concurrency flags. `Subject` is a compliance identity, never a principal. Explicit Go wrapper options can supply per-entry route, subject and causation in addition to the C#-style target, tags and occurrence.
+`ConfigureCommand[C]` supplies route, sequence, source selector, compliance subject and concurrency flags. Configure it before Install; you may register commands after Install, but Build rejects any configured `C` that is not exactly registered. `T` and `*T` are distinct command types. `Subject` is a compliance identity, never a principal. Explicit Go wrapper options can supply per-entry route, subject and causation in addition to the C#-style target, tags and occurrence.
 
 ## Understand commitment and recovery
 
@@ -63,7 +63,11 @@ Ordinary completion runs before the terminal commit. Failed input, handlers, nes
 
 Inspect `Result.Completion()` and `commands.CompletionError` on the server. A failed command may have committed earlier work. Unknown outcomes fail the envelope and remove its response but do not prove that persistence failed. There is no automatic commit, handler, aggregate or reactor-command retry; reconcile or use application idempotency before resubmitting.
 
-Immediate SDK writes remain immediate. After authorization, the adapter establishes readiness and subscribes to the selected cached sequence, attributing dispatched append notifications by request correlation. An ignored rejection fails the command and rolls back deferred work; an earlier confirmed immediate write cannot be undone. The subscription ends before deferred or early aggregate completion. Raw low-level sequence handles, other sequences, and errors before dispatch are outside this observation window: always inspect direct SDK append results yourself.
+Immediate SDK writes remain immediate. After authorization, the adapter establishes readiness and subscribes to the selected cached sequence. For an attributable append, an ignored rejection fails the command and rolls back deferred work; an earlier confirmed immediate write cannot be undone. The subscription ends before deferred or early aggregate completion. Raw low-level sequence handles, other sequences, and errors before dispatch are outside this observation window: always inspect direct SDK append results yourself.
+
+Append attribution is an interim safeguard, not execution identity. Within one installed integration, a notification is attributed only when exactly one in-flight command owner holds its store, namespace, sequence and exact request correlation. Zero correlation is not a broadcast. Shared-correlation ambiguity attributes to none and logs once at Debug per in-flight key lifetime, without event payloads. Membership remains until owner completion returns, and notifications matching an integration owner-commit window are excluded, so another command's rejected or successful owner commit cannot poison the remaining command.
+
+This suppression can miss a genuine immediate append racing an owner commit or another same-correlation command. It cannot distinguish an unrelated SDK caller or separate integration sharing the correlation; an append started during ambiguity can also notify after the key becomes a singleton. Always check direct append results, use distinct correlations for independent commands, and do not treat observation as a persistence guarantee. [Chronicle.Go execution-identity issue 47](https://github.com/Cratis/Chronicle.Go/issues/47) tracks the SDK seam needed to remove this limitation.
 
 ## Inject keyed read models
 
