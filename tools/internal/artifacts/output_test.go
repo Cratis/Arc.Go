@@ -79,6 +79,39 @@ func TestOwnedPublicationInventoryAndNoWriteCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+func TestOwnedPublicationRejectsByteIdenticalUnmanifestedDestinations(t *testing.T) {
+	for _, target := range []string{"adapter", "model", "barrel"} {
+		for _, hasManifest := range []bool{false, true} {
+			name := target + map[bool]string{false: "/first-publication", true: "/new-manifest-entry"}[hasManifest]
+			t.Run(name, func(t *testing.T) {
+				module, root, profile, graph, outputs := publication(t)
+				barrel := ownedOutput{filepath.Join(root, "index.ts"), []byte(Header + "export * from './A';\n")}
+				outputs = append(outputs, barrel)
+				index := map[string]int{"adapter": 0, "model": 1, "barrel": 3}[target]
+				unmanifested := outputs[index]
+				if hasManifest {
+					initial := append([]ownedOutput{}, outputs[:index]...)
+					initial = append(initial, outputs[index+1:]...)
+					if err := publishOwned(t.Context(), module, root, profile, graph, "", initial, false, nil); err != nil {
+						t.Fatal(err)
+					}
+					// A refusal to add ownership must also preserve stale files.
+					outputs = append(outputs[:2], outputs[3:]...)
+				}
+				put(t, unmanifested.Path, string(unmanifested.Content))
+				before := outputInventory(t, module)
+				for _, check := range []bool{false, true} {
+					err := publishOwned(t.Context(), module, root, profile, graph, "", outputs, check, nil)
+					if err == nil || !strings.Contains(err.Error(), "no manifest ownership") || !strings.Contains(err.Error(), "preserve and move") {
+						t.Fatal("automatic adoption accepted or missing remedy", err)
+					}
+					assertOutputInventory(t, module, before)
+				}
+			})
+		}
+	}
+}
+
 func TestOwnedPublicationRejectsEditedAndUnownedFilesBeforeWrites(t *testing.T) {
 	for _, stale := range []bool{false, true} {
 		t.Run(map[bool]string{false: "active", true: "stale"}[stale], func(t *testing.T) {

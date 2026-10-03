@@ -32,6 +32,35 @@ func TestProductionCLIRejectsAdapterAsTypeScriptRootWithoutMutation(t *testing.T
 	assertOutputInventory(t, dir, before)
 }
 
+func TestProductionCLIRejectsLegacyAdapterWithoutManifestOwnership(t *testing.T) {
+	dir := consumer(t)
+	put(t, filepath.Join(dir, "input.go"), "package consumer\n//arc:command\ntype Echo struct { Name string `json:\"name\"` }\nfunc (Echo) Handle() error { return nil }\n")
+	put(t, filepath.Join(dir, "profile.json"), `{"formatVersion":1,"name":"legacy","defaultNamespace":"Tasks","typescript":{"out":"web"}}`)
+	cli := func(extra ...string) ([]byte, error) {
+		ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
+		defer cancel()
+		args := append([]string{"run", "./cmd/arc-gen", "-dir", dir}, extra...)
+		command := exec.CommandContext(ctx, "go", append(args, ".")...)
+		command.Dir = "../.."
+		command.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=local")
+		return command.CombinedOutput()
+	}
+	if output, err := cli(); err != nil {
+		t.Fatalf("adapter-only compatibility failed: %v\n%s", err, output)
+	}
+	if len(get(t, filepath.Join(dir, Filename))) == 0 {
+		t.Fatal("adapter-only invocation did not emit an adapter")
+	}
+	before := outputInventory(t, dir)
+	if output, err := cli("-config", filepath.Join(dir, "profile.json")); err == nil || !bytes.Contains(output, []byte("no manifest ownership")) || !bytes.Contains(output, []byte("preserve and move")) {
+		t.Fatalf("legacy adapter silently adopted or missing remedy: %v\n%s", err, output)
+	}
+	assertOutputInventory(t, dir, before)
+	if output, err := cli("-check"); err != nil {
+		t.Fatalf("adapter-only compatibility check failed: %v\n%s", err, output)
+	}
+}
+
 func TestProductionCLIPlansPublishesAndChecksActualRuntimeContract(t *testing.T) {
 	fixture := filepath.Join("..", "..", "..", "ContractTests", "ProxyComparison", "Publication")
 	dir := consumer(t)

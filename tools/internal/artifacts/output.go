@@ -422,8 +422,11 @@ func publishOwned(ctx context.Context, moduleRoot, tsRoot string, profile Applic
 			exists = data != nil
 		}
 		expected, wasOwned := oldEntries[identity]
+		if exists && !wasOwned {
+			return fmt.Errorf("%s: no manifest ownership; preserve and move the existing file after review, or use fresh consumer/output roots", path)
+		}
 		if exists {
-			if !owned(current) || wasOwned && contentHash(current) != expected.Hash || !wasOwned && !bytes.Equal(current, planned[identity]) {
+			if !owned(current) || contentHash(current) != expected.Hash {
 				return fmt.Errorf("%s: unowned or modified generated output", path)
 			}
 		}

@@ -113,11 +113,14 @@ hashes. All analysis, rendering, layout and ownership preflight completes before
 publication. Changing the scope while sharing a root is rejected; use a separate
 root rather than accidentally cleaning another profile's files.
 
-Existing files must match their manifest hashes and generator markers. On first
-publication, byte-identical generated files may be adopted; different legacy Go
-adapters are not silently overwritten. Preserve and move an old adapter after
-review, or choose a fresh consumer/output root. Unowned barrels and edited generated
-files are errors. Stale files are deleted only with matching manifest hash and
+For TypeScript-enabled publication, existing files must already belong to the
+manifest and match its hashes and generator markers. Even byte-identical marked
+files and barrels are rejected without manifest ownership, including new entries
+in an existing manifest. There is no automatic adoption or ownership migration.
+Preserve and move existing files after review, or choose fresh consumer/output
+roots. This includes legacy adapters created by adapter-only generation; the
+adapter-only path remains available but does not establish mixed-output ownership.
+Unowned barrels and edited generated files are errors. Stale files are deleted only with matching manifest hash and
 marker. User files and directories are never blanket-deleted. Missing active files
 can be regenerated; unchanged bytes retain mtimes. Symlink destinations/ancestors,
 traversal, unsafe device-name segments and case collisions fail; mutations additionally
