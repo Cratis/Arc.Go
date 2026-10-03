@@ -35,8 +35,8 @@ async function stage(command, args, cwd, timeout = 120000) {
         process.off('SIGTERM', stop);
     }
 }
-async function runtime() {
-    const host = spawn(executable, [], { cwd: root, env, stdio: ['ignore', 'pipe', 'inherit'] });
+async function runtime(generated = false) {
+    const host = spawn(executable, generated ? ['--generated'] : [], { cwd: root, env, stdio: ['ignore', 'pipe', 'inherit'] });
     const joined = new Promise((resolve, reject) => {
         host.once('error', reject);
         host.once('exit', (code, signal) => resolve({ code, signal }));
@@ -48,6 +48,9 @@ async function runtime() {
     process.on('SIGTERM', stop);
     const lines = createInterface({ input: host.stdout });
     let timer;
+    let shutdown;
+    let runtimePassed = false;
+    lines.on('line', line => { const message = JSON.parse(line); if (message.joined) shutdown = message; });
     try {
         const announcement = new Promise((resolve, reject) => {
             lines.once('line', line => { try { resolve(JSON.parse(line)); } catch (error) { reject(error); } });
@@ -64,33 +67,41 @@ async function runtime() {
         assert.ok(names.All, 'Required registered query is missing');
         env.ARC_FIXTURE_ORIGIN = address.origin;
         env.ARC_FIXTURE_QUERY = names.All;
-        await stage(process.execPath, ['--test', '--test-timeout=45000', 'client.test.mjs'], directory, 60000);
+        await stage(process.execPath, ['--test', '--test-timeout=45000', generated ? 'generated.test.mjs' : 'client.test.mjs'], directory, 60000);
+        runtimePassed = true;
     } finally {
         clearTimeout(timer);
-        lines.close();
         host.kill('SIGTERM');
         const kill = setTimeout(() => host.kill('SIGKILL'), 7000);
         try {
             const result = await joined;
             assert.equal(result.code, 0, `Fixture did not join cleanly: ${JSON.stringify(result)}`);
+            assert.equal(shutdown?.joined, true, 'Host must report completed Arc shutdown');
+            assert.equal(shutdown.signals.open, shutdown.signals.close, 'All opened sources joined');
+            if (generated && runtimePassed) assert.ok(shutdown.signals.open >= 5, 'Generated runtime must have exercised real sources');
         } finally {
             clearTimeout(kill);
+            lines.close();
             process.off('SIGINT', stop);
             process.off('SIGTERM', stop);
         }
     }
 }
 const selected = process.argv.slice(2);
-assert.ok(selected.length <= 1 && (!selected.length || ['install', 'compile', 'fixture-build', 'runtime'].includes(selected[0])), 'Unknown stage');
-const stages = selected.length ? selected : ['install', 'compile', 'fixture-build', 'runtime'];
+assert.ok(selected.length <= 1 && (!selected.length || ['install', 'compile', 'compile-modern', 'generate', 'generate-check', 'fixture-build', 'generated-runtime', 'runtime'].includes(selected[0])), 'Unknown stage');
+const stages = selected.length ? selected : ['install', 'generate', 'generate-check', 'compile', 'compile-modern', 'fixture-build', 'generated-runtime', 'runtime'];
 for (const name of stages) {
     if (name === 'install') {
         await stage('npm', ['--version'], directory);
         // npm itself enforces the patch through engine-strict during npm ci.
         await stage('npm', ['ci', '--engine-strict'], directory);
     } else if (name === 'compile') await stage('npm', ['run', 'compile'], directory);
+    else if (name === 'compile-modern') await stage('npm', ['run', 'compile:modern'], directory);
+    else if (name === 'generate' || name === 'generate-check') {
+        await stage('go', ['run', './cmd/arc-gen', '-dir', '..', '-typescript-out', 'ContractTests/observables/frontend/Generated', ...(name === 'generate-check' ? ['-check'] : []), './ContractTests/observables/generatedconsumerfixture'], join(root, 'tools'));
+    }
     else if (name === 'fixture-build') {
         await mkdir(output, { recursive: true });
         await stage('go', ['build', '-o', executable, './ContractTests/observables/fixturehost'], root);
-    } else await runtime();
+    } else await runtime(name === 'generated-runtime');
 }

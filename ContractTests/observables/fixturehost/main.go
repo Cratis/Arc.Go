@@ -24,7 +24,10 @@ func main() {
 	}
 }
 func run() error {
-	fixture, err := clientfixture.New()
+	if len(os.Args) > 2 || (len(os.Args) == 2 && os.Args[1] != "--generated") {
+		return fmt.Errorf("unsupported fixture mode")
+	}
+	fixture, err := clientfixture.NewMode(len(os.Args) == 2)
 	if err != nil {
 		return err
 	}
@@ -39,5 +42,24 @@ func run() error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	return fixture.App.Serve(ctx, listener)
+	stopJoined := make(chan struct{})
+	go func() {
+		defer close(stopJoined)
+		select {
+		case <-fixture.Shutdown():
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	serveErr := fixture.App.Serve(ctx, listener)
+	cancel()
+	<-stopJoined
+	if serveErr != nil {
+		return serveErr
+	}
+	signals := fixture.Signals()
+	if signals.Open != signals.Close {
+		return fmt.Errorf("fixture shutdown left sources unjoined: %+v", signals)
+	}
+	return json.NewEncoder(os.Stdout).Encode(map[string]any{"joined": true, "signals": signals})
 }

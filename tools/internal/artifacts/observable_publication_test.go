@@ -95,6 +95,47 @@ func TestProductionCLIObservableMixedFamilyPublication(t *testing.T) {
 	}
 }
 
+func TestProductionCLIRealClientFixtureIndependentConsumption(t *testing.T) {
+	fixture := filepath.Join("..", "..", "..", "ContractTests", "observables")
+	dir := consumer(t) // Released Fundamentals and pushed Arc pins; no workspace/replace.
+	put(t, filepath.Join(dir, "generatedconsumerfixture", "model.go"), string(get(t, filepath.Join(fixture, "generatedconsumerfixture", "model.go"))))
+	for _, file := range []string{"fixture.go", "signals.go", "fixture_test.go"} {
+		input := string(get(t, filepath.Join(fixture, "clientfixture", file)))
+		input = strings.ReplaceAll(input, "github.com/cratis/arc.go/ContractTests/observables/", "example.test/consumer/")
+		put(t, filepath.Join(dir, "clientfixture", file), input)
+	}
+	cli := func(check bool) {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
+		defer cancel()
+		args := []string{"run", "./cmd/arc-gen", "-dir", dir, "-typescript-out", "web"}
+		if check {
+			args = append(args, "-check")
+		}
+		cmd := exec.CommandContext(ctx, "go", append(args, "./generatedconsumerfixture")...)
+		cmd.Dir, cmd.Env = "../..", append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=local")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("real fixture production CLI: %v\n%s", err, output)
+		}
+	}
+	cli(false)
+	before := outputInventory(t, dir)
+	cli(true)
+	assertOutputInventory(t, dir, before)
+	for _, file := range []string{"All.ts", "Private.ts", "Item.ts", "index.ts"} {
+		if !bytes.Equal(get(t, filepath.Join(dir, "web", "Contracts", "Items", file)), get(t, filepath.Join(fixture, "frontend", "Generated", "Contracts", "Items", file))) {
+			t.Fatalf("checked client fixture differs from production CLI: %s", file)
+		}
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "test", "-mod=mod", "-count=1", "-timeout=30s", "./...")
+	cmd.Dir, cmd.Env = dir, append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=local")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("pinned independent generated real fixture contracts: %v\n%s", err, output)
+	}
+}
+
 func TestCompetingObservableIdentitiesRejectAllProductionPublication(t *testing.T) {
 	for _, fields := range []string{
 		"ID string `json:\"-\"`; Id string `json:\"id\"`",
