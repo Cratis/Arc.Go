@@ -189,7 +189,9 @@ not a lossy interface-valued JSON predicate. Decode is failure-atomic.
 All filter boundaries, including opaque JSON detachment, reject cycles and paths
 beyond 64 graph levels (containers, pointers and interfaces each count). The
 pre-encoding graph budget is 16 MiB, charging one byte per visited value plus
-string/byte payloads and field names/tags; shared subgraphs count on every visit.
+string/byte payloads and field names/tags; shared value subgraphs count on every visit.
+Static type inspection also charges visited types and exported field names/tags
+against that budget and bounds inspection depth to 64.
 An independent writer budget admits at most 16 MiB of encoded BSON before the
 driver's internal buffer grows. Observe also enforces `MaxFilterBytes` during
 encoding. JSON envelopes are bounded before base64 allocation and raw BSON is
@@ -199,8 +201,16 @@ unsupported opaque encoding hooks return `ErrValue`.
 Application JSON/text/BSON hooks (including concept conversion and `IsZero`) and opaque driver
 vectors are unsupported in filters, without executing those hooks. Exact known
 BSON/time primitives retain callback-free zero checks; named application wrappers
-do not inherit that exception. Use ordinary
-scalars, BSON primitives, containers or validated raw BSON instead. Raw documents,
+do not inherit that exception. Exported BSON inline fields are unsupported in
+filter structs, including nonrecursive inlining, inline maps, nil pointers and
+nil/empty containers whose static element types contain inline fields. This
+conservative restriction prevents the driver's value-independent inline struct
+description from recursing before encoding or writer budgets can apply. It
+recognizes the pinned driver's exact `inline` tag tokens (including first-token
+and legacy bare tags), not JSON tags; unexported fields are ignored. Rejection
+returns `ErrValue` before encoding at MarshalJSON, Observe and renderer freeze
+boundaries. Use ordinary nested fields, scalars, BSON primitives, containers or
+validated raw BSON instead. Raw documents,
 arrays and code-with-scope are recursively validated, including exact nested
 lengths/terminators and array keys `0` through `n-1`; ordered duplicate document
 keys remain intact. Malformed raw values fail before driver normalization. These limits

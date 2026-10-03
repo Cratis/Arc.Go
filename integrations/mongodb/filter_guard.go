@@ -28,10 +28,15 @@ type filterIdentity struct {
 type filterGuard struct {
 	remaining int
 	active    map[filterIdentity]bool
+	types     map[reflect.Type]bool
 }
 
 func guardFilter(filter bson.D, limit int) error {
-	g := filterGuard{remaining: maxFilterBytes, active: make(map[filterIdentity]bool)}
+	g := filterGuard{
+		remaining: maxFilterBytes,
+		active:    make(map[filterIdentity]bool),
+		types:     make(map[reflect.Type]bool),
+	}
 	return g.visit(reflect.ValueOf(filter), 0, limit)
 }
 
@@ -98,6 +103,11 @@ func (g *filterGuard) visit(v reflect.Value, depth, limit int) error {
 		base == reflect.TypeFor[time.Time]() || base == reflect.TypeFor[bson.Raw]()
 	if base == reflect.TypeFor[bson.Vector]() || (!known && hasCustomCodec(v.Type())) {
 		return &operationError{"filter encoding hook is unsupported", ErrValue}
+	}
+	// Driver struct descriptions follow inline field types even when values
+	// are nil. Inspect static types before any pointer/container fast path.
+	if err := g.visitType(v.Type(), 0); err != nil {
+		return err
 	}
 	if v.Kind() == reflect.Pointer || v.Kind() == reflect.Map || v.Kind() == reflect.Slice {
 		if v.IsNil() {
