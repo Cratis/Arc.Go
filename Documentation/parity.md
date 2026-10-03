@@ -25,6 +25,34 @@ revision above. Scalar naming/converter sources additionally pin Fundamentals
 [Fixture provenance](../ContractTests/fixtures/v1/README.md) identifies exact files,
 versions and normalization. Fixtures are not live .NET captures.
 
+## TypeScript proxy implementation boundaries
+
+Work is tracked by [Arc.Go issue 20](https://github.com/Cratis/Arc.Go/issues/20).
+The frontend authority is `Source/DotNET/Tools/ProxyGenerator` and
+`Source/JavaScript` at `7c1e78075b737df64f69fddfaae83374f75e3612`
+(Arc npm/NuGet `22.48.2`, Fundamentals npm `7.22.0`).
+
+- **Approved deviation**: sorting helpers will use declared sortable result
+  (read-model) wire fields, not query arguments, per
+  [Arc issue 2998](https://github.com/Cratis/Arc/issues/2998). Captured C# evidence
+  must retain its argument-based helpers unchanged.
+- **Scope**: portable validation-rule descriptors and declared derived-wire-model
+  support are prerequisites, not optional reductions to a Go-only frontend API.
+- **Concepts remain blocked** by
+  [Fundamentals.Go issue 15](https://github.com/Cratis/Fundamentals.Go/issues/15).
+  Shared UUID/calendar/duration scalars and plain named primitives may be mapped;
+  concept-backed fields must fail explicitly until the shared compiler classifier
+  is available. Arc must not introduce a second weaker concept recognizer.
+- **Adapter defaults**: narrow command/model name and namespace options preserve
+  the actual composition namespace without the removed `Builder.CommandNamespace`
+  accessor. `TestGeneratedRegistrationOptionsPreserveNamespaceDefaults` covers
+  the supported runtime options.
+- **Profile agreement**: `Builder.ExpectGeneratedEndpoints` checks owned endpoints
+  against the final complete catalog at Build, including manual artifacts and
+  `/validate`. `generated_contract_test.go` covers copied inputs, overlap rejection,
+  namespace/path drift, additional manual commands changing conventional routes,
+  and terminal frozen registration. This prerequisite does not emit proxies.
+
 ## Status vocabulary
 
 - **Implemented**: the named, bounded contract has executable regression evidence.
@@ -78,7 +106,7 @@ versions and normalization. Fixtures are not live .NET captures.
 | Security seam composition | Same authentication/authorization/validation/tenancy/identity sources (`7c1e780`) | Explicit foundation composition | Go-specific | `ContractTests/TestSecuritySeamsRemainIndependent`; failed credentials terminal, public declarations do not bypass membership, nonblocking warnings do not imply authorization, malicious details remain display-only; no HTTP or pipeline conformance claim |
 | HTTP hosting/discovery | Endpoint mappers and hosting (`7c1e780`) | Root Builder/Application | Partial | Hosting ledger below records snapshot endpoints, identity, discovery and lifecycle. Observable transports and full schema generation remain unsupported |
 | Observable queries | Observable handlers/demultiplexer | Change-set DTO only | Not implemented | No SSE, WebSocket, revisions, subscriptions or snapshot waits |
-| Proxy generation/OpenAPI | ProxyGenerator/OpenAPI | Route descriptors only | Not implemented | Bounded discovery schemas are covered below; no generated clients, OpenAPI or browser-runtime conformance |
+| Proxy generation/OpenAPI | ProxyGenerator/OpenAPI | Route descriptors and generated-contract prerequisites | Not implemented | Bounded discovery schemas are covered below; no generated clients, OpenAPI or browser-runtime conformance |
 | Chronicle integration | Arc Chronicle integration (`7c1e780`) | Optional `integrations/chronicle` module and `sdk` adapter | Partial | Returned events, command transactions, keyed models, aggregates, reactor command effects and append observation are covered in the Chronicle ledger below. No root Chronicle dependency; no protected decisions, watches or snapshots |
 | Operation resources and admission | `Authorization/AuthorizationEvaluation.cs`, `OperationContextScope.cs` (`7c1e780`) | `execution.Scope`, `OpenScope`, `BorrowScope`, `RunWithResources`, `Resolver`, `CheckOwner` | Go-specific | `execution/scope_test.go`, `resources_test.go`, `panic_test.go`, `dependencies_test.go`: owned/borrowed disposal, close-once forwarding, joined admitted resolutions, expiring non-closing resolver views, principal/tenant presence and optional DI ContextChecker/ScopeOwner checks. Arc owns structural Resources/OpenResources; Fundamentals deliberately has no lifecycle package. Unreleased `Run` and `services` are removed; migrate to RunWithResources and optional ResourcesFrom |
 | Model declaration and field metadata | Model-bound command/read-model attributes and `Authorization/AuthorizationDeclarations.cs` (`7c1e780`) | `metadata.InspectModel`, `Model`, `ParseQueryTags`, descriptor additions | Go-specific | `metadata/model_test.go`, `internal/modelshape/fields_test.go`; optional blank-field declarations, explicit wire keys/identity, strict tag grammar, method selection and unchanged default routes. No runtime source-comment discovery or projections; build-time adapter generation is recorded below |

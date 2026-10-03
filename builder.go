@@ -19,21 +19,22 @@ import (
 // single attempt: success is cached, failure is terminal. Borrowed registries
 // must not be built independently or mutated after the root Build attempt.
 type Builder struct {
-	options     Options
-	commands    *commands.Registry
-	queries     *queries.Registry
-	policies    authorization.Registry
-	validators  validation.Registry
-	attempted   bool
-	application *Application
-	buildErr    error
-	rawHandlers []rawHandler
-	details     []detailsRegistration
-	schemas     map[reflect.Type]json.RawMessage
-	users       []listProvider[UsersProvider]
-	tenants     []listProvider[TenantsProvider]
-	hooks       []lifecycleEntry
-	middleware  []Middleware
+	options            Options
+	commands           *commands.Registry
+	queries            *queries.Registry
+	policies           authorization.Registry
+	validators         validation.Registry
+	attempted          bool
+	application        *Application
+	buildErr           error
+	rawHandlers        []rawHandler
+	details            []detailsRegistration
+	schemas            map[reflect.Type]json.RawMessage
+	users              []listProvider[UsersProvider]
+	tenants            []listProvider[TenantsProvider]
+	hooks              []lifecycleEntry
+	middleware         []Middleware
+	generatedContracts []generatedContract
 }
 
 // NewBuilder validates and copies configuration without activation or I/O.
@@ -118,6 +119,11 @@ func (b *Builder) build() (*Application, error) {
 	endpoints, err := metadata.Resolve(catalog, *b.options.Routes)
 	if err != nil {
 		return nil, err
+	}
+	for _, contract := range b.generatedContracts {
+		if err := metadata.VerifyGeneratedEndpoints(contract.profile, contract.endpoints, endpoints); err != nil {
+			return nil, err
+		}
 	}
 	evaluator, err := b.policies.Build(catalog, b.options.Authorization)
 	if err != nil {
