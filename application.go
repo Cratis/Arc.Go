@@ -26,7 +26,7 @@ type Application struct {
 	handler        http.Handler
 	discovery      discoveryMode
 	routeTable     map[string]map[string]metadata.Endpoint
-	readers        map[string]queries.RequestReader
+	readers        map[string]compiledReader
 	details        detailsRegistration
 	schemas        map[reflect.Type]json.RawMessage
 	catalogJSON    map[string]json.RawMessage

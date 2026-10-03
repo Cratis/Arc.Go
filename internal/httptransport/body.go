@@ -36,6 +36,9 @@ func ReadBody(w http.ResponseWriter, r *http.Request, limit int64) ([]byte, int,
 	if unsupported {
 		return nil, 415, errors.New("unsupported request representation")
 	}
+	if r.Body == nil {
+		return nil, 0, nil
+	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
 	if err != nil {
 		var max *http.MaxBytesError

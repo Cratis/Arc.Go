@@ -15,19 +15,31 @@ import (
 	"github.com/cratis/arc.go/queries"
 )
 
+type compiledReader struct {
+	reader queries.RequestReader
+	cache  string
+}
+
 func (a *Application) compileReaders() error {
-	a.readers = map[string]queries.RequestReader{"GET": queries.QueryStringRequestReader{}, "QUERY": queries.BodyRequestReader{}}
+	a.readers = map[string]compiledReader{"GET": {reader: queries.QueryStringRequestReader{}}, "QUERY": {reader: queries.BodyRequestReader{}, cache: "no-store"}}
 	seen := map[string]bool{}
 	for _, reader := range a.options.HTTP.QueryReaders {
 		if nilValue(reader) {
 			return ErrInvalidOptions
 		}
-		method := reader.Method()
+		var method, cache string
+		if err := boundary.Call(context.Background(), func(context.Context) error {
+			method = reader.Method()
+			cache = reader.ResponseCacheControl()
+			return nil
+		}); err != nil {
+			return err
+		}
 		if method != "GET" && method != "QUERY" || seen[method] {
 			return ErrInvalidOptions
 		}
 		seen[method] = true
-		a.readers[method] = reader
+		a.readers[method] = compiledReader{reader, cache}
 	}
 	return nil
 }
@@ -37,7 +49,7 @@ func (a *Application) queryEndpoint(w http.ResponseWriter, r *http.Request, e me
 		method = "GET"
 	}
 	reader := a.readers[method]
-	if cache := reader.ResponseCacheControl(); cache != "" {
+	if cache := reader.cache; cache != "" {
 		w.Header().Set("Cache-Control", cache)
 	}
 	if method == "QUERY" {
@@ -65,7 +77,11 @@ func (a *Application) queryEndpoint(w http.ResponseWriter, r *http.Request, e me
 		input.Body = body
 	}
 	var request queries.Request
-	err := boundary.Call(r.Context(), func(ctx context.Context) error { var err error; request, err = reader.Read(ctx, input); return err })
+	err := boundary.Call(r.Context(), func(ctx context.Context) error {
+		var err error
+		request, err = reader.reader.Read(ctx, input)
+		return err
+	})
 	if err != nil {
 		a.publish(w, r, 400, queries.FromError[any](id, err))
 		return

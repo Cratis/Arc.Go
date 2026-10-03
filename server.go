@@ -20,6 +20,9 @@ type serverState struct {
 // Run listens on address and delegates owned lifecycle to Serve. The executable
 // owns signal handling. Arc never installs signals, exits or replaces global logs.
 func (a *Application) Run(ctx context.Context, address string) error {
+	if ctx == nil {
+		return ErrInvalidOptions
+	}
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		return err
@@ -31,8 +34,11 @@ func (a *Application) Run(ctx context.Context, address string) error {
 // cancellation initiates shutdown with a fresh bounded budget. The server worker
 // is joined before return; uncooperative callbacks can leave Arc Stopping.
 func (a *Application) Serve(ctx context.Context, listener net.Listener) error {
-	if ctx == nil || nilValue(listener) {
+	if nilValue(listener) {
 		return ErrInvalidOptions
+	}
+	if ctx == nil {
+		return errors.Join(ErrInvalidOptions, listener.Close())
 	}
 	a.server.mu.Lock()
 	if a.server.claimed {

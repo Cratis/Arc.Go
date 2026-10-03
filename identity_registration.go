@@ -68,6 +68,11 @@ func providerName(name string) bool {
 	return name != "" && strings.TrimSpace(name) == name && !strings.ContainsAny(name, "\r\n\x00")
 }
 func (b *Builder) selectDetails() (detailsRegistration, error) {
+	for _, r := range b.details {
+		if err := checkProviderKeys(b.options.DependencyCatalog, r.keys); err != nil {
+			return r, err
+		}
+	}
 	selected := b.options.Identity.DetailsProvider
 	if selected == "" && len(b.details) > 1 {
 		return detailsRegistration{}, ErrInvalidOptions
