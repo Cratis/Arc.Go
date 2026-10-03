@@ -1,4 +1,6 @@
-- name: Generate model-bound adapters
+- name: Generate adapters and snapshot proxies
   href: index.md
+- name: TypeScript snapshot proxies
+  href: typescript.md
 - name: Directives and signatures
   href: reference.md

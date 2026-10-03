@@ -1,0 +1,34 @@
+// Copyright (c) Cratis. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+package main
+
+import (
+ "context"
+ "encoding/json"
+ "errors"
+ "fmt"
+ "net"
+ "os"
+ "os/signal"
+ "sync"
+ "syscall"
+ arc "github.com/cratis/arc.go"
+ "github.com/cratis/arc.go/metadata"
+ consumer "example.test/consumer"
+)
+
+type readyListener struct { net.Listener; once sync.Once; err error }
+func (listener *readyListener) Accept() (net.Conn,error) {
+ listener.once.Do(func(){ listener.err=json.NewEncoder(os.Stdout).Encode(map[string]string{"baseUrl":"http://"+listener.Addr().String()}); if listener.err!=nil { listener.err=errors.Join(listener.err,listener.Close()) } })
+ if listener.err!=nil { return nil,listener.err }; return listener.Listener.Accept()
+}
+func run() error {
+ ctx,cancel:=signal.NotifyContext(context.Background(),os.Interrupt,syscall.SIGTERM); defer cancel()
+ routes:=metadata.DefaultOptions(); routes.RoutePrefix="/proxy"
+ builder,err:=arc.NewBuilder(arc.Options{Routes:&routes}); if err!=nil { return err }
+ if err:=consumer.RegisterArtifacts(builder); err!=nil { return err }
+ app,err:=builder.Build(); if err!=nil { return err }
+ listener,err:=net.Listen("tcp4","127.0.0.1:0"); if err!=nil { return err }
+ return app.Serve(ctx,&readyListener{Listener:listener})
+}
+func main() { if err:=run(); err!=nil { fmt.Fprintln(os.Stderr,err); os.Exit(1) } }

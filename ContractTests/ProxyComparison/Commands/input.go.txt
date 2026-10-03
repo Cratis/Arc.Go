@@ -1,0 +1,60 @@
+// Copyright (c) Cratis. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+//arc:namespace Shop.Commands
+package consumer
+
+import (
+ "github.com/cratis/arc.go/commands"
+ "github.com/cratis/arc.go/concepts"
+)
+
+type Detail struct { ID concepts.UUID `json:"id"`; Label string `json:"label"` }
+//arc:command response=none
+//arc:authorize roles=Editor,Admin,Editor
+// Register returns a server-consumed value, NOT a client Detail response.
+type Register struct {
+ ID concepts.UUID `json:"id"`
+ Name string `json:"name" rules:"[{\"name\":\"notEmpty\",\"message\":\"Name required\"},{\"name\":\"maxLength\",\"arguments\":[40],\"message\":\"Name too long\"}]"`
+ Quantity int `json:"quantity" rules:"[{\"name\":\"greaterThanOrEqual\",\"arguments\":[1],\"message\":\"Quantity must be positive\"}]"`
+ Enabled bool `json:"enabled"`
+ Description *string `json:"description,omitempty"`
+ Tags []string `json:"tags" validate:"required"`
+ Exact string `json:"EXACT-name"`
+}
+func (Register) Handle() (Detail, error) { return Detail{}, nil }
+//arc:command
+type Echo struct { Value string `json:"value"` }
+func (Echo) Handle() (commands.Outcome[string], error) { return commands.Respond(""), nil }
+//arc:command
+type Count struct { Value int `json:"value"` }
+func (Count) Handle() (commands.Outcome[int], error) { return commands.Respond(0), nil }
+//arc:command
+type Toggle struct { Value bool `json:"value"` }
+func (Toggle) Handle() (commands.Outcome[bool], error) { return commands.Respond(false), nil }
+//arc:command
+type Identify struct { ID concepts.UUID `json:"id"` }
+func (Identify) Handle() (commands.Outcome[concepts.UUID], error) { return commands.Respond(concepts.UUID{}), nil }
+//arc:command
+type Single struct {}
+func (Single) Handle() (commands.Outcome[Detail], error) { return commands.Respond(Detail{}), nil }
+//arc:command
+type Many struct {}
+func (Many) Handle() (commands.Outcome[[]Detail], error) { return commands.Respond([]Detail{}), nil }
+//arc:command
+type Numbers struct {}
+func (Numbers) Handle() (commands.Outcome[[]int], error) { return commands.Respond([]int{}), nil }
+//arc:command block-on=warning
+type Guarded struct { Name string `json:"name" rules:"[{\"name\":\"notEmpty\",\"message\":\"Advisory name\",\"severity\":2}]"` }
+func (Guarded) Handle() error { return nil }
+//arc:command
+type Rules struct {
+ Text string `json:"text" rules:"[{\"name\":\"notNull\",\"message\":\"Present\"},{\"name\":\"minLength\",\"arguments\":[2],\"message\":\"Minimum\"},{\"name\":\"maxLength\",\"arguments\":[4],\"message\":\"Maximum\"},{\"name\":\"length\",\"arguments\":[2,4],\"message\":\"Range\"}]"`
+ Value float64 `json:"value" rules:"[{\"name\":\"greaterThan\",\"arguments\":[0],\"message\":\"Above\"},{\"name\":\"greaterThanOrEqual\",\"arguments\":[1],\"message\":\"At least\"},{\"name\":\"lessThan\",\"arguments\":[5],\"message\":\"Below\"},{\"name\":\"lessThanOrEqual\",\"arguments\":[4],\"message\":\"At most\"}]"`
+ Tags []string `json:"tags" rules:"[{\"name\":\"notEmpty\",\"message\":\"Tags\"}]"`
+}
+func (Rules) Handle() error { return nil }
+// Actual existing Arc taskboard host registration: literal path and Created response.
+type Created struct { ID concepts.UUID `json:"id"`; Title string `json:"title"` }
+//arc:command path=/api/create-task
+type CreateTask struct { Title string `json:"title" validate:"required"` }
+func (CreateTask) Handle() (commands.Outcome[Created], error) { return commands.Respond(Created{}), nil }

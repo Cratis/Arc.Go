@@ -1,0 +1,60 @@
+// Copyright (c) Cratis. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+//arc:namespace Shop.Queries
+package consumer
+
+import (
+ "time"
+ "github.com/cratis/arc.go/concepts"
+ "github.com/cratis/arc.go/queries"
+)
+
+type Label string
+func (value Label) ConceptValue() string { return string(value) }
+func (Label) MarshalText() ([]byte,error) { panic("codec executed") }
+func (*Label) UnmarshalText([]byte) error { panic("codec executed") }
+func (value Label) MarshalJSON() ([]byte,error) { return []byte(`"label"`), nil }
+func (value *Label) UnmarshalJSON([]byte) error { return nil }
+//arc:enum members=StatusDraft:Draft,StatusDone:Done
+type Status int
+const (StatusDraft Status = -1; StatusDone Status = 3)
+type Detail struct { ID concepts.UUID `json:"id"`; Label Label `json:"label"` }
+//arc:readmodel
+//arc:authorize roles=Reader,Editor
+type Listing struct {
+ ID concepts.UUID `json:"id"`
+ Name Label `json:"name" sortable:"true"`
+ Enabled bool `json:"enabled" sortable:"true"`
+ Status Status `json:"status" sortable:"true"`
+ Detail Detail `json:"detail"`
+ Created time.Time `json:"created"`
+ Day concepts.DateOnly `json:"day"`
+ Clock concepts.TimeOnly `json:"clock"`
+ Duration concepts.TimeSpan `json:"duration"`
+ Tags []string `json:"tags"`
+ Description *string `json:"description,omitempty"`
+}
+type FindArguments struct {
+ ID concepts.UUID `json:"id" query:"required"`
+ Count int `json:"count"`
+ Enabled bool `json:"enabled" query:"default=false"`
+ Text string `json:"EXACT-name" query:"default=server"`
+ Tags []string `json:"tags"`
+}
+//arc:query
+//arc:authorize roles=Editor,Admin
+func (Listing) Find(args FindArguments) (*Listing, error) { return nil, nil }
+func (Listing) All() ([]Listing, error) { return nil, nil }
+func (Listing) Array() ([2]Listing, error) { return [2]Listing{}, nil }
+func (Listing) Paged(args FindArguments) (queries.Page[Listing], error) { return queries.Page[Listing]{}, nil }
+//arc:query http=QUERY
+func (Listing) QueryOnly() ([]Listing,error) { return nil,nil }
+//arc:query http=GET
+func (Listing) GetOnly() ([]Listing,error) { return nil,nil }
+//arc:readmodel
+type Task struct { ID concepts.UUID `json:"id"`; Title string `json:"title"`; Completed bool `json:"completed"` }
+type ByIDArguments struct { ID concepts.UUID `json:"id" query:"required"` }
+//arc:query name=Tasks path=/api/tasks
+func (Task) All() ([]Task,error) { return nil,nil }
+//arc:query path=/api/tasks/by-id
+func (Task) ByID(args ByIDArguments) (*Task,error) { return nil,nil }

@@ -114,6 +114,29 @@ func emit(a *analysis) ([]byte, error) {
 	for _, q := range a.queries {
 		e.emitQuery(q)
 	}
+	if a.graph != nil && a.graph.verifyEndpoints {
+		identities := map[string]bool{}
+		for _, command := range a.commands {
+			identities[command.descriptor.Declaration.Type.Identity()] = true
+		}
+		for _, query := range a.queries {
+			identities[query.descriptor.Declaration.Identity()] = true
+		}
+		var endpoints []metadata.Endpoint
+		for _, endpoint := range a.graph.Endpoints {
+			if identities[endpoint.Identity] {
+				endpoints = append(endpoints, endpoint)
+			}
+		}
+		if len(endpoints) > 0 {
+			m := e.imp(runtimePath + "/metadata")
+			e.line("if %s := %s.ExpectGeneratedEndpoints(%q, []%s.Endpoint{", e.err, e.builder, a.graph.Profile.Name+":"+a.graph.Fingerprint, m)
+			for _, endpoint := range endpoints {
+				e.line("{Identity:%q, Method:%q, Path:%q, ValidateOnly:%t},", endpoint.Identity, endpoint.Method, endpoint.Path, endpoint.ValidateOnly)
+			}
+			e.line("}); %s != nil { return %s }", e.err, e.err)
+		}
+	}
 	e.line("return nil\n}")
 	var out bytes.Buffer
 	out.WriteString(Header)
@@ -286,6 +309,12 @@ func (e *emitter) emitCommand(c command) {
 		c.d.name, c.d.path, c.d.auth, c.d.exclude, c.d.severity = declaration.Type.Name, declaration.Path, declaration.Authorization, declaration.ExcludeFromDiscovery, declaration.BlockOnValidationSeverity
 	}
 	cmd := e.imp(runtimePath + "/commands")
+	validator := ""
+	if e.analysis.graph != nil && e.analysis.graph.verifyEndpoints && c.descriptor.PortableRules {
+		validator = e.unique("arcValidator")
+		e.line("%s, %s := %s.NewPortable[%s]()", validator, e.err, e.imp(runtimePath+"/validation"), e.typ(c.receiver))
+		e.line("if %s != nil { return %s }", e.err, e.err)
+	}
 	context := e.imp("context")
 	ct := e.typ(c.receiver)
 	hkeys := e.manifest(c.handle)
@@ -329,6 +358,12 @@ func (e *emitter) emitCommand(c command) {
 		if override, exists := e.analysis.graph.Profile.Responses[(metadata.TypeName{Namespace: e.analysis.namespace, Name: c.d.name}).Identity()]; exists {
 			response = override
 		}
+	}
+	if e.analysis.graph != nil && e.analysis.graph.verifyEndpoints {
+		response = c.descriptor.ResponseKind
+	}
+	if validator != "" {
+		e.line("%s.WithValidator[%s](%s),", cmd, ct, validator)
 	}
 	switch response {
 	case "none":

@@ -3,7 +3,8 @@ title: Generator directives and signatures
 description: Supported arc-gen declarations, method shapes, dependency stages, and diagnostics.
 ---
 
-`arc-gen` is experimental tooling for typed command and snapshot-query adapters.
+`arc-gen` is experimental tooling for typed command and snapshot-query adapters
+and a bounded [TypeScript snapshot-proxy profile](typescript.md).
 It analyzes explicitly selected packages with `go/packages` and `go/types`; it
 never executes package initialization, constructors, or business methods.
 Start with [generating model-bound adapters](index.md) for the authoring workflow.
@@ -15,7 +16,10 @@ Start with [generating model-bound adapters](index.md) for the authoring workflo
 | Package patterns | `.` | Packages in the current module; dependency modules are rejected |
 | `-dir` | Current directory | Directory for Go package loading |
 | `-tags` | Empty | Comma-separated build tags, passed to the Go loader |
-| `-check` | False | Return an error for missing, changed, or obsolete output without writing |
+| `-check` | False | Return an error for missing, changed, or obsolete output without writing or recovery |
+| `-config` | None | Strict format-version 1 JSON application profile |
+| `-typescript-out` | Disabled | Override profile `typescript.out` with an output root relative to the selected module |
+| `-emit-go` | True | Explicitly supplied value overrides profile `typescript.emitGo`; false is unsupported for mixed generation |
 
 The Go environment also selects the build configuration. Generate and compile
 with the same tags, GOOS, and GOARCH. The single output file represents that
@@ -131,6 +135,10 @@ parameters, the adapter supplies a no-arguments registration automatically.
 
 ## Output and recovery
 
+The following describes adapter-only generation. TypeScript-enabled invocations
+use [manifest ownership and recovery](typescript.md#ownership-and-recovery) across
+the complete Go/TypeScript plan instead; they never adopt legacy adapter files.
+
 Each selected artifact package receives `zz_arc_generated.go` with a generator
 version and format-version header, an `ArcBindings` type, and a
 `RegisterArtifacts` function. No `init` registration or global registry is emitted.
@@ -151,6 +159,8 @@ packages are never overwritten or cleaned up.
 
 Variadics, unresolved generics, arbitrary multiple returns, streaming queries,
 provider-specific query renderers, service constructor discovery, standalone
-validator/policy discovery, operations, and TypeScript proxies are outside this
-slice. Existing manually registered model/concept validators remain supported.
+validator/policy discovery, operations, observable proxies, and proxy-only output
+are unsupported. Supported TypeScript models, commands, and snapshot queries are
+described in the [snapshot-proxy profile](typescript.md). Existing manually
+registered model/concept validators remain supported.
 A read-model declaration does not register a Chronicle projection.

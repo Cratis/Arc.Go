@@ -23,16 +23,17 @@ const GraphVersion = 1
 // Graph is the normalized Go/TypeScript contract. Compiler attachments stay in
 // analysis; this projection can be serialized without AST or go/types objects.
 type Graph struct {
-	FormatVersion int                 `json:"formatVersion"`
-	Profile       ApplicationProfile  `json:"profile"`
-	Catalog       metadata.Catalog    `json:"catalog"`
-	Endpoints     []metadata.Endpoint `json:"endpoints"`
-	Packages      []PackageDescriptor `json:"packages"`
-	Types         []TypeDescriptor    `json:"types"`
-	Commands      []CommandDescriptor `json:"commands"`
-	Queries       []QueryDescriptor   `json:"queries"`
-	Diagnostics   []string            `json:"diagnostics,omitempty"`
-	Fingerprint   string              `json:"fingerprint"`
+	FormatVersion   int `json:"formatVersion"`
+	verifyEndpoints bool
+	Profile         ApplicationProfile  `json:"profile"`
+	Catalog         metadata.Catalog    `json:"catalog"`
+	Endpoints       []metadata.Endpoint `json:"endpoints"`
+	Packages        []PackageDescriptor `json:"packages"`
+	Types           []TypeDescriptor    `json:"types"`
+	Commands        []CommandDescriptor `json:"commands"`
+	Queries         []QueryDescriptor   `json:"queries"`
+	Diagnostics     []string            `json:"diagnostics,omitempty"`
+	Fingerprint     string              `json:"fingerprint"`
 }
 
 type PackageDescriptor struct {
@@ -115,7 +116,7 @@ func typeKey(t types.Type) string {
 }
 
 func buildGraph(analyses []*analysis, profile ApplicationProfile, wire bool) (*Graph, error) {
-	graph := &Graph{FormatVersion: GraphVersion, Profile: profile, Catalog: metadata.Catalog{Version: metadata.Version}}
+	graph := &Graph{FormatVersion: GraphVersion, Profile: profile, Catalog: metadata.Catalog{Version: metadata.Version}, verifyEndpoints: wire}
 	// Output locations are operational, not contract identity or machine provenance.
 	graph.Profile.TypeScript.Out = ""
 	for _, a := range analyses {
@@ -183,6 +184,30 @@ func buildGraph(analyses []*analysis, profile ApplicationProfile, wire bool) (*G
 			descriptor := QueryDescriptor{Declaration: declaration, TypeKey: typeKey(q.model.typ), Source: filepath.Base(a.pkg.Fset.Position(q.call.decl.Pos()).Filename), ClientHTTP: preference, Delivery: "snapshot", Roles: roles(q.d.auth, q.model.d.auth), Excluded: excluded(profile, declaration.Identity())}
 			graph.Queries = append(graph.Queries, descriptor)
 			q.descriptor = &graph.Queries[len(graph.Queries)-1]
+		}
+	}
+	if wire {
+		commands, queries := map[string]bool{}, map[string]bool{}
+		for _, declaration := range graph.Catalog.Commands {
+			commands[declaration.Type.Identity()] = true
+		}
+		for _, declaration := range graph.Catalog.Queries {
+			queries[declaration.Identity()] = true
+		}
+		var unknown []string
+		for identity := range profile.Responses {
+			if !commands[identity] {
+				unknown = append(unknown, "response: "+identity)
+			}
+		}
+		for identity := range profile.ClientHTTP {
+			if !queries[identity] {
+				unknown = append(unknown, "clientHttp: "+identity)
+			}
+		}
+		if len(unknown) > 0 {
+			sort.Strings(unknown)
+			return nil, fmt.Errorf("unknown profile artifact overrides: %s", strings.Join(unknown, ", "))
 		}
 	}
 	endpoints, err := metadata.Resolve(graph.Catalog, profile.routeOptions())

@@ -15,12 +15,19 @@ import (
 )
 
 func main() {
-	var config artifacts.Config
+	config := artifacts.Config{Report: os.Stdout}
 	flag.StringVar(&config.Dir, "dir", "", "module directory (default: current directory)")
 	flag.StringVar(&config.Tags, "tags", "", "comma-separated Go build tags")
 	flag.StringVar(&config.ConfigFile, "config", "", "versioned application profile configuration")
 	flag.BoolVar(&config.Check, "check", false, "verify generated output without writing")
+	flag.StringVar(&config.TypeScriptOut, "typescript-out", "", "enable supported TypeScript models, commands and snapshot queries at this output root")
+	emitGo := flag.Bool("emit-go", true, "emit Go adapters (false is currently unsupported with TypeScript output)")
 	flag.Parse()
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "emit-go" {
+			config.EmitGo = emitGo
+		}
+	})
 	config.Patterns = flag.Args()
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()

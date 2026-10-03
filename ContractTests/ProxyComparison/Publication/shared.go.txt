@@ -1,0 +1,24 @@
+// Copyright (c) Cratis. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+//arc:namespace Shop.Shared
+package shared
+
+import (
+ "encoding/json"
+ "time"
+ "github.com/cratis/arc.go/concepts"
+)
+
+type Title string
+func (value Title) ConceptValue() string { return string(value) }
+func (value Title) MarshalText() ([]byte,error) { return []byte(value),nil }
+func (value *Title) UnmarshalText(data []byte) error { *value=Title(data); return nil }
+func (value Title) MarshalJSON() ([]byte,error) { return json.Marshal(string(value)) }
+func (value *Title) UnmarshalJSON(data []byte) error { var text string; if err:=json.Unmarshal(data,&text); err!=nil { return err }; *value=Title(text); return nil }
+
+//arc:enum members=StatusDraft:Draft,StatusDone:Done
+type Status int
+const ( StatusDraft Status=-1; StatusDone Status=3 )
+//arc:model
+type Detail struct { ID concepts.UUID `json:"id"`; Created time.Time `json:"created"`; Status Status `json:"status"` }
+func Sample() Detail { id,_:=concepts.ParseUUID("00112233-4455-4677-8899-aabbccddeeff"); return Detail{id,time.Date(2026,10,1,12,30,0,0,time.UTC),StatusDone} }

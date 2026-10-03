@@ -12,8 +12,11 @@ and result envelopes; with them, you share those contracts explicitly.
 
 **Start with [your first running application](backend/go/core/getting-started.md).**
 Go 1.26 or later is required. This experimental port supports backend pipelines,
-snapshot HTTP hosting, identity and protected discovery. Observable HTTP,
-generated adapters, OpenAPI and Chronicle integration remain unsupported.
+snapshot and observable HTTP hosting, identity, and protected discovery. Typed Go
+adapters and bounded TypeScript model/command/snapshot-query proxies are available,
+alongside optional Chronicle integration and MongoDB snapshots. Observable proxy
+generation, database watches, and OpenAPI remain unsupported; browser and mounted
+React-hook conformance remain unverified.
 Constructing metadata or a result alone does not execute business code; the
 application builder compiles the HTTP endpoints.
 
@@ -61,6 +64,7 @@ POST /api/tasks/registration/register-task
 - [Query results](backend/go/queries/results.md): readiness, paging and change-set values.
 - [Validation findings](backend/go/validation/index.md): severities and machine-readable reasons.
 - [Routes and stable identities](backend/go/configuration/routing.md): explicit metadata and collision diagnostics.
+- [Generate adapters and snapshot proxies](backend/go/generation/index.md): typed Go wiring and bounded TypeScript publication.
 - [Parity ledger](parity.md): pinned sources, executable evidence and deliberate differences.
 
 ## Publication
