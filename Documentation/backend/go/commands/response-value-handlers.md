@@ -41,4 +41,4 @@ Only singular `validation.Result` and `authorization.Decision` are built-in plai
 
 Dynamic consumers do not establish an unconditional no-response contract. Use `Outcome[R]`, `WithResponseType`, or `WithNoResponse` when tooling or typed callers need an enforceable contract. See [response examples](response-examples.md) for the return grammar.
 
-Events-as-values require a real consumer. The compiled `ExampleRespond` records an event in memory; it is not Chronicle persistence, append, or a transaction. No event-shaped struct is automatically magical here.
+Events-as-values require a real consumer. The compiled `ExampleRespond` records an event in memory; it is not Chronicle persistence, append, or a transaction. The optional [Chronicle integration](../chronicle/index.md) recognizes its registered events and supplies the transaction consumer.

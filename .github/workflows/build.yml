@@ -114,8 +114,8 @@ jobs:
               if module.get('Replace'):
                   raise SystemExit('Published modules must not rely on replace directives; consumers ignore them.')
           runtime = json.loads(subprocess.check_output(['go', 'mod', 'edit', '-json']))
-          if any(r['Path'] == 'golang.org/x/tools' for r in runtime.get('Require', [])):
-              raise SystemExit('golang.org/x/tools belongs only in the tooling module.')
+          if any(r['Path'] in {'golang.org/x/tools', 'github.com/cratis/chronicle.go'} for r in runtime.get('Require', [])):
+              raise SystemExit('Tooling and Chronicle dependencies must stay in their nested modules.')
           PY
       - name: Guarantee the zero-container runtime path and DI-free example imports
         run: python3 scripts/check-no-container.py
@@ -226,6 +226,8 @@ jobs:
       - run: go mod verify
       - run: go build ./...
       - run: go vet ./...
+      - run: python3 scripts/check-boundaries.py
+      - run: python3 ../../scripts/check-chronicle-snippet.py
       - run: go test -count=1 -timeout=2m ./...
       - run: go test -race -count=1 -timeout=3m ./...
       - run: go mod tidy -diff
@@ -238,10 +240,42 @@ jobs:
         run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
       - run: govulncheck ./...
 
+  chronicle-kernel:
+    name: Chronicle kernel contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      chronicle:
+        image: cratis/chronicle:19.29.4-development
+        ports:
+          - 35000:35000
+    defaults:
+      run:
+        working-directory: integrations/chronicle
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.27.x'
+          cache-dependency-path: integrations/chronicle/go.sum
+      - name: Wait for kernel
+        run: timeout 180 bash -c 'until curl -skf https://localhost:35000/health > /dev/null; do sleep 2; done'
+      - name: Record image digest
+        run: printf 'CHRONICLE_INTEGRATION_IMAGE_DIGEST=%s\n' "$(docker inspect '${{ job.services.chronicle.id }}' --format '{{.Image}}')" >> "$GITHUB_ENV"
+      - name: Exercise Arc against the kernel
+        env:
+          CHRONICLE_INTEGRATION_CONNECTION_STRING: chronicle://localhost:35000
+        run: go test -tags=integration -count=1 -timeout=2m ./internal/integration ./examples/taskboard
+      - name: Kernel diagnostics
+        if: failure()
+        run: docker logs '${{ job.services.chronicle.id }}' --tail 150
+
   gate:
     name: Go gate
     if: always()
-    needs: [test, race, lint, vulnerabilities, workflows, tools, integrations-chronicle]
+    needs: [test, race, lint, vulnerabilities, workflows, tools, integrations-chronicle, chronicle-kernel]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

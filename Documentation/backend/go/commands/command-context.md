@@ -42,7 +42,7 @@ Every access checks callback admission, principal, tenant, correlation, and the 
 
 Generated and handwritten adapters use the same helpers: `ResolveReadModel[M]` retains `Exists`, `RequireReadModel[M]` rejects absence as `dependencyUnavailable`, and `ReadModelOrNil[M]` returns nil for an absent instance. Missing or blank keys are `malformedRequest`, even for optional reads. A present zero-valued model is present; reader and release failures remain errors. This is not a public query invocation or an extra authorization contract.
 
-The selected provider owns materialization, release, and caching. Provider-specific frame caches must include the key, coordinates, and read mode when those can vary. Successful reads can be reused between Provide and Handle; transient failures must not become cached absence. Validation filters can use these helpers without starting a transaction or calling Provide/Handle. The executable `ExampleRegisterReadModelProvider` demonstrates the provider-neutral path; no Chronicle adapter is included in this seam.
+The selected provider owns materialization, release, and caching. Provider-specific frame caches must include the key, coordinates, and read mode when those can vary. Successful reads can be reused between Provide and Handle; transient failures must not become cached absence. Validation filters can use these helpers without starting a transaction or calling Provide/Handle. The executable `ExampleRegisterReadModelProvider` demonstrates the provider-neutral path. The optional [Chronicle integration](../chronicle/index.md) supplies a separate SDK-backed provider.
 
 ## Respect callback lifetimes
 
