@@ -74,10 +74,12 @@ Repeat the Go gates independently from `tools/`, `integrations/chronicle/`, and
 using the root lint configuration. The root `./...` pattern does not cross nested
 module boundaries. Chronicle integration tags use `integrations/chronicle/vX.Y.Z`;
 its initial develop pins are not a release or a publication authorization.
-MongoDB reserves `integrations/mongodb/vX.Y.Z`; its independent no-database gates
-cover bindings/codecs only, not rendering or live-provider parity. It pins pushed
-Arc revision `a094266` as `v0.0.0-20261003123827-a094266ed6c0` and released
-Fundamentals `v0.1.0`. No additional module layout is admitted. Tooling tags
+MongoDB reserves `integrations/mongodb/vX.Y.Z`; independent no-database gates
+cover bindings/codecs and snapshot boundaries, while a separate Linux Go 1.27
+lane covers task-owned MongoDB 8.0.15 replica-set/HTTP contracts. Neither proves
+real Chronicle sink compatibility or watches. It pins pushed Arc revision
+`4bd7dca` as `v0.0.0-20261003144525-4bd7dca5e554` (including failure-paging
+retraction) and released Fundamentals `v0.1.0`. No additional module layout is admitted. Tooling tags
 would use `tools/vX.Y.Z`, but publication remains deferred pending
 [Fundamentals.Go#16](https://github.com/Cratis/Fundamentals.Go/issues/16); the root
 release workflow still publishes only root-module tags.

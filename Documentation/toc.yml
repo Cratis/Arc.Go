@@ -94,6 +94,8 @@
           href: backend/go/generation/reference.md
     - name: Chronicle integration
       href: backend/go/chronicle/index.md
+    - name: MongoDB snapshots
+      href: backend/go/mongodb/index.md
     - name: Command results
       href: backend/go/commands/results.md
     - name: Query results

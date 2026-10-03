@@ -2,8 +2,9 @@
 
 This experimental module provides borrowed typed collection bindings, isolated
 BSON mappings and bounded authorized snapshot rendering through Arc's query
-pipeline. Live MongoDB/HTTP provider and real Chronicle sink compatibility are
-not yet evidenced. Change streams are not implemented. No constructor connects
+pipeline. MongoDB 8.0.15 single-member replica-set/HTTP contracts have task-owned
+provider evidence. Real Chronicle sink compatibility remains unproved. Change
+streams are not implemented. No constructor connects
 to MongoDB, starts workers, runs application codecs, or takes ownership of a client.
 
 ## API and ownership
@@ -19,8 +20,9 @@ to MongoDB, starts workers, runs application codecs, or takes ownership of a cli
   copied raw BSON, preserving ciphertext and lineage, before typed decoding or
   Arc interception. You own mapping and the actual Chronicle release call; this
   module does not manufacture a release from raw BSON or claim sink compatibility.
-  Returned rows must retain count/order/identity; every failure suppresses both
-  counts and data. `_id` must remain an ordinary declared scalar identity. Only
+  Returned rows must retain count/order/identity; duplicate decoded identities
+  fail closed when distinct BSON IDs coerce to the same Go identity. Every failure
+  suppresses both counts and data. `_id` must remain an ordinary declared scalar identity. Only
   approved cleartext sink fields may be filtered or declared sortable.
 - `DatabaseName(base, tenant)` maps NotSet and exact named `Default` to the base;
   other tenants select `base+"+"+tenant`. Case and Unicode are preserved. Selecting
@@ -181,7 +183,42 @@ capture. Unit and race tests require no database. Use the independent module
 commands in the
 [contribution guide](https://github.com/Cratis/Arc.Go/blob/develop/CONTRIBUTING.md).
 
-[Arc.Go#22](https://github.com/Cratis/Arc.Go/issues/22) still requires task-owned
-replica-set/HTTP provider evidence and real Chronicle sink mapping/release
-compatibility, then separately specified watches. This checkpoint is not a
-complete MongoDB integration or parity claim.
+The compiled `SnapshotHTTPExample` and `examples/httpserver` add complete manual
+HTTP hosting with caller-owned authentication, tenant membership and driver
+lifetime. Follow the
+[MongoDB guide](https://github.com/Cratis/Arc.Go/blob/develop/Documentation/backend/go/mongodb/index.md)
+for loopback demo setup, seeding, indexes, query output and security limitations.
+
+The `integration`-tagged `provider_*_integration_test.go` contracts execute actual
+Arc registration/rendering/HTTP against a task-owned MongoDB 8.0.15 replica set.
+They cover two tenants, forbidden rows, serialized count/find predicates and
+coordinates, server sort/window/ties, more than one cursor batch, refetch mutations,
+codec round trips, whole-result decode failure, synthetic raw release and decoded
+identity collisions, isolated count/find/getMore faults, cancellation/killCursors,
+bounded/empty pages, denied no-I/O requests and borrowed-client usability. Outer
+operation cleanup failure clears data and paging through the pinned pushed Arc
+root `4bd7dca`. Count-to-page overflow uses bounded no-database fakes, not an
+unrealistic live dataset. Cancellation preserves Arc's existing empty 500 HTTP
+response when its canceled context prevents encoding.
+
+From the repository root, with Docker available, run:
+
+```bash
+python3 integrations/mongodb/scripts/replica-set-tests.py \
+  --state-file "$PWD/.ai-work/keep/mongodb-provider-local-unique.json"
+```
+
+Use a fresh state-file path. The harness pins image digest
+`sha256:f4d54619262ae3bc6a0a8efbebcef970b87b8ad70697479a75ce308a6f400158`,
+verifies the resolved image ID and owns exactly one fresh-storage container on a
+Docker-assigned loopback port. Startup/test/diagnostics-and-cleanup budgets are
+90/180/15 seconds. It collects failure logs before removing only its verified
+container ID/token, including anonymous volumes; CI also runs exact `always()`
+cleanup. Missing prerequisites/URI or unsupported failpoints fail, never skip.
+Ordinary module tests require no database. CI separates no-database checks from
+Linux Go 1.27 live contracts; publishing stays root-only.
+
+[Arc.Go#22](https://github.com/Cratis/Arc.Go/issues/22) remains Partial: synthetic
+release callbacks are not evidence of real Chronicle ciphertext layout, SDK
+release or compliance. Sharded/multi-member/failover profiles and separately
+specified watches remain outside this checkpoint.
