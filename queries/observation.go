@@ -557,6 +557,12 @@ func (o *Observation) Run(ctx context.Context, options ObservationOptions, deliv
 			return prepareErr
 		})
 		if transferErr != nil {
+			// Preparation may have succeeded before the callback boundary observed
+			// cancellation. Its candidate is not the delivered baseline and must
+			// be discarded on every boundary failure.
+			if discard != nil {
+				discard()
+			}
 			result = o.pipeline.observableResult(work, o.metadata.name, o.admission, transferErr)
 			return errors.Join(err, transferErr, boundary.Call(work, func(context.Context) error { return deliver(result) }))
 		}
