@@ -471,9 +471,11 @@ func TestInvalidConstructionAndContexts(t *testing.T) {
 		t.Fatal(err)
 	}
 	state := mustState(t, 1, observable.SubjectOptions[int]{})
+	//nolint:staticcheck // Verify the explicit nil-context rejection contract.
 	if _, err := state.Open(nil); !errors.Is(err, observable.ErrInvalidOptions) {
 		t.Fatal(err)
 	}
+	//nolint:staticcheck // Verify the explicit nil-context rejection contract.
 	if err := state.Publish(nil, 2); !errors.Is(err, observable.ErrInvalidOptions) {
 		t.Fatal(err)
 	}
