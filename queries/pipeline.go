@@ -327,6 +327,19 @@ func (p *queryPipeline) perform(ctx context.Context, scope *execution.Scope, nam
 	return finish(err)
 }
 func (p *queryPipeline) core(ctx context.Context, s *execution.Scope, prepared authorization.Prepared, q Registration, a any, c QueryContext, result Result[any]) (Result[any], error) {
+	result, err := p.admitQuery(ctx, s, prepared, q, a, c, result)
+	if err != nil || !verdictSuccess(result) {
+		return result, err
+	}
+	data, err := p.invokeQuery(ctx, s, q, a, c)
+	if err != nil {
+		return result, err
+	}
+	return p.renderEmission(ctx, s, prepared, q, data, c, result)
+}
+
+// admitQuery runs input filters and validation once, without activating a source.
+func (p *queryPipeline) admitQuery(ctx context.Context, s *execution.Scope, prepared authorization.Prepared, q Registration, a any, c QueryContext, result Result[any]) (Result[any], error) {
 	if p.options.Membership != nil {
 		var allowed bool
 		err := boundary.Call(ctx, func(ctx context.Context) error {
@@ -408,17 +421,25 @@ func (p *queryPipeline) core(ctx context.Context, s *execution.Scope, prepared a
 	if err != nil || !decision.IsAllowed() {
 		return Merge(result, Unauthorized[any](c.correlationID, decision.Reason())), err
 	}
+	return result, nil
+}
+
+func (p *queryPipeline) invokeQuery(ctx context.Context, s *execution.Scope, q Registration, a any, c QueryContext) (any, error) {
 	var data any
-	err = s.Use(ctx, func(ctx context.Context, view *execution.Scope) error {
+	err := s.Use(ctx, func(ctx context.Context, view *execution.Scope) error {
 		return boundary.Call(ctx, func(ctx context.Context) error {
 			var err error
 			data, err = q.invoke(ctx, &Invocation{queryContext: c, scope: view}, a)
 			return err
 		})
 	})
-	if err != nil {
-		return result, err
-	}
+	return data, err
+}
+
+// renderEmission is shared by unary and observable deliveries. Admission and
+// invocation remain separate so input filters are never rerun per emission.
+func (p *queryPipeline) renderEmission(ctx context.Context, s *execution.Scope, prepared authorization.Prepared, q Registration, data any, c QueryContext, result Result[any]) (Result[any], error) {
+	var err error
 	var total int64
 	if nilValue(data) {
 		// A nil provider output is ready-null, not a renderer invocation.
