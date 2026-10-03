@@ -270,10 +270,12 @@ func (i *Integration) finish(ctx context.Context, inv *commands.Invocation, tx *
 	} else if tx.owner != nil {
 		frame, frameErr := i.frameFor(ctx, inv)
 		if frameErr != nil {
-			return commands.CompletionReport{Disposition: commands.OutcomeUnknown}, frameErr
+			result.Report.Disposition = commands.NotCommitted
+			err = errors.Join(frameErr, tx.owner.Rollback())
+		} else {
+			// The factory/SDK owns the only production event buffer and single commit.
+			result, err = tx.owner.Commit(frame.context(ctx))
 		}
-		// The factory/SDK owns the only production event buffer and single commit.
-		result, err = tx.owner.Commit(frame.context(ctx))
 	}
 	failure := errors.Join(poison, err)
 	if success && poison == nil {
