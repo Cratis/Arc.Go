@@ -124,6 +124,10 @@ func (a *Application) authenticateAndDispatch(w http.ResponseWriter, r *http.Req
 	}
 	// Unknown-route outcomes are not authentication challenges.
 	if !known {
+		if reservedPath(r.URL.Path) {
+			a.handler.ServeHTTP(w, r)
+			return
+		}
 		if _, pattern := a.rawMux.Handler(r); pattern == "" {
 			a.handler.ServeHTTP(w, r)
 			return

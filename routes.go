@@ -22,7 +22,8 @@ type rawHandler struct {
 var frameworkPaths = []string{"/.cratis/me", "/.cratis/commands", "/.cratis/queries", "/.cratis/identity-details/schema", "/.cratis/users", "/.cratis/tenants"}
 
 // Handle registers a borrowed raw handler with normal ServeMux pattern syntax.
-// Patterns overlapping any Arc or reserved discovery path fail Build.
+// Exact Arc/reserved-path ownership conflicts fail Build. Overlapping subtree
+// and catch-all handlers are fallbacks: Arc routes and /.cratis/* always win.
 func (b *Builder) Handle(pattern string, handler http.Handler) error {
 	if b.attempted {
 		return ErrFrozen
@@ -65,12 +66,8 @@ func (a *Application) compileRoutes(raw []rawHandler) error {
 		}
 	}
 	for _, e := range endpoints {
-		if !strings.HasPrefix(e.Identity, "/.cratis/") {
-			for _, reserved := range frameworkPaths {
-				if strings.EqualFold(e.Path, reserved) {
-					return ErrRouteConflict
-				}
-			}
+		if !strings.HasPrefix(e.Identity, "/.cratis/") && reservedPath(e.Path) {
+			return ErrRouteConflict
 		}
 		for path := range a.routeTable {
 			if path != e.Path && strings.EqualFold(path, e.Path) {
@@ -92,8 +89,8 @@ func (a *Application) compileRoutes(raw []rawHandler) error {
 		if err := muxHandle(custom, h.pattern, h.handler); err != nil {
 			return err
 		}
-		// Probe each pattern in isolation, including its host constraint, so later
-		// more-specific handlers cannot mask ownership overlap.
+		// Probe exact patterns in isolation, including host constraints. Subtree
+		// and wildcard patterns are allowed fallbacks, never Arc route owners.
 		probe := http.NewServeMux()
 		if err := muxHandle(probe, h.pattern, h.handler); err != nil {
 			return err
@@ -105,6 +102,14 @@ func (a *Application) compileRoutes(raw []rawHandler) error {
 		host := "example.invalid"
 		if i := strings.IndexByte(pattern, '/'); i > 0 {
 			host = pattern[:i]
+			pattern = pattern[i:]
+		}
+		exact := strings.TrimSuffix(pattern, "{$}")
+		if strings.Contains(exact, "{") || strings.HasSuffix(pattern, "/") {
+			continue
+		}
+		if reservedPath(exact) {
+			return fmt.Errorf("%w: %s owns reserved path %s", ErrRouteConflict, h.pattern, exact)
 		}
 		paths := slices.Clone(frameworkPaths)
 		for path := range a.routeTable {
@@ -115,6 +120,9 @@ func (a *Application) compileRoutes(raw []rawHandler) error {
 			method = first
 		}
 		for _, path := range paths {
+			if path != exact {
+				continue
+			}
 			for _, m := range []string{method, "GET", "HEAD", "POST", "QUERY", "OPTIONS"} {
 				r := &http.Request{Method: m, Host: host, URL: &url.URL{Path: path}}
 				if _, p := probe.Handler(r); p != "" {
@@ -150,6 +158,10 @@ func (a *Application) compileRoutes(raw []rawHandler) error {
 			mux.ServeHTTP(w, r)
 			return
 		}
+		if reservedPath(r.URL.Path) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		handler, pattern := custom.Handler(r)
 		if pattern != "" {
 			handler.ServeHTTP(w, r)
@@ -159,6 +171,10 @@ func (a *Application) compileRoutes(raw []rawHandler) error {
 	})
 	return nil
 }
+func reservedPath(path string) bool {
+	return strings.EqualFold(path, "/.cratis") || strings.HasPrefix(strings.ToLower(path), "/.cratis/")
+}
+
 func muxHandle(mux *http.ServeMux, pattern string, h http.Handler) (err error) {
 	defer func() {
 		if v := recover(); v != nil {
