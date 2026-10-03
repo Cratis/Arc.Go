@@ -73,6 +73,47 @@ func TestDeclaredDerivedRoundTripAndFailureAtomicity(t *testing.T) {
 	}
 }
 
+type defaultNotice interface{ defaultNotice() }
+type ordinaryNotice struct{ Title string }
+
+func (ordinaryNotice) defaultNotice() {}
+
+type defaultUrgent struct {
+	ordinaryNotice
+	Priority int
+}
+
+func TestDeclaredDefaultModelMatchesConcreteBaseWireContract(t *testing.T) {
+	if err := serialization.RegisterDerivedTypes(
+		serialization.DerivedDeclaration{Default: true, Base: reflect.TypeFor[defaultNotice](), Type: reflect.TypeFor[ordinaryNotice]()},
+		serialization.DerivedDeclaration{ID: "0d56d5f0-54c9-4ad3-b9ac-5d9e14c3103a", Base: reflect.TypeFor[defaultNotice](), Type: reflect.TypeFor[defaultUrgent]()},
+	); err != nil {
+		t.Fatal(err)
+	}
+	type envelope struct{ Notice defaultNotice }
+	for _, notice := range []defaultNotice{ordinaryNotice{Title: "ordinary"}, defaultUrgent{ordinaryNotice{Title: "urgent"}, 7}} {
+		body, err := serialization.Marshal(envelope{notice})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, urgent := notice.(defaultUrgent)
+		if bytes.Contains(body, []byte("_derivedTypeId")) != urgent {
+			t.Fatal(string(body))
+		}
+		var result envelope
+		if err := serialization.Unmarshal(body, &result); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(notice, result.Notice) {
+			t.Fatal(result.Notice)
+		}
+	}
+	var target envelope
+	if err := serialization.Unmarshal([]byte(`{"notice":{"_derivedTypeId":"unknown"}}`), &target); err == nil {
+		t.Fatal("unknown ID fell back to default")
+	}
+}
+
 func TestDerivedRegistryConcurrentReadsAndIdempotentRegistration(t *testing.T) {
 	declaration := serialization.DerivedDeclaration{ID: urgentID, Base: reflect.TypeFor[wireNotice](), Type: reflect.TypeFor[wireUrgent]()}
 	if err := serialization.RegisterDerivedTypes(declaration); err != nil {

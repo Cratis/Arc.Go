@@ -129,7 +129,7 @@ func unmarshalStruct(data []byte, v reflect.Value, depth int) error {
 		if err != nil {
 			return err
 		}
-		if present && id != declaration.ID {
+		if present && (declaration.Default || id != declaration.ID) {
 			return fmt.Errorf("derived discriminator %q does not match %v", id, v.Type())
 		}
 	}

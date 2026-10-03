@@ -139,7 +139,7 @@ func marshalStruct(v reflect.Value, depth int) ([]byte, error) {
 		}
 		object[f.name] = data
 	}
-	if declaration, found := derivedFor(v.Type()); found {
+	if declaration, found := derivedFor(v.Type()); found && !declaration.Default {
 		data, err := json.Marshal(declaration.ID)
 		if err != nil {
 			return nil, err

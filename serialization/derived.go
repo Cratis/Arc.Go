@@ -17,17 +17,21 @@ import (
 // with a named interface wire contract and a canonical UUID discriminator.
 // Go embedding alone is not inheritance. Codecs on derived structs are unsupported.
 type DerivedDeclaration struct {
-	ID   string
-	Base reflect.Type
-	Type reflect.Type
+	// Default selects the concrete base representation when no discriminator is supplied.
+	// Its ID must be empty; explicit unknown IDs still fail closed.
+	Default bool
+	ID      string
+	Base    reflect.Type
+	Type    reflect.Type
 }
 
 var derivedRegistry = struct {
 	sync.RWMutex
-	byType map[reflect.Type]DerivedDeclaration
-	byID   map[string]DerivedDeclaration
-	bases  map[reflect.Type]bool
-}{byType: map[reflect.Type]DerivedDeclaration{}, byID: map[string]DerivedDeclaration{}, bases: map[reflect.Type]bool{}}
+	byType   map[reflect.Type]DerivedDeclaration
+	byID     map[string]DerivedDeclaration
+	bases    map[reflect.Type]bool
+	defaults map[reflect.Type]DerivedDeclaration
+}{byType: map[reflect.Type]DerivedDeclaration{}, byID: map[string]DerivedDeclaration{}, bases: map[reflect.Type]bool{}, defaults: map[reflect.Type]DerivedDeclaration{}}
 
 // RegisterDerivedTypes installs process-wide wire declarations, like the frontend
 // derived-type registry. Call during composition, before handling requests. The
@@ -39,9 +43,11 @@ func RegisterDerivedTypes(declarations ...DerivedDeclaration) error {
 	defer derivedRegistry.Unlock()
 	pendingTypes := map[reflect.Type]DerivedDeclaration{}
 	pendingIDs := map[string]DerivedDeclaration{}
+	pendingDefaults := map[reflect.Type]DerivedDeclaration{}
 	for _, declaration := range declarations {
 		id, err := concepts.ParseUUID(declaration.ID)
-		if err != nil || id.String() != declaration.ID || declaration.Base == nil || declaration.Type == nil {
+		validID := !declaration.Default && err == nil && id.String() == declaration.ID || declaration.Default && declaration.ID == ""
+		if !validID || declaration.Base == nil || declaration.Type == nil {
 			return fmt.Errorf("invalid derived declaration %q", declaration.ID)
 		}
 		base, t := declaration.Base, declaration.Type
@@ -66,16 +72,31 @@ func RegisterDerivedTypes(declarations ...DerivedDeclaration) error {
 				return fmt.Errorf("derived discriminator is reserved on %v", t)
 			}
 		}
-		for _, prior := range []DerivedDeclaration{derivedRegistry.byType[t], derivedRegistry.byID[declaration.ID], pendingTypes[t], pendingIDs[declaration.ID]} {
+		priors := []DerivedDeclaration{derivedRegistry.byType[t], pendingTypes[t]}
+		if declaration.Default {
+			priors = append(priors, derivedRegistry.defaults[base], pendingDefaults[base])
+		} else {
+			priors = append(priors, derivedRegistry.byID[declaration.ID], pendingIDs[declaration.ID])
+		}
+		for _, prior := range priors {
 			if prior.Type != nil && prior != declaration {
 				return fmt.Errorf("conflicting derived declaration %q for %v", declaration.ID, t)
 			}
 		}
-		pendingTypes[t], pendingIDs[declaration.ID] = declaration, declaration
+		pendingTypes[t] = declaration
+		if declaration.Default {
+			pendingDefaults[base] = declaration
+		} else {
+			pendingIDs[declaration.ID] = declaration
+		}
 	}
 	for t, declaration := range pendingTypes {
 		derivedRegistry.byType[t] = declaration
-		derivedRegistry.byID[declaration.ID] = declaration
+		if declaration.Default {
+			derivedRegistry.defaults[declaration.Base] = declaration
+		} else {
+			derivedRegistry.byID[declaration.ID] = declaration
+		}
 		derivedRegistry.bases[declaration.Base] = true
 	}
 	return nil
@@ -138,8 +159,11 @@ func unmarshalDerived(data []byte, v reflect.Value, depth int) error {
 	}
 	derivedRegistry.RLock()
 	declaration, found := derivedRegistry.byID[id]
+	if !present {
+		declaration, found = derivedRegistry.defaults[v.Type()]
+	}
 	derivedRegistry.RUnlock()
-	if !present || !found || declaration.Base != v.Type() {
+	if !found || declaration.Base != v.Type() {
 		return fmt.Errorf("unknown derived discriminator %q for %v", id, v.Type())
 	}
 	fresh := reflect.New(declaration.Type).Elem()
