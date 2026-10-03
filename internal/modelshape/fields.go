@@ -15,13 +15,7 @@ import (
 const MaxDepth = 64
 
 // Field describes a readable JSON member. Each Fields call owns its slices.
-type Field struct {
-	Index                       []int
-	Name                        string
-	Type                        reflect.Type
-	Tag                         reflect.StructTag
-	Tagged, OmitEmpty, OmitZero bool
-}
+type Field = WireField[reflect.Type]
 
 // CamelCase preserves initialisms, matching Arc serialization.
 func CamelCase(name string) string {
@@ -36,91 +30,25 @@ func CamelCase(name string) string {
 // Fields applies JSON visibility and embedded-member dominance in declaration
 // order. It rejects direct duplicate names and unsupported JSON options.
 func Fields(t reflect.Type) ([]Field, error) {
-	if t == nil || t.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("expected struct type")
-	}
-	var candidates []Field
-	if err := collect(t, nil, make(map[reflect.Type]bool), &candidates); err != nil {
-		return nil, err
-	}
-	var result []Field
-	seen := make(map[string]bool)
-	for _, candidate := range candidates {
-		if seen[candidate.Name] {
-			continue
-		}
-		seen[candidate.Name] = true
-		best := candidate
-		count := 0
-		for _, other := range candidates {
-			if other.Name != best.Name {
-				continue
+	return Select(t, Shape[reflect.Type]{
+		Dereference: func(t reflect.Type) reflect.Type {
+			if t != nil && t.Kind() == reflect.Pointer {
+				return t.Elem()
 			}
-			if len(other.Index) < len(best.Index) || len(other.Index) == len(best.Index) && other.Tagged && !best.Tagged {
-				best, count = other, 1
-			} else if len(other.Index) == len(best.Index) && other.Tagged == best.Tagged {
-				count++
+			return t
+		},
+		Members: func(t reflect.Type) ([]Member[reflect.Type], bool) {
+			if t == nil || t.Kind() != reflect.Struct {
+				return nil, false
 			}
-		}
-		if count > 1 {
-			if len(best.Index) == 1 {
-				return nil, fmt.Errorf("ambiguous JSON members %q and %q", best.Name, best.Name)
+			members := make([]Member[reflect.Type], t.NumField())
+			for i := range t.NumField() {
+				field := t.Field(i)
+				members[i] = Member[reflect.Type]{Name: field.Name, Type: field.Type, Tag: field.Tag, Exported: field.IsExported(), Anonymous: field.Anonymous}
 			}
-			continue
-		}
-		result = append(result, best)
-	}
-	return result, nil
-}
-
-func collect(t reflect.Type, prefix []int, ancestors map[reflect.Type]bool, result *[]Field) error {
-	if ancestors[t] {
-		return nil
-	}
-	if len(prefix) >= MaxDepth {
-		return fmt.Errorf("model field depth exceeds %d", MaxDepth)
-	}
-	ancestors[t] = true
-	defer delete(ancestors, t)
-	for i := 0; i < t.NumField(); i++ {
-		f := t.Field(i)
-		base := f.Type
-		if base.Kind() == reflect.Pointer {
-			base = base.Elem()
-		}
-		if !f.IsExported() && (!f.Anonymous || base.Kind() != reflect.Struct) {
-			continue
-		}
-		tag := strings.Split(f.Tag.Get("json"), ",")
-		if tag[0] == "-" {
-			continue
-		}
-		index := append(append([]int(nil), prefix...), i)
-		if f.Anonymous && tag[0] == "" && base.Kind() == reflect.Struct {
-			if err := collect(base, index, ancestors, result); err != nil {
-				return err
-			}
-			continue
-		}
-		name := tag[0]
-		if name == "" {
-			name = CamelCase(f.Name)
-		}
-		entry := Field{Index: index, Name: name, Type: f.Type, Tag: f.Tag, Tagged: tag[0] != ""}
-		for _, option := range tag[1:] {
-			switch option {
-			case "omitempty":
-				entry.OmitEmpty = true
-			case "omitzero":
-				entry.OmitZero = true
-			case "":
-			default:
-				return fmt.Errorf("unsupported JSON option %q", option)
-			}
-		}
-		*result = append(*result, entry)
-	}
-	return nil
+			return members, true
+		},
+	})
 }
 
 // Children returns direct exported graph nodes in declaration order. Unlike
