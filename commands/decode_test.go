@@ -31,7 +31,7 @@ func TestCommandDecodeFreshAndSafe(t *testing.T) {
 		if !errors.As(err, &failure) || !errors.As(err, &decode) || decode.Cause == nil {
 			t.Fatalf("unsafe decode %q: %v", body, err)
 		}
-		if got := failure.ValidationResults(); len(got) != 1 || got[0].Reason != validation.MalformedRequest || got[0].Message != "The request body is invalid." {
+		if got := failure.ValidationResults(); len(got) != 1 || got[0].Reason != validation.MalformedRequest || got[0].Message != "The request body could not be read or is not valid for this command." {
 			t.Fatal(got)
 		}
 	}

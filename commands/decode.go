@@ -22,7 +22,7 @@ func (e *DecodeError) Unwrap() error { return e.Cause }
 
 // ValidationResults returns one safe malformedRequest finding.
 func (e *DecodeError) ValidationResults() []validation.Result {
-	return []validation.Result{{Severity: validation.Error, Message: e.Error(), Members: []string{}, Reason: validation.MalformedRequest}}
+	return []validation.Result{{Severity: validation.Error, Message: "The request body could not be read or is not valid for this command.", Members: []string{}, Reason: validation.MalformedRequest}}
 }
 func decodeCommand[C any](body []byte) (any, error) {
 	root := bytes.TrimSpace(body)
