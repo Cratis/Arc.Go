@@ -50,11 +50,19 @@ operation. An exhausted anonymous chain proceeds to authorization; ordinary
 denial is 403, including anonymous role denial. This differs from native C# Core
 middleware's blanket credential requirement and anonymous failure exemption.
 The standalone chain writes no response; the application owns that boundary.
+Callback errors are server faults and log at Error. Never include or wrap token
+text, credentials or header values in those errors. Use `Failed(reason)` for
+credential rejection; ingress never logs the reason. Client-attributable tenant
+selection errors log at Warn and return malformedRequest validation findings.
 
 There is no automatic cookie, Basic or JWT adapter. Explicitly register
 `authentication.MicrosoftIdentityPlatform` with `MicrosoftIdentityOptions` to
 accept unsigned forwarded headers only when `TrustForwardedIdentityHeaders` is
 true. Repeated headers and oversized/malformed principals are rejected.
+When trust is off, headers are ignored and requests remain anonymous. Set the
+optional `MicrosoftIdentityOptions.Logger` to receive a Warn diagnostic on the
+first such request across all adapter instances in the process. No header values
+are logged; nil disables diagnostics.
 Only trust forwarded identity when authenticated ingress strips caller-supplied
 headers, replaces them, and prevents direct access to the backend. See the
 [parity ledger](../../../parity.md) for the source-derived ingress differences.

@@ -18,7 +18,7 @@ type responseWriter struct {
 
 func (w *responseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 func (w *responseWriter) WriteHeader(status int) {
-	if status >= 100 && status < 200 {
+	if status >= 100 && status < 200 && status != http.StatusSwitchingProtocols {
 		w.ResponseWriter.WriteHeader(status)
 		return
 	}

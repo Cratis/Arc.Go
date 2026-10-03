@@ -3,9 +3,23 @@ package arc
 import (
 	"bytes"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+func TestSwitchingProtocolsCommitsTheObservedResponse(t *testing.T) {
+	base := &responseWriter{ResponseWriter: httptest.NewRecorder()}
+	base.WriteHeader(http.StatusContinue)
+	if base.status != 0 {
+		t.Fatal("informational response committed", base.status)
+	}
+	base.WriteHeader(http.StatusSwitchingProtocols)
+	if base.status != http.StatusSwitchingProtocols {
+		t.Fatal("protocol switch not committed", base.status)
+	}
+}
 
 func TestOwnedServerUsesConfiguredSlogErrorLogger(t *testing.T) {
 	var logs bytes.Buffer

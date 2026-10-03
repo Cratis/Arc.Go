@@ -14,7 +14,9 @@ case-sensitive at runtime, with case-insensitive registration collision checks.
 Literal root/trailing-slash query routes never become subtrees. Repeated slashes,
 dot segments, backslashes and escaped aliases/separators return empty 400 rather
 than redirects. Canonical percent-encoded Unicode paths are accepted. No trailing
-slash is silently added or removed.
+slash is silently added or removed. Raw catch-all/subtree handlers may overlap
+Arc routes, but the Arc table wins, including method mismatches. `/.cratis/*`
+is reserved even when discovery is unmapped; it never falls through to raw handlers.
 
 ## Input
 
@@ -60,11 +62,20 @@ negotiate streams or fabricate wait behavior.
 X-Correlation-ID echoes a canonical nonzero UUID and matches envelope correlation.
 One valid supplied header wins, then trusted context, then generation. Repeats are
 invalid input. HTTP receipt is captured before authentication/binding and consumed
-by only the immediate pipeline call; nested operations get fresh receipts.
+by only the immediate endpoint pipeline call. Nested operations and backend
+operations invoked by middleware, raw handlers or providers get fresh receipts.
+Invalid tenant selectors return 400 with malformedRequest validation findings;
+ordinary QUERY reader syntax exceptions retain their redacted exception envelope.
 x-cratis-tenant-id selects tenant, never membership. Inherited principal/tenant
 are explicitly shadowed unless a trusted authentication adapter establishes identity.
 
 Catalogs and identity are unwrapped. `/.cratis/me` is fresh, anonymous 401 and
 provider-denied 403, with no identity-cookie authentication. Presented legacy
 `.cratis-identity` cookies are expired at `/`, never decoded or reissued.
+Deletion matches C# RemoveCookie: empty value, expiry one day in the past, no
+Domain, HttpOnly, Secure, SameSite or Max-Age attributes. It does not depend on TLS.
+Go detects direct TLS through `Request.TLS`; HTTPS terminated at a proxy does not
+set it automatically. Arc does not trust Forwarded or X-Forwarded-Proto headers
+for TLS detection; configure a trusted host adapter if your own middleware needs
+that information.
 Identity/discovery use `no-store, private` and merged `Vary: Cookie`.
