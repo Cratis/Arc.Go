@@ -43,11 +43,13 @@ unmanaged local additions shared with Chronicle.Go, not installer-managed files.
 
 ## Layout and commands
 
-Keep one runtime root module and exactly one tooling-only nested module,
-`tools/go.mod` (`github.com/cratis/arc.go/tools`). The `tools/cmd/arc-gen` executable
+Keep exactly three independently consumable modules: the runtime root,
+`tools/go.mod` (`github.com/cratis/arc.go/tools`), and
+`integrations/chronicle/go.mod` (`github.com/cratis/arc.go/integrations/chronicle`).
+Chronicle dependencies belong only in the integration module. The `tools/cmd/arc-gen` executable
 uses `go/packages` and `go/types`; `golang.org/x/tools` must not become a root
 runtime dependency. Tools pin a fetchable runtime version, never a local replace
-or workspace. Both modules must build independently with `GOWORK=off`.
+or workspace. All modules must build independently with `GOWORK=off`.
 
 Group public packages by capability, keep implementation-only helpers under
 `internal/`, and co-locate `_test.go` files. Add directories only when implemented;
@@ -65,8 +67,10 @@ go vet ./...
 govulncheck ./...
 ```
 
-Repeat the Go gates independently from `tools/`, using the root lint configuration.
-The root `./...` pattern does not cross the tooling module boundary. Tooling tags
+Repeat the Go gates independently from `tools/` and `integrations/chronicle/`,
+using the root lint configuration. The root `./...` pattern does not cross nested
+module boundaries. Chronicle integration tags use `integrations/chronicle/vX.Y.Z`;
+its initial develop pins are not a release or a publication authorization. Tooling tags
 would use `tools/vX.Y.Z`, but publication remains deferred pending
 [Fundamentals.Go#16](https://github.com/Cratis/Fundamentals.Go/issues/16); the root
 release workflow still publishes only root-module tags.
