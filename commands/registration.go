@@ -76,7 +76,9 @@ func Register[C any](r Registrar, options ...Option[C]) error {
 		return ErrInvalidRegistration
 	}
 	namespace := ""
-	if defaults, ok := r.(interface{ commandNamespace() string }); ok {
+	if defaults, ok := r.(interface{ CommandNamespace() string }); ok {
+		namespace = defaults.CommandNamespace()
+	} else if defaults, ok := r.(interface{ commandNamespace() string }); ok {
 		namespace = defaults.commandNamespace()
 	}
 	t := reflect.TypeFor[C]()
