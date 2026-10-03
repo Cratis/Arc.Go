@@ -1,6 +1,6 @@
 ---
-title: MongoDB snapshots
-description: Serve bounded, authorized MongoDB pages through a manually registered Go query and HTTP host.
+title: MongoDB snapshots and observations
+description: Serve authorized MongoDB pages and rerender them on bounded database invalidations.
 ---
 
 When your read models already live in MongoDB, you can return a typed selection
@@ -12,8 +12,9 @@ pushes sorting, skip and limit to MongoDB before Arc publishes the result.
 Use Go 1.26 or later and the independently fetchable dependency pins in the module.
 The live contracts target MongoDB **8.0.15**, a single-member replica set and the
 official Go driver v2.9.1. Count and find are separate reads, not one atomic
-snapshot. Watches/change streams are **Not implemented**. Real Chronicle sink
-layout and release compatibility are not established.
+snapshot. Database invalidation sources are **Partial**, with manual registration
+and terminal recovery rather than automatic resume. Real Chronicle sink layout
+and release compatibility are not established.
 
 ## Run the manual HTTP example
 
@@ -117,6 +118,73 @@ rewrite Primary to primaryPreferred for direct/Single connections. Use
 replica-set discovery for topology-aware primary selection. Bounds do not make
 unindexed authorized counts cheap.
 
+## Observe an authorized collection
+
+When a page should change with its collection, return invalidation instructions
+instead of fetching rows inside a change-stream callback. Arc rechecks membership
+and policies before each candidate, then uses the same renderer for fresh row
+authorization, count, window, release and interception.
+
+The compiled
+[ObservationExample](https://github.com/Cratis/Arc.Go/blob/develop/integrations/mongodb/examples/observation/observation.go)
+constructs an application-lifetime watcher and manually registers
+`Source[Find[Author]] -> []Author` against the existing renderer. It accepts your
+borrowed client and membership authority; verified identity and tenant must reach
+Arc before Open. This source declaration is an excerpt from that example, using
+its `Author` and the `mongodb`, `observable` and `bson` imports:
+
+<!-- mongodb-observation-snippet: ActiveAuthors -->
+
+```go
+// ActiveAuthors returns trusted invalidation instructions, not rendered rows.
+// Register this source against the renderer for the same collection binding.
+func ActiveAuthors(watcher *mongodb.Watcher, authors *mongodb.Collection[Author]) (observable.Source[mongodb.Find[Author]], error) {
+    return mongodb.Observe(watcher, authors, mongodb.Find[Author]{Filter: bson.D{{Key: "Active", Value: true}}})
+}
+```
+
+Pair the source and renderer with the **same collection binding**. Use per-query
+`WithRenderer` when one model has multiple bindings; model type does not identify
+a server or database. Opaque provider emissions require manual registration, not
+a generated proxy. The example has no HTTP host, credential verification, seed
+data or indexes. Check its registration from the module directory:
+
+```bash
+GOWORK=off GOTOOLCHAIN=local go test -run ExampleObservationExample -v ./examples/observation
+```
+
+It prints `true []observation.Author`. Actual streaming/waiting requires your
+supported replica set and database change-stream permissions. Non-wait snapshots
+remain pending because this is `Source`, not `CurrentSource`. Waiting or streaming
+establishes the database cursor **before** the initial renderer baseline. Inserts,
+updates, replacements and deletes invalidate the complete selection, including
+filter exits and off-page changes. Mutations during rendering or blocked delivery
+remain queued. Quiescent comparison proves convergence, not atomic count/find or
+one delivery per historical mutation; equivalent duplicate results are allowed.
+
+Share one watcher per borrowed client. Models and collections sharing a resolved
+database share its cursor; distinct clients and tenant databases do not. Default
+limits are 32 databases, 1024 subscribers, 64 per logical query and 16 queued
+markers. Overflow terminates only the slow subscriber. Each candidate uses a
+fresh RowFilter; membership or policy revocation before that candidate prevents
+renderer I/O and produces terminal denial. There is no idle-policy polling.
+
+Cursor loss and drop/rename terminate the database generation with locally
+inspectable `ErrResnapshotRequired`, not an in-place resume. Clients receive Arc's
+safe terminal error. Close the old observation and explicitly Open a new one after
+reader/cursor cleanup joins; an unjoined generation rejects admission with
+`ErrJoinPending`. Fresh Open establishes a new cursor and full first Delta result,
+then subsequent changes. A generation hint alone does not reset delivery state.
+There is no live connection migration, durable checkpoint, replay, gap-free
+recovery or browser automatic-resubscription guarantee.
+
+Drain `CloseObservations`, then join `Watcher.Close`, then disconnect your borrowed
+client. Continue a canceled join wait with a fresh context. A failed cursor
+disposal remains an error and blocks generation replacement; repeating Close
+does not repeat that failed driver effect. See the
+[observation ownership reference](https://github.com/Cratis/Arc.Go/blob/develop/integrations/mongodb/README.md#database-invalidation-sources)
+for all bounds and C# differences.
+
 ## Chronicle-owned boundaries
 
 `ChronicleOwned` requires `Release`. The callback receives complete copied raw
@@ -156,13 +224,27 @@ HTTP host: two tenants, forbidden rows, multi-batch cursors, serialized count/fi
 predicate/coordinate/collation equality, server windows, deterministic ties,
 bounds, empty/out-of-range pages, no double paging, UUID/concept/null/temporal
 storage, decode failure, synthetic release, count/find/getMore failpoints,
-cancellation/cursor cleanup and borrowed-client usability. Insert/update/delete,
-filter entry/exit, reordering and refill are **refetch tests**, not observation.
-Huge count conversion/overflow cases use bounded no-database driver fakes; the
+cancellation/cursor cleanup and borrowed-client usability. The separate
+`observation*_integration_test.go` cases use real ordinary
+`Aggregate($changeStream)` cursors through Arc Open/Run, not `Database.Watch` or a
+callback refetch. They compare every full candidate with the equivalent authorized
+unary query, including initial-render/delivery barriers, filter entry/exit,
+off-page mutations, reorder/refill, totals, independent principals/tenants/models,
+shared versus distinct clients, fresh row filters and synthetic raw release before
+interception. Driver command monitoring checks the single database watch,
+metadata-only projection, bounded batches and absence of UpdateLookup/resume.
+Revocation denies before render I/O; overflow remains subscriber-local. Live
+startup cancellation, canceled cleanup joining, cleanup-budget failure,
+CursorNotFound and injected ChangeStreamHistoryLost, explicit new-Open first-full
+Delta recovery, drop and rename are covered. Natural small-oplog history expiry
+is **unverified**: a failpoint response is not evidence of actual retention expiry.
+Concurrent Open/Close/Next and broader limit boundaries also have deterministic
+unit coverage. Huge count conversion/overflow cases use bounded no-database driver fakes; the
 live lane does not seed billions of rows. The manual example also crosses a real
 loopback HTTP listener. Linux Go 1.27 is the required provider CI profile;
 ordinary no-database checks keep the existing toolchain/OS matrix.
 
 Follow the [parity map](../../../parity.md) for remaining gaps. Sharded or
 multi-member deployments, failover and real Chronicle sink release remain outside
-this evidence. Watches need a separate lifecycle/resume/authorization design.
+this evidence. Collection joins, single/null observations, CurrentSource/replay,
+automatic recovery and opaque-provider generation are deferred.

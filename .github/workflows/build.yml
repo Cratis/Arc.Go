@@ -297,7 +297,7 @@ jobs:
       - run: govulncheck ./...
 
   mongodb-provider:
-    name: MongoDB 8.0.15 live snapshot contracts
+    name: MongoDB 8.0.15 live snapshot and observation contracts
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) Cratis. All rights reserved.
 # Licensed under the MIT license. See LICENSE file in the project root.
-"""Required, task-owned MongoDB 8.0.15 provider lane; never uses a shared server."""
+"""Required MongoDB 8.0.15 snapshot/observation lane; never uses a shared server."""
 
 import argparse
 import json
@@ -16,6 +16,15 @@ import time
 
 IMAGE = "mongo:8.0.15@sha256:f4d54619262ae3bc6a0a8efbebcef970b87b8ad70697479a75ce308a6f400158"
 LABEL = "io.cratis.arc.mongodb-test-owner"
+
+
+def provider_test_command(selection=None):
+    # One full required tagged run, including observations. Verbose progress
+    # exposes an overdue test; missing prerequisites fail inside liveProvider.
+    args = ["go", "test", "-v", "-tags=integration", "-count=1", "-timeout=165s"]
+    if selection is not None:
+        args.extend(["-run", selection])
+    return args + ["./..."]
 
 
 def command(args, deadline, check=True):
@@ -80,6 +89,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state-file", type=Path, required=True)
     parser.add_argument("--cleanup-only", action="store_true")
+    parser.add_argument("--run", help="explicit diagnostic Go test regexp; omit for the required full lane")
     args = parser.parse_args()
     path = args.state_file.resolve()
     if args.cleanup_only:
@@ -152,7 +162,7 @@ def main():
                            ARC_MONGODB_TEST_URI=state["uri"], ARC_MONGODB_TEST_OWNER=token,
                            ARC_MONGODB_TEST_IMAGE_ID=image["Id"], ARC_MONGODB_TEST_IMAGE=IMAGE)
         module = Path(__file__).resolve().parent.parent
-        test = subprocess.Popen(["go", "test", "-tags=integration", "-count=1", "-timeout=165s", "./..."], cwd=module, env=environment)
+        test = subprocess.Popen(provider_test_command(args.run), cwd=module, env=environment)
         exit_code = test.wait(timeout=180)
         failed = exit_code != 0
     except (Exception, KeyboardInterrupt) as error:
