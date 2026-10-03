@@ -71,18 +71,8 @@ func mergeObserved(a, b commands.CompletionReport) commands.CompletionReport {
 	if b.Disposition == commands.NoPersistedWork || a == b {
 		return a
 	}
-	if a.Disposition == commands.MixedCommit || b.Disposition == commands.MixedCommit {
+	if a.Disposition == commands.MixedCommit || b.Disposition == commands.MixedCommit || a.Disposition == commands.Committed || b.Disposition == commands.Committed {
 		return commands.CompletionReport{Disposition: commands.MixedCommit}
 	}
-	if a.Disposition == commands.OutcomeUnknown || b.Disposition == commands.OutcomeUnknown {
-		if a.Disposition == commands.Committed || b.Disposition == commands.Committed {
-			return commands.CompletionReport{Disposition: commands.MixedCommit}
-		}
-		return commands.CompletionReport{Disposition: commands.OutcomeUnknown}
-	}
-	// Known rejection cannot undo an earlier confirmed immediate append.
-	if a.Disposition == commands.Committed || b.Disposition == commands.Committed {
-		return commands.CompletionReport{Disposition: commands.Committed}
-	}
-	return commands.CompletionReport{Disposition: commands.NotCommitted}
+	return commands.CompletionReport{Disposition: commands.OutcomeUnknown}
 }
