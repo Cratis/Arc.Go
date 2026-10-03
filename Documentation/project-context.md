@@ -75,11 +75,11 @@ using the root lint configuration. The root `./...` pattern does not cross neste
 module boundaries. Chronicle integration tags use `integrations/chronicle/vX.Y.Z`;
 its initial develop pins are not a release or a publication authorization.
 MongoDB reserves `integrations/mongodb/vX.Y.Z`; independent no-database gates
-cover bindings/codecs and snapshot boundaries, while a separate Linux Go 1.27
-lane covers task-owned MongoDB 8.0.15 replica-set/HTTP contracts. Neither proves
-real Chronicle sink compatibility or watches. It pins pushed Arc revision
-`4bd7dca` as `v0.0.0-20261003144525-4bd7dca5e554` (including failure-paging
-retraction) and released Fundamentals `v0.1.0`. No additional module layout is admitted. Tooling tags
+cover bindings/codecs, snapshot boundaries and bounded observation, while a separate Linux Go 1.27
+lane covers task-owned MongoDB 8.0.15 replica-set/HTTP snapshot and change-stream contracts.
+These do not prove real Chronicle sink compatibility, transparent watch resume or gap-free delivery.
+It pins pushed Arc revision `d4fec76` as `v0.0.0-20261003154536-d4fec76875ae`
+(including failure-paging retraction) and released Fundamentals `v0.1.0`. No additional module layout is admitted. Tooling tags
 would use `tools/vX.Y.Z`, but publication remains deferred pending
 [Fundamentals.Go#16](https://github.com/Cratis/Fundamentals.Go/issues/16); the root
 release workflow still publishes only root-module tags.
