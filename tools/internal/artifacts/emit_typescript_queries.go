@@ -424,7 +424,7 @@ func validateQueryDefault(field FieldDescriptor) error {
 	case "string":
 		return nil
 	case "boolean":
-		if _, err := strconv.ParseBool(field.Default); err == nil {
+		if value := strings.ToLower(strings.TrimSpace(field.Default)); value == "true" || value == "false" {
 			return nil
 		}
 	case "number":

@@ -20,7 +20,7 @@ import (
 
 func graphPackages(t *testing.T, dir string, patterns ...string) []*analysis {
 	t.Helper()
-	loaded, err := packages.Load(&packages.Config{Context: t.Context(), Dir: dir, Mode: packages.NeedName | packages.NeedFiles | packages.NeedModule | packages.NeedTypes | packages.NeedSyntax | packages.NeedTypesInfo | packages.NeedImports | packages.NeedDeps}, patterns...)
+	loaded, err := packages.Load(&packages.Config{Context: t.Context(), Dir: dir, Mode: packages.NeedName | packages.NeedFiles | packages.NeedModule | packages.NeedTypes | packages.NeedSyntax | packages.NeedTypesInfo | packages.NeedImports | packages.NeedDeps | packages.NeedTypesSizes}, patterns...)
 	if err != nil {
 		t.Fatal(err)
 	}

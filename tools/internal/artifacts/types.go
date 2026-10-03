@@ -586,6 +586,20 @@ func (w *wireAnalyzer) fields(t types.Type, arguments bool) ([]FieldDescriptor, 
 				return nil, w.fail(t, "query preservePresence requires an explicit presence-compatible client contract")
 			}
 			field.Required, field.HasDefault, field.Default = queryTags.Required, queryTags.HasDefault, queryTags.Default
+			if field.HasDefault {
+				var sizes types.Sizes
+				if named, ok := types.Unalias(t).(*types.Named); ok {
+					if pkg := w.packages[named.Obj().Pkg().Path()]; pkg != nil {
+						sizes = pkg.TypesSizes
+					}
+				}
+				if sizes == nil {
+					return nil, w.fail(t, "query defaults require target compiler sizes")
+				}
+				if err := validateGoQueryDefault(member.Type, field.Default, sizes); err != nil {
+					return nil, w.fail(t, "query parameter %q has unsupported server default: %v", member.Name, err)
+				}
+			}
 			if key == "page" || key == "pagesize" || key == "sortby" || key == "sortdirection" || key == "waitforfirstresult" || key == "waitforfirstresulttimeout" {
 				return nil, w.fail(t, "reserved query parameter %s", member.Name)
 			}
