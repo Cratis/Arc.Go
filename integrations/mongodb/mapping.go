@@ -35,7 +35,7 @@ type discovery struct {
 }
 
 func (d *discovery) discover(t reflect.Type, depth int) (*codec, error) {
-	if t == nil || depth > 64 || d.active[t] {
+	if t == nil || depth > 64 || d.active[t] || hasBSONCodec(t) {
 		return nil, ErrUnsupportedModel
 	}
 	if c := d.codecs[t]; c != nil {
@@ -121,6 +121,21 @@ func fieldTag(tag string) (string, bool, bool) {
 		omit = true
 	}
 	return parts[0], omit, true
+}
+
+// BSON document hooks can bypass the driver's registry entirely. Check every
+// type and pointer method set before container/concept/cache fast paths. Required
+// JSON/text concept conversion remains supported through the declared codecs.
+func hasBSONCodec(t reflect.Type) bool {
+	for _, contract := range []reflect.Type{
+		reflect.TypeFor[bson.Marshaler](), reflect.TypeFor[bson.Unmarshaler](),
+		reflect.TypeFor[bson.ValueMarshaler](), reflect.TypeFor[bson.ValueUnmarshaler](),
+	} {
+		if t.Implements(contract) || reflect.PointerTo(t).Implements(contract) {
+			return true
+		}
+	}
+	return false
 }
 
 func hasCustomCodec(t reflect.Type) bool {
