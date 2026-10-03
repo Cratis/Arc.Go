@@ -19,7 +19,7 @@ func outputField(name string, wire WireType, required, null bool) FieldDescripto
 	return FieldDescriptor{Name: name, Type: wire, Optional: !required, Presence: &FieldPresence{OutputRequired: required, OutputNull: null}}
 }
 
-func frameworkContracts(graph *Graph) ([]FrameworkContract, error) {
+func frameworkContracts(graph *Graph, validationState *WireType) ([]FrameworkContract, error) {
 	stringWire := WireType{Kind: "string"}
 	boolWire := WireType{Kind: "boolean"}
 	stringsWire := WireType{Kind: "array", Element: &stringWire}
@@ -45,13 +45,14 @@ func frameworkContracts(graph *Graph) ([]FrameworkContract, error) {
 		return nil, fmt.Errorf("Cratis.ValidationResult.state requires explicit responseFields absent/type/schema assertion; no implicit any")
 	}
 	if !state.Absent {
-		wire := WireType{Kind: "declared"}
-		if state.Type != "" {
-			wire.Target = state.Type
-		} else {
-			wire.Contract = &WireContract{Schemas: &WireSchemas{Input: state.Schema, Output: state.Schema}}
+		if validationState == nil {
+			return nil, fmt.Errorf("Cratis.ValidationResult.state requires a resolved wire contract")
 		}
-		validation.Fields = append(validation.Fields, outputField("state", wire, false, false))
+		field := outputField("state", *validationState, false, false)
+		// The envelope removes encoded null, including nonnil codec values.
+		// Keep value nullability on Type.Contract, not on the property.
+		field.Presence.OmitNull = true
+		validation.Fields = append(validation.Fields, field)
 	}
 	integer := WireType{Kind: "number", Contract: &WireContract{Scalar: &ScalarContract{GoKind: "int64", Representation: "integer", Bits: 64, Minimum: "-9223372036854775808", Maximum: "9223372036854775807"}}}
 	paging := FrameworkContract{Key: "Cratis.PagingInfo", Source: "queries/paging.go"}

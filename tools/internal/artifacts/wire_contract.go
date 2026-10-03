@@ -51,6 +51,7 @@ type FieldPresence struct {
 	OutputRequired         bool   `json:"outputRequired"`
 	OutputNull             bool   `json:"outputNull"`
 	OmitNil                bool   `json:"omitNil"`
+	OmitNull               bool   `json:"omitNull,omitempty"`
 	OmitMissing            bool   `json:"omitMissing"`
 	OmitEmpty              bool   `json:"omitEmpty"`
 	OmitZero               bool   `json:"omitZero"`
@@ -202,11 +203,13 @@ func (w *wireAnalyzer) describe(t types.Type) (WireType, error) {
 		if hasMethod(representation.Declared, "ConceptValue") && contract.Schemas == nil {
 			return WireType{}, w.fail(t, "concept codec requires explicit input/output wireSchemas; scalar identity alone does not prove codec acceptance")
 		}
-		if basic, ok := representation.Type.Underlying().(*types.Basic); ok && wire.Kind != "Guid" {
-			contract.Scalar, err = scalarContract(basic, w.sizes)
-		} else {
-			format := map[string]string{"Guid": "uuid", "DateOnly": "date", "TimeOnly": "local-time", "TimeSpan": "dotnet-time-span"}[wire.Kind]
+		// Known scalar codecs take precedence over primitive backing types:
+		// TimeSpan is int64-backed, but its wire representation is a string.
+		format := map[string]string{"Guid": "uuid", "DateOnly": "date", "TimeOnly": "local-time", "TimeSpan": "dotnet-time-span"}[wire.Kind]
+		if format != "" {
 			contract.Scalar = &ScalarContract{GoKind: typeKey(representation.Type), Representation: "string", Format: format}
+		} else if basic, ok := representation.Type.Underlying().(*types.Basic); ok {
+			contract.Scalar, err = scalarContract(basic, w.sizes)
 		}
 		return wire, err
 	}

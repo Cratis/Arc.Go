@@ -32,13 +32,19 @@ registry validates declarations without policy evaluation.
   numeric array shape, not inferred UUID. Their JSON input zero-fills/truncates
   through `encoding/json`; other fixed arrays require exact input length.
 - Input/output value nullability and `missing-null-value` Optional representation.
-  Shared UUID/date/local-time/.NET-TimeSpan identities retain their formats.
+  Shared UUID/date/local-time/.NET-TimeSpan identities retain their string
+  representations and formats, regardless of primitive backing types.
 
 `FieldDescriptor.Optional` remains a **client hint**, not JSON requiredness.
 `Presence` describes fresh-zero/missing input, null acceptance, nil/missing output
 omission, effective `omitempty`/`omitzero`, and nullable embedded parents.
 For example, a nonempty fixed array with `omitempty` still has a required output
 property. Required framework arrays are distinct from nullable application slices.
+Nil omission applies to the immediate property value: a nonnil
+`*Optional[int]` containing `Null[int]()` and a nonnil `**int` with a nil
+pointee still publish explicit null. A missing Optional is omitted only when
+the property itself implements Optional's presence hook (value or single pointer),
+not through an additional pointer layer.
 Output-only framework contracts explicitly retain array presence and envelope
 payload omission; they are not a complete streaming-protocol schema.
 
@@ -102,6 +108,11 @@ schemas; nominal scalar identity alone does not prove codec acceptance. An unkno
 command response needs an existing response override or explicit `responseFields`
 declaration. Known no-response and typed responses reject contradictory overrides.
 Validation `state` requires an explicit shared declaration, even when absent.
+Its framework field retains the analyzed `WireType`, including named scalar
+widths, signedness, exact bounds and directional nullability; a target string
+alone is not a scalar contract. The validation envelope omits every encoded
+null (`Presence.OmitNull`), including nonnil codec values, so nullable state
+values do not make the published property nullable.
 TS import mappings are not schema evidence or proof of codec behavior.
 
 Schema assertions preserve raw numeric tokens and require explicit root `type` or

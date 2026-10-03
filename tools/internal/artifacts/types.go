@@ -356,19 +356,28 @@ func analyzeWireGraph(graph *Graph, analyses []*analysis, profile ApplicationPro
 		}
 		w.tsRoots = append(w.tsRoots, wire)
 	}
+	var validationState *WireType
 	for _, identity := range sortedKeys(profile.ResponseFields) {
 		for _, path := range sortedKeys(profile.ResponseFields[identity]) {
 			field := profile.ResponseFields[identity][path]
-			if field.Type != "" {
-				t, err := w.reference(nil, field.Type)
-				if err != nil {
-					return fmt.Errorf("responseFields %s.%s: %w", identity, path, err)
-				}
-				if _, err := w.describe(t); err != nil {
-					return err
-				}
+			if field.Absent {
+				continue
+			}
+			wire, err := w.declaredResponse(field)
+			if err != nil {
+				return fmt.Errorf("responseFields %s.%s: %w", identity, path, err)
+			}
+			if identity == "Cratis.ValidationResult" && path == "state" {
+				validationState = &wire
 			}
 		}
+	}
+	if profile.OpenAPI != nil {
+		framework, err := frameworkContracts(graph, validationState)
+		if err != nil {
+			return err
+		}
+		graph.Framework = framework
 	}
 	if profile.Server != nil && profile.Server.Identity.DetailsType != "" {
 		t, err := w.reference(nil, profile.Server.Identity.DetailsType)
@@ -654,7 +663,7 @@ func (w *wireAnalyzer) fields(t types.Type, arguments bool) ([]FieldDescriptor, 
 		field := FieldDescriptor{Name: member.Name, Type: wire, Optional: wire.Nullable || member.OmitEmpty || member.OmitZero, OmitEmpty: member.OmitEmpty, OmitZero: member.OmitZero}
 		if w.contract {
 			parentNullable := embeddedNullable(t, member.Index)
-			presence := &FieldPresence{InputMissing: "zero", InputNull: wire.Contract.InputNull, OutputNull: wire.Contract.OutputNull, OmitNil: nilableGo(member.Type), OmitMissing: wire.Kind == "optional", OmitEmpty: member.OmitEmpty && emptyOmission(member.Type), OmitZero: member.OmitZero, EmbeddedParentNullable: parentNullable}
+			presence := &FieldPresence{InputMissing: "zero", InputNull: wire.Contract.InputNull, OutputNull: wire.Contract.OutputNull, OmitNil: nilableGo(member.Type), OmitMissing: wire.Kind == "optional" && wire.Contract.PointerDepth <= 1, OmitEmpty: member.OmitEmpty && emptyOmission(member.Type), OmitZero: member.OmitZero, EmbeddedParentNullable: parentNullable}
 			if wire.Kind == "optional" && wire.Contract.PointerDepth == 0 {
 				presence.InputMissing = "missing"
 			}
@@ -663,7 +672,16 @@ func (w *wireAnalyzer) fields(t types.Type, arguments bool) ([]FieldDescriptor, 
 			}
 			presence.OutputRequired = !presence.OmitNil && !presence.OmitMissing && !presence.OmitEmpty && !presence.OmitZero && !parentNullable
 			if presence.OmitNil {
+				// Only the immediate nil value is omitted. A nonnil pointer can
+				// encode an inner nil pointer or an explicit Optional null.
 				presence.OutputNull = false
+				if pointer, ok := types.Unalias(member.Type).Underlying().(*types.Pointer); ok {
+					element, err := w.describe(pointer.Elem())
+					if err != nil {
+						return nil, fmt.Errorf("wire field %s.%s: %w", typeKey(t), member.Name, err)
+					}
+					presence.OutputNull = element.Contract.OutputNull
+				}
 			}
 			field.Presence = presence
 		}

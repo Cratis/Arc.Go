@@ -293,13 +293,6 @@ func buildGraph(analyses []*analysis, profile ApplicationProfile, wire bool) (*G
 		}
 		graph.Assertions = assertions
 	}
-	if profile.OpenAPI != nil {
-		framework, err := frameworkContracts(graph)
-		if err != nil {
-			return nil, err
-		}
-		graph.Framework = framework
-	}
 	projection, err := json.Marshal(graph)
 	if err != nil {
 		return nil, err

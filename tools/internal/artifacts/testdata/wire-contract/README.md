@@ -3,8 +3,17 @@
 These expectations are independently authored **source-derived fixtures**, not
 captured C# responses or generated OpenAPI documents. `presence.json` exercises
 Arc.Go serialization at the fetchable tools runtime pin. The graph assertions in
-`wire_contract_test.go` and `contract_edges_test.go` are separate expectations;
-the tests never generate expected wire instances from the graph.
+`wire_contract_test.go`, `contract_edges_test.go` and `wire_regressions_test.go`
+are separate expectations; the tests never generate expected wire instances
+from the graph.
+
+`corrections.go` is both the graph input and the independently compiled consumer
+for `corrections_test.go`, using the tools module's fetchable runtime pin without
+a workspace or replace. It witnesses invariant TimeSpan strings across the full
+signed tick range, calendar strings, pointer/Optional absence-null-zero-value
+behavior, and named signed/unsigned validation state. The graph assertions also
+round-trip the compiler-free framework projection and retain nullable value
+contracts separately from the validation envelope's encoded-null omission.
 
 C# reference revision: `7c1e78075b737df64f69fddfaae83374f75e3612`:
 
