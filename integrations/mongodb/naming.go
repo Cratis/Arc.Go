@@ -14,6 +14,8 @@ import (
 // other tenants use base+"+"+tenant. This selects coordinates, not authorization.
 // Database names must be 1–63 UTF-8 bytes and satisfy MongoDB's cross-platform
 // restrictions. No sanitization, truncation, or case folding is performed.
+// Case-only tenant names do not create usable isolated databases: MongoDB rejects
+// conflicting database casing. The application must prevent that collision.
 func DatabaseName(base string, tenant tenancy.ID) (string, error) {
 	if !validDatabase(base) {
 		return "", ErrConfiguration
@@ -37,7 +39,7 @@ func validCollection(database, name string) bool {
 	// Unsharded namespace limit. Sharded deployments impose the additional
 	// server-side 235-byte limit; see the storage profile.
 	return name != "" && utf8.ValidString(name) &&
-		!strings.HasPrefix(name, "system.") && !strings.ContainsAny(name, "$\x00") &&
+		!strings.HasPrefix(name, ".") && !strings.HasPrefix(name, "system.") && !strings.ContainsAny(name, "$\x00") &&
 		len(database)+1+len(name) <= 255
 }
 

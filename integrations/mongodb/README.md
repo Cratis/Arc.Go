@@ -36,10 +36,14 @@ future operations before your application disconnects the borrowed client.
 
 Database names are 1–63 UTF-8 bytes and reject MongoDB's cross-platform forbidden
 characters (`/`, `\`, `.`, space, `"`, `$`, `*`, `<`, `>`, `:`, `|`, `?`, NUL).
-Collections are nonempty UTF-8, reject `$`, NUL and the `system.` prefix, and use
+Collections are nonempty UTF-8, reject `$`, NUL, a leading dot and the `system.`
+prefix, and use
 the unsharded 255-byte database-dot-collection namespace limit. Sharded
 collections additionally require the server's 235-byte limit. Resolved tenant
 coordinates are revalidated; nothing is sanitized, truncated, or lowercased.
+Case-only tenant names cannot produce simultaneously usable isolated databases:
+MongoDB rejects conflicting database casing. Prevent those collisions in your
+application; preserving names is not permission to merge tenants silently.
 
 ## Storage profile
 

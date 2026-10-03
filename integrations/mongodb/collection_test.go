@@ -114,6 +114,7 @@ func TestInvalidBindings(t *testing.T) {
 		{}, {Database: "db", Name: "Authors"},
 		{Database: "db", Name: "Authors", Ownership: 3},
 		{Database: "db", Name: "system.authors", Ownership: ApplicationOwned},
+		{Database: "db", Name: ".authors", Ownership: ApplicationOwned},
 		{Database: "db", Name: "Author$", Ownership: ApplicationOwned},
 		{Database: "db", Name: "Author\x00", Ownership: ApplicationOwned},
 		{Database: "db", Name: strings.Repeat("a", 253), Ownership: ApplicationOwned},
@@ -180,6 +181,17 @@ func TestInvalidBindings(t *testing.T) {
 	var zero Collection[author]
 	if _, err := zero.forTenant(tenancy.Default()); !errors.Is(err, ErrConfiguration) {
 		t.Fatal(err)
+	}
+}
+
+func TestCollectionLeadingDotNamesAreInvalid(t *testing.T) {
+	for _, name := range []string{".", ".authors", "..authors"} {
+		if validCollection("db", name) {
+			t.Fatalf("leading-dot collection accepted: %q", name)
+		}
+	}
+	if !validCollection("db", "authors.v1") {
+		t.Fatal("internal collection dot rejected")
 	}
 }
 
