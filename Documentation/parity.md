@@ -38,6 +38,23 @@ The frontend authority is `Source/DotNET/Tools/ProxyGenerator` and
   must retain its argument-based helpers unchanged.
 - **Scope**: portable validation-rule descriptors and declared derived-wire-model
   support are prerequisites, not optional reductions to a Go-only frontend API.
+- **Portable rule foundation**: `validation.RuleDescriptor`, `ParseRules` and
+  `NewPortable[T]` share explicit field-tag rules with the compiler without running
+  application validators. UTF-16 length and JavaScript whitespace are used;
+  unsupported rules, nonportable regex, unsafe numbers and dynamic severity fail
+  explicitly. `validation/portable_test.go` characterizes the bounded foundation.
+  Register the compiled validator explicitly; a `rules` tag alone does not activate
+  server validation. Client projection and paired semantic coverage remain Partial.
+- **Declared derivatives**: `serialization.RegisterDerivedTypes` supplies a
+  concurrency-safe process-wide discriminator contract for named interface bases
+  and assignable concrete structs/pointers. Exact repetitions are idempotent;
+  conflicts, reserved fields, custom codecs, absent/unknown discriminators and
+  undeclared implementations fail. `serialization/derived_test.go` covers round
+  trips and failure atomicity. Go embedding alone does not declare inheritance.
+- **Shared field selection**: reflection and compiler adapters use
+  `internal/modelshape.Select`, keeping wire visibility and dominance in one kernel.
+  The existing reflection corpus remains executable; compiler corpus parity is
+  part of the forthcoming wire-graph analysis.
 - **Concepts remain blocked** by
   [Fundamentals.Go issue 15](https://github.com/Cratis/Fundamentals.Go/issues/15).
   Shared UUID/calendar/duration scalars and plain named primitives may be mapped;

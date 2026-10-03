@@ -77,6 +77,9 @@ func unmarshal(data []byte, v reflect.Value, depth int) error {
 	}
 	switch v.Kind() {
 	case reflect.Interface:
+		if derivedBase(v.Type()) {
+			return unmarshalDerived(data, v, depth)
+		}
 		decoder := json.NewDecoder(bytes.NewReader(data))
 		decoder.UseNumber()
 		return decoder.Decode(v.Addr().Interface())
@@ -121,6 +124,15 @@ func unmarshal(data []byte, v reflect.Value, depth int) error {
 }
 
 func unmarshalStruct(data []byte, v reflect.Value, depth int) error {
+	if declaration, found := derivedFor(v.Type()); found {
+		id, present, err := derivedDiscriminator(data)
+		if err != nil {
+			return err
+		}
+		if present && id != declaration.ID {
+			return fmt.Errorf("derived discriminator %q does not match %v", id, v.Type())
+		}
+	}
 	members, err := fields(v.Type())
 	if err != nil {
 		return err

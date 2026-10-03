@@ -73,6 +73,12 @@ func marshal(v reflect.Value, depth int) ([]byte, error) {
 	}
 	switch v.Kind() {
 	case reflect.Pointer, reflect.Interface:
+		if v.Kind() == reflect.Interface && derivedBase(v.Type()) {
+			declaration, found := derivedFor(v.Elem().Type())
+			if !found || declaration.Base != v.Type() {
+				return nil, fmt.Errorf("undeclared derived type %v for %v", v.Elem().Type(), v.Type())
+			}
+		}
 		return marshal(v.Elem(), depth+1)
 	case reflect.Struct:
 		return marshalStruct(v, depth)
@@ -132,6 +138,13 @@ func marshalStruct(v reflect.Value, depth int) ([]byte, error) {
 			return nil, fmt.Errorf("encode %s: %w", f.name, err)
 		}
 		object[f.name] = data
+	}
+	if declaration, found := derivedFor(v.Type()); found {
+		data, err := json.Marshal(declaration.ID)
+		if err != nil {
+			return nil, err
+		}
+		object["_derivedTypeId"] = data
 	}
 	return json.Marshal(object)
 }
