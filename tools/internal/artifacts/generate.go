@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"go/parser"
 	"go/token"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -23,12 +24,16 @@ import (
 // Check verifies output without writing. Only the selected build configuration
 // is generated; use separate packages for incompatible artifact sets.
 type Config struct {
-	Dir        string
-	Patterns   []string
-	Tags       string
-	Check      bool
-	ConfigFile string
-	Profile    *ApplicationProfile
+	Dir           string
+	Patterns      []string
+	Tags          string
+	Check         bool
+	ConfigFile    string
+	Profile       *ApplicationProfile
+	TypeScriptOut string
+	EmitGo        *bool
+	// Report receives the successful supported-family inventory, if nonnil.
+	Report io.Writer
 }
 
 // Generate type-checks selected main-module packages without executing user code.
@@ -51,8 +56,21 @@ func Generate(ctx context.Context, config Config) error {
 			return err
 		}
 	}
-	if profile.TypeScript.Out != "" {
-		return fmt.Errorf("TypeScript publication is not implemented yet; the descriptor graph is preparatory")
+	if config.TypeScriptOut != "" {
+		profile.TypeScript.Out = config.TypeScriptOut
+	}
+	if config.EmitGo != nil {
+		profile.TypeScript.EmitGo = config.EmitGo
+	}
+	if err := validateProfile(profile); err != nil {
+		return err
+	}
+	typescript := profile.TypeScript.Out != ""
+	if !typescript && profile.TypeScript.EmitGo != nil && !*profile.TypeScript.EmitGo {
+		return fmt.Errorf("emit-go=false requires TypeScript output")
+	}
+	if typescript && profile.TypeScript.EmitGo != nil && !*profile.TypeScript.EmitGo {
+		return fmt.Errorf("proxy-only publication requires explicit runtime endpoint verification; emit-go=false is not supported")
 	}
 	patterns := config.Patterns
 	if len(patterns) == 0 {
@@ -96,7 +114,10 @@ func Generate(ctx context.Context, config Config) error {
 		}
 		load.Overlay[path] = []byte("package " + name + "\n")
 	}
-	load.Mode = packages.NeedName | packages.NeedFiles | packages.NeedModule | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports
+	load.Mode = packages.NeedName | packages.NeedFiles | packages.NeedModule | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports | packages.NeedTypesSizes
+	if typescript {
+		load.Mode |= packages.NeedDeps
+	}
 	loaded, err := packages.Load(load, patterns...)
 	if err != nil {
 		return fmt.Errorf("load selected packages: %w", err)
@@ -123,8 +144,16 @@ func Generate(ctx context.Context, config Config) error {
 		}
 		analyses = append(analyses, a)
 	}
-	if _, err := buildGraph(analyses, profile, false); err != nil {
+	graph, err := buildGraph(analyses, profile, typescript)
+	if err != nil {
 		return err
+	}
+	var proxies []typescriptOutput
+	if typescript {
+		proxies, err = renderTypeScriptQueries(graph)
+		if err != nil {
+			return err
+		}
 	}
 	for _, a := range analyses {
 		dir, err := packageDirectory(a.pkg)
@@ -139,6 +168,33 @@ func Generate(ctx context.Context, config Config) error {
 			}
 		}
 		outputs = append(outputs, output{filepath.Join(dir, Filename), data})
+	}
+	if typescript {
+		plan := make([]ownedOutput, 0, len(outputs)+len(proxies))
+		for _, out := range outputs {
+			plan = append(plan, ownedOutput{Path: out.path, Content: out.content})
+		}
+		outRoot := profile.TypeScript.Out
+		if !filepath.IsAbs(outRoot) {
+			outRoot = filepath.Join(loaded[0].Module.Dir, outRoot)
+		}
+		for _, out := range proxies {
+			plan = append(plan, ownedOutput{Path: filepath.Join(outRoot, filepath.FromSlash(out.path)), Content: out.content})
+		}
+		if err := publishOwned(ctx, loaded[0].Module.Dir, outRoot, profile, graph, config.Tags, plan, config.Check, nil); err != nil {
+			return err
+		}
+		if config.Report != nil {
+			adapters := 0
+			for _, out := range outputs {
+				if out.content != nil {
+					adapters++
+				}
+			}
+			_, err := fmt.Fprintf(config.Report, "arc-gen: %d Go adapters and %d TypeScript model/command/snapshot-query/barrel files %s (profile %s, fingerprint %s); observable proxies unsupported\n", adapters, len(proxies), map[bool]string{true: "verified", false: "published"}[config.Check], profile.Name, graph.Fingerprint)
+			return err
+		}
+		return nil
 	}
 	// Preflight every output before the first write, including newly appeared files.
 	for _, out := range outputs {

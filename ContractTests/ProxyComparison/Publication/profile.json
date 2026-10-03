@@ -1,0 +1,6 @@
+{
+  "formatVersion": 1,
+  "name": "production-fixture",
+  "routes": { "routePrefix": "/proxy" },
+  "typescript": { "out": "web", "segmentsToSkip": 1, "clientVersion": "22.48.2" }
+}

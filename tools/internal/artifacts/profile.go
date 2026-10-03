@@ -118,11 +118,13 @@ func safeRelative(path string) bool {
 	if path == "" {
 		return true
 	}
-	if filepath.IsAbs(path) || strings.ContainsAny(path, "\\:\x00\n\r") {
+	if filepath.IsAbs(path) || strings.ContainsAny(path, "\\:\x00\n\r<>|?*") {
 		return false
 	}
 	for _, segment := range strings.Split(filepath.ToSlash(path), "/") {
-		if segment == ".." || segment == "." || segment == "" {
+		base := strings.ToUpper(strings.SplitN(segment, ".", 2)[0])
+		reserved := base == "CON" || base == "PRN" || base == "AUX" || base == "NUL" || len(base) == 4 && (strings.HasPrefix(base, "COM") || strings.HasPrefix(base, "LPT")) && base[3] >= '1' && base[3] <= '9'
+		if segment == ".." || segment == "." || segment == "" || strings.TrimRight(segment, " .") != segment || reserved {
 			return false
 		}
 	}
