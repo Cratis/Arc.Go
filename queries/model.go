@@ -36,6 +36,21 @@ func WithModelIdentity(t metadata.TypeName) ModelOption {
 	return modelOption{"identity", func(m *metadata.Model) { m.Type = t }}
 }
 
+// WithModelName overrides the model name while retaining namespace defaults.
+func WithModelName(name string) ModelOption {
+	return modelOption{"name", func(m *metadata.Model) { m.Type.Name = name }}
+}
+
+// WithModelNamespace overrides the namespace without changing the model name.
+func WithModelNamespace(namespace string) ModelOption {
+	return modelOption{"namespace", func(m *metadata.Model) { m.Type.Namespace = namespace }}
+}
+
+// WithModelExcludeFromDiscovery hides all queries on the owning read model.
+func WithModelExcludeFromDiscovery(exclude bool) ModelOption {
+	return modelOption{"exclude", func(m *metadata.Model) { m.ExcludeFromDiscovery = exclude }}
+}
+
 // WithModelPath sets the literal model-level route override.
 func WithModelPath(path string) ModelOption {
 	return modelOption{"path", func(m *metadata.Model) { m.Path = path }}

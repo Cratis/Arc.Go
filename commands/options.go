@@ -52,6 +52,16 @@ func WithDescriptor[C any](d metadata.Command) Option[C] {
 	return option[C]{"descriptor", func(c *configuration[C]) error { c.descriptor = cloneDescriptor(d); return nil }}
 }
 
+// WithName overrides the logical command name while retaining namespace defaults.
+func WithName[C any](name string) Option[C] {
+	return option[C]{"name", func(c *configuration[C]) error { c.descriptor.Type.Name = name; return nil }}
+}
+
+// WithExcludeFromDiscovery hides discovery without changing routes or authorization.
+func WithExcludeFromDiscovery[C any](exclude bool) Option[C] {
+	return option[C]{"exclude", func(c *configuration[C]) error { c.descriptor.ExcludeFromDiscovery = exclude; return nil }}
+}
+
 // WithNamespace overrides the public namespace, never a Go import path.
 func WithNamespace[C any](s string) Option[C] {
 	return option[C]{"namespace", func(c *configuration[C]) error { c.descriptor.Type.Namespace = s; return nil }}

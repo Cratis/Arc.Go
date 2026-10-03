@@ -62,6 +62,11 @@ func WithHTTPMethod[A any](m metadata.QueryHTTPMethod) Option[A] {
 	return queryOption[A]{name: "http", apply: func(c *queryOptions[A]) error { c.descriptor.HTTPMethod = m; return nil }}
 }
 
+// WithExcludeFromDiscovery hides discovery without changing endpoint availability.
+func WithExcludeFromDiscovery[A any](exclude bool) Option[A] {
+	return queryOption[A]{name: "exclude", apply: func(c *queryOptions[A]) error { c.descriptor.ExcludeFromDiscovery = exclude; return nil }}
+}
+
 // WithArguments replaces matching compiled field bindings and appends custom bindings.
 func WithArguments[A any](a ...Argument[A]) Option[A] {
 	a = slices.Clone(a)
