@@ -9,6 +9,23 @@ import (
 	"testing"
 )
 
+func TestAnalyzedQueryRejectsPinnedRouteHelperMetacharacters(t *testing.T) {
+	for _, name := range []string{"a[", "a.b", "a$", "a\\\\b"} {
+		t.Run(name, func(t *testing.T) {
+			dir := consumer(t)
+			put(t, filepath.Join(dir, "query.go"), "//arc:namespace Shop\npackage consumer\n//arc:readmodel\ntype Listing struct { Name string }\ntype Args struct { Value string `json:\""+name+"\"` }\nfunc (Listing) Find(Args) (Listing,error) { panic(\"must not execute\") }\n")
+			graph, err := buildGraph(graphPackages(t, dir, "."), ApplicationProfile{FormatVersion: GraphVersion, Name: "parameters"}, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			output, err := renderTypeScriptQueries(graph)
+			if err == nil || !strings.Contains(err.Error(), "22.48.2 route parameter helper") || output != nil {
+				t.Fatal("unsafe parameter accepted", err)
+			}
+		})
+	}
+}
+
 func TestAnalyzedQueryDefaultsUseOriginalGoScalarGrammarAndRange(t *testing.T) {
 	for _, test := range []struct {
 		typ, value string

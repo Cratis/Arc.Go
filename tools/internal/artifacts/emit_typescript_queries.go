@@ -300,6 +300,11 @@ func planQuery(query QueryDescriptor, file string, nodes map[string]TypeDescript
 	}
 	required := []string{}
 	for _, field := range query.Parameters {
+		// Arc 22.48.2 UrlHelpers interpolates keys into a RegExp without
+		// escaping. Even literal snapshot routes pass through that helper.
+		if strings.ContainsAny(field.Name, `\.^$*+?()[]{}|`) {
+			return view, fmt.Errorf("query parameter %q is incompatible with Arc 22.48.2 route parameter helper", field.Name)
+		}
 		if queryReserved(field.Name) {
 			return view, fmt.Errorf("parameter %q collides with query runtime", field.Name)
 		}
