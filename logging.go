@@ -12,7 +12,8 @@ import (
 
 type responseWriter struct {
 	http.ResponseWriter
-	status int
+	status   int
+	hijacked bool
 }
 
 func (w *responseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
@@ -45,7 +46,11 @@ func (w flushWriter) Flush() {
 type hijackWriter struct{ w *responseWriter }
 
 func (w hijackWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	return w.w.ResponseWriter.(http.Hijacker).Hijack()
+	conn, buffer, err := w.w.ResponseWriter.(http.Hijacker).Hijack()
+	if err == nil {
+		w.w.hijacked = true
+	}
+	return conn, buffer, err
 }
 
 type pushWriter struct{ w *responseWriter }
@@ -106,13 +111,12 @@ func observingWriter(base *responseWriter) http.ResponseWriter {
 	}
 }
 func (a *Application) serveObserved(w http.ResponseWriter, r *http.Request) {
-	if a.options.Logger == nil {
-		a.serveIngress(w, r)
-		return
-	}
 	started := time.Now()
 	base := &responseWriter{ResponseWriter: w}
-	a.serveIngress(observingWriter(base), r)
+	a.serveIngress(observingWriter(base), r, base)
+	if a.options.Logger == nil {
+		return
+	}
 	status := base.status
 	if status == 0 {
 		status = 200

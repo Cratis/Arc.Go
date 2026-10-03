@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -33,7 +34,7 @@ func headerValues(h http.Header, name string) []string {
 	}
 	return values
 }
-func (a *Application) serveIngress(w http.ResponseWriter, r *http.Request) {
+func (a *Application) serveIngress(w http.ResponseWriter, r *http.Request, observed *responseWriter) {
 	text := ""
 	if values := headerValues(r.Header, a.options.HTTP.CorrelationHeader); len(values) == 1 {
 		text = values[0]
@@ -60,6 +61,25 @@ func (a *Application) serveIngress(w http.ResponseWriter, r *http.Request) {
 	defer release()
 	ctx = work
 	r = r.WithContext(ctx)
+	defer func() {
+		if value := recover(); value != nil {
+			if err, ok := value.(error); ok && errors.Is(err, http.ErrAbortHandler) {
+				panic(http.ErrAbortHandler)
+			}
+			err := &execution.PanicError{Value: value, Stack: debug.Stack()}
+			if observed.status != 0 || observed.hijacked {
+				a.hostFailure(ctx, "HTTP ingress panicked after publication", err)
+				return
+			}
+			e, matched := a.routeTable[r.URL.Path][r.Method]
+			if !matched {
+				e = metadata.Endpoint{Identity: "/.cratis/raw"}
+			}
+			w.Header().Del("Content-Length")
+			w.Header().Del("Content-Type")
+			a.ingressFailure(w, r, e, err, 500)
+		}
+	}()
 	if !canonicalPath(r) {
 		w.WriteHeader(400)
 		return

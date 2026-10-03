@@ -6,6 +6,8 @@ package arc
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"sync"
@@ -47,7 +49,7 @@ func (a *Application) Serve(ctx context.Context, listener net.Listener) error {
 	}
 	a.server.claimed = true
 	h := a.options.HTTP
-	server := &http.Server{Handler: a, ReadHeaderTimeout: h.ReadHeaderTimeout, ReadTimeout: h.ReadTimeout, WriteTimeout: h.WriteTimeout, IdleTimeout: h.IdleTimeout, MaxHeaderBytes: h.MaxHeaderBytes}
+	server := a.newHTTPServer()
 	a.server.server = server
 	a.server.mu.Unlock()
 	if err := a.Start(ctx); err != nil {
@@ -76,6 +78,15 @@ func (a *Application) Serve(ctx context.Context, listener net.Listener) error {
 	}
 	return errors.Join(serveErr, shutdownErr)
 }
+func (a *Application) newHTTPServer() *http.Server {
+	h := a.options.HTTP
+	logger := a.options.Logger
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	return &http.Server{Handler: a, ReadHeaderTimeout: h.ReadHeaderTimeout, ReadTimeout: h.ReadTimeout, WriteTimeout: h.WriteTimeout, IdleTimeout: h.IdleTimeout, MaxHeaderBytes: h.MaxHeaderBytes, ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError)}
+}
+
 func (a *Application) shutdownServer(ctx context.Context) error {
 	a.server.mu.Lock()
 	server := a.server.server
