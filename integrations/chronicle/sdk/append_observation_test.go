@@ -6,30 +6,36 @@ package sdk
 import (
 	"testing"
 
-	"github.com/cratis/arc.go/correlation"
 	integration "github.com/cratis/arc.go/integrations/chronicle"
 	"github.com/cratis/chronicle.go/eventsequences"
 	"github.com/cratis/chronicle.go/metadata"
 )
 
-func TestAppendSubscriptionUsesExactCorrelationIncludingZero(t *testing.T) {
-	for _, id := range []correlation.ID{{}, {1}} {
+func TestAppendSubscriptionRequiresExactNonzeroOriginNotCorrelation(t *testing.T) {
+	origin, other := eventsequences.NewOrigin(), eventsequences.NewOrigin()
+	for _, selected := range []eventsequences.Origin{{}, origin} {
 		var callback func(eventsequences.AppendNotification)
 		calls, stops := 0, 0
 		stop := subscribeAppends(func(notify func(eventsequences.AppendNotification)) func() {
 			callback = notify
 			return func() { stops++ }
-		}, id, func(integration.CommitResult, error) { calls++ })
-		for _, notificationID := range []metadata.CorrelationID{{}, {1}, {2}} {
-			callback(eventsequences.AppendNotification{CorrelationID: notificationID})
+		}, selected, func(integration.CommitResult, error) { calls++ })
+		for _, notificationOrigin := range []eventsequences.Origin{{}, origin, other} {
+			for _, id := range []metadata.CorrelationID{{}, {1}} {
+				callback(eventsequences.AppendNotification{Origin: notificationOrigin, CorrelationID: id})
+			}
 		}
-		if calls != 1 {
-			t.Fatalf("correlation %v received %d notifications; want only its exact match", id, calls)
+		want := 2
+		if selected == (eventsequences.Origin{}) {
+			want = 0
+		}
+		if calls != want {
+			t.Fatalf("origin %v received %d notifications; want %d", selected, calls, want)
 		}
 		stop()
 		stop()
-		callback(eventsequences.AppendNotification{CorrelationID: metadata.CorrelationID([16]byte(id))})
-		if stops != 1 || calls != 1 {
+		callback(eventsequences.AppendNotification{Origin: selected})
+		if stops != 1 || calls != want {
 			t.Fatalf("stops = %d, callbacks after stop = %d", stops, calls)
 		}
 	}

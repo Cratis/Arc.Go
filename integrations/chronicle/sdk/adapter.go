@@ -31,6 +31,9 @@ type adapter struct {
 // New uses a client's frozen selected-store catalogs without connecting. Client
 // ownership is borrowed unless Config.OwnClient explicitly transfers closure.
 // The caller coordinates Arc admission, observer startup/drain and client closure.
+// Immediate append observation requires constructing client with
+// chronicle.WithAppendOriginResolver(ResolveAppendOrigin). New cannot retrofit
+// this frozen option; without it, arbitrary handler appends are not attributed.
 func New(client *chronicle.Client, config Config) (*integration.Integration, error) {
 	if client == nil || strings.TrimSpace(string(config.Store)) == "" {
 		return nil, integration.ErrInvalid
