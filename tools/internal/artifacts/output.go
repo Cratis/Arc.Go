@@ -53,6 +53,11 @@ type pendingPlan struct {
 
 func contentHash(data []byte) string { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }
 
+// A nil journal side denotes absence, not an existing empty file.
+func matchesOutput(data []byte, exists bool, expected []byte) bool {
+	return exists == (expected != nil) && bytes.Equal(data, expected)
+}
+
 // safeOutputPath checks every existing ancestor, including stale destinations.
 // The output roots must be in a trusted, exclusively controlled workspace. These
 // checks refuse links. Mutations additionally use os.Root to contain concurrent
@@ -214,7 +219,7 @@ func publishOwned(ctx context.Context, moduleRoot, tsRoot string, profile Applic
 			return err
 		}
 	}
-	previous, _, err := readOutput(manifestPath)
+	previous, manifestExists, err := readOutput(manifestPath)
 	if err != nil {
 		return err
 	}
@@ -267,7 +272,7 @@ func publishOwned(ctx context.Context, moduleRoot, tsRoot string, profile Applic
 		if err != nil {
 			return err
 		}
-		if !bytes.Equal(previous, pending.Before) && !bytes.Equal(previous, pending.After) {
+		if !matchesOutput(previous, manifestExists, pending.Before) && !matchesOutput(previous, manifestExists, pending.After) {
 			return fmt.Errorf("manifest changed during pending publication")
 		}
 		hashesBefore, hashesAfter := map[string]string{}, map[string]string{}
@@ -297,11 +302,11 @@ func publishOwned(ctx context.Context, moduleRoot, tsRoot string, profile Applic
 					return fmt.Errorf("pending ownership/hash mismatch: %s", path)
 				}
 			}
-			current, _, err := readOutput(path)
+			current, exists, err := readOutput(path)
 			if err != nil {
 				return err
 			}
-			if !bytes.Equal(current, change.Before) && !bytes.Equal(current, change.After) {
+			if !matchesOutput(current, exists, change.Before) && !matchesOutput(current, exists, change.After) {
 				return fmt.Errorf("%s: edited during pending publication; preserve journal and restore owned bytes", path)
 			}
 			virtual[identity] = change.Before
@@ -469,7 +474,7 @@ func publishOwned(ctx context.Context, moduleRoot, tsRoot string, profile Applic
 				return fmt.Errorf("publication rollback failed; retain %s: %w", journalPath, err)
 			}
 		}
-		if len(pending.Before) == 0 {
+		if pending.Before == nil {
 			if err := tsHandle.Remove(manifestName); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return err
 			}

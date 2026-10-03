@@ -214,6 +214,82 @@ func TestOwnedPublicationCancelledBeforeAnyWrite(t *testing.T) {
 	}
 }
 
+func TestOwnedPublicationRecoveryPreservesInterveningEmptyFile(t *testing.T) {
+	for _, target := range []string{"output", "manifest"} {
+		t.Run(target, func(t *testing.T) {
+			module, root, profile, graph, outputs := publication(t)
+			failure := func(op, path string) error {
+				if op == "write" && strings.HasSuffix(path, "B.ts") {
+					return errors.New("stop after creating A.ts")
+				}
+				return nil
+			}
+			if err := publishOwned(t.Context(), module, root, profile, graph, "", outputs, false, failure); err == nil {
+				t.Fatal("false success")
+			}
+			if !bytes.Equal(get(t, outputs[1].Path), outputs[1].Content) {
+				t.Fatal("failure did not create A.ts")
+			}
+			path := outputs[1].Path
+			if target == "manifest" {
+				path = filepath.Join(root, manifestName)
+			}
+			put(t, path, "")
+			before := outputInventory(t, module)
+			journal := get(t, filepath.Join(root, journalName))
+			err := publishOwned(t.Context(), module, root, profile, graph, "", outputs, false, nil)
+			if err == nil || !strings.Contains(err.Error(), map[string]string{"output": "edited during pending", "manifest": "manifest changed"}[target]) {
+				t.Fatal("recovery accepted intervening empty file", err)
+			}
+			if !bytes.Equal(journal, get(t, filepath.Join(root, journalName))) {
+				t.Fatal("journal changed")
+			}
+			assertOutputInventory(t, module, before)
+			if info, err := os.Stat(path); err != nil || info.Size() != 0 {
+				t.Fatal("intervening empty file removed or overwritten", err)
+			}
+		})
+	}
+}
+
+// Inventory includes directories and bytes so failed preflight cannot hide a
+// newly created directory, metadata file, or deleted stale output.
+func outputInventory(t *testing.T, root string) map[string]string {
+	t.Helper()
+	inventory := map[string]string{}
+	if err := filepath.WalkDir(root, func(path string, item os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		if item.IsDir() {
+			inventory[relative] = "directory"
+		} else {
+			inventory[relative] = "file:" + string(get(t, path))
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return inventory
+}
+
+func assertOutputInventory(t *testing.T, root string, before map[string]string) {
+	t.Helper()
+	after := outputInventory(t, root)
+	if len(after) != len(before) {
+		t.Fatalf("inventory changed: before %v, after %v", before, after)
+	}
+	for path, data := range before {
+		if actual, exists := after[path]; !exists || actual != data {
+			t.Fatalf("inventory changed at %s: before %q, after %q (exists %v)", path, data, actual, exists)
+		}
+	}
+}
+
 func TestOwnedPublicationRecoveryPreservesInterveningEdit(t *testing.T) {
 	module, root, profile, graph, outputs := publication(t)
 	failure := func(op, path string) error {
