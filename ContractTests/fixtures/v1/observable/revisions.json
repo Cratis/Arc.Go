@@ -1,0 +1,6 @@
+[
+  {"operations":[{"type":"Unsubscribe","revision":2},{"type":"Subscribe","revision":1}],"activeRevision":null,"highWaterMark":2},
+  {"operations":[{"type":"Subscribe","revision":1},{"type":"Unsubscribe","revision":1}],"activeRevision":null,"highWaterMark":1},
+  {"operations":[{"type":"Subscribe"},{"type":"Subscribe","revision":1},{"type":"Unsubscribe"}],"activeRevision":1,"highWaterMark":1},
+  {"operations":[{"type":"Subscribe","revision":2},{"type":"Subscribe","revision":1},{"type":"Unsubscribe","revision":1}],"activeRevision":2,"highWaterMark":2}
+]

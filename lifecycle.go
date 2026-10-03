@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	boundary "github.com/cratis/arc.go/internal/pipeline"
+	"github.com/cratis/arc.go/queries"
 )
 
 // Lifecycle owns explicit startup work. Hooks must honor context and join all
@@ -182,7 +183,8 @@ func (a *Application) admit(ctx context.Context) (context.Context, func(), error
 	return work, release, nil
 }
 
-// Shutdown atomically closes admission, drains admitted work and then stops hooks.
+// Shutdown atomically closes admission, cancels and joins observations (including
+// failed opening cleanup), drains ordinary admitted work, and then stops hooks.
 // Deadline expiration cancels active work but does not prove callbacks terminated;
 // the application remains Stopping and a subsequent call can continue the join.
 // Concurrent callers have independent wait budgets. No cleanup is detached.
@@ -225,7 +227,25 @@ func (a *Application) Shutdown(ctx context.Context) error {
 		l.shutdownDone = make(chan struct{})
 		idle := l.idle
 		l.mu.Unlock()
-		err := a.shutdownServer(ctx)
+		a.drainHubs()
+		var err error
+		if observations, ok := a.queries.(queries.ObservablePipeline); ok {
+			err = observations.CloseObservations(ctx)
+		}
+		err = errors.Join(err, a.closeHubs(ctx))
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || ctx.Err() != nil {
+			// Cancellation is not a join. Retain transports, scopes and hooks for
+			// a later shutdown attempt, including failed-opening cleanup.
+			l.mu.Lock()
+			for _, cancel := range l.active {
+				cancel()
+			}
+			close(l.shutdownDone)
+			l.shutdownDone = nil
+			l.mu.Unlock()
+			return errors.Join(err, ctx.Err())
+		}
+		err = errors.Join(err, a.shutdownServer(ctx))
 		select {
 		case <-idle:
 		case <-ctx.Done():

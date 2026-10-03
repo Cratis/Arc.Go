@@ -55,9 +55,16 @@ func TestOneModelProjectsAndServesArcNamespaceQuery(t *testing.T) {
 		t.Run(namespace, func(t *testing.T) {
 			store, err := client.EventStore(ctx, storeName, chronicle.WithNamespace(chronicle.Namespace(namespace)))
 			require(t, err)
+			logInventorySetup(t, store)
+			defer func() {
+				if t.Failed() {
+					diagnoseInventory(t, ctx, store, model)
+				}
+			}()
 			appended, err := store.EventLog().Append(ctx, "item-1", sharedmodel.ProductRegistered{
 				DisplayName: sharedmodel.ProductName(namespace), URLValue: "https://example.test", Note: "initial note",
 			})
+			logInventoryAppend(t, store, "registered", appended, err)
 			require(t, err)
 			require(t, appended.Err())
 			reader := readmodels.For(store.ReadModels(), model)
@@ -65,6 +72,7 @@ func TestOneModelProjectsAndServesArcNamespaceQuery(t *testing.T) {
 			want := sharedmodel.Inventory{ID: "item-1", ProductName: sharedmodel.ProductName(namespace), URLValue: "https://example.test", Note: &note, State: "available"}
 			awaitInventory(t, ctx, reader, want)
 			appended, err = store.EventLog().Append(ctx, "item-1", sharedmodel.NoteCleared{})
+			logInventoryAppend(t, store, "cleared", appended, err)
 			require(t, err)
 			require(t, appended.Err())
 			want.Note = nil
@@ -115,6 +123,7 @@ func awaitInventory(t *testing.T, ctx context.Context, reader *readmodels.Reader
 		}
 		select {
 		case <-deadline.Done():
+			t.Logf("last polling snapshot: exists=%t note=%s LastHandled=%s wantNote=%s", instance.Exists, diagnosticValue(instance.Value.Note), diagnosticValue(instance.LastHandled), diagnosticValue(want.Note))
 			t.Fatalf("projection did not materialize: got %+v, want %+v", instance, want)
 		case <-ticker.C:
 		}

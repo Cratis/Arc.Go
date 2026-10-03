@@ -4,6 +4,7 @@
 package arc
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -40,8 +41,55 @@ type Options struct {
 	ExposeExceptionDetails bool
 	Logger                 *slog.Logger
 	HTTP                   HTTPOptions
+	Observable             ObservableOptions
 	Introspection          IntrospectionOptions
 	Identity               IdentityOptions
+}
+
+// ObservableOptions bounds owned query observations. Zero fields select defaults.
+// Limits include opening and retired-but-unjoined operations, not just active streams.
+// Hub limits cover retained framework state, not allocations in application callbacks.
+type ObservableOptions struct {
+	// MaxObservations is the application-wide operation ceiling; default 1024.
+	MaxObservations int
+	// MaximumWait is the maximum first-result wait budget; default five minutes.
+	MaximumWait time.Duration
+	// CloseGrace bounds initial stream cleanup; default five seconds. Timeouts
+	// remain owned and must be joined by a later application Shutdown.
+	CloseGrace time.Duration
+	// WriteTimeout bounds each streaming write and flush; default ten seconds.
+	// The absolute unary HTTP write deadline is cleared while awaiting emissions.
+	WriteTimeout time.Duration
+	// MaxConnections defaults to 256 physical hub connections per application.
+	MaxConnections int
+	// MaxConnectionsPerOwner defaults to eight per verified subject/tenant;
+	// anonymous connections additionally use the actual peer IP, never forwarding headers.
+	MaxConnectionsPerOwner int
+	// MaxSubscriptions defaults to 64 outstanding operations per connection.
+	MaxSubscriptions int
+	// MaxOpenings defaults to 32 concurrent hub openings per application.
+	MaxOpenings int
+	// MaxOpeningsPerConnection defaults to four concurrent openings.
+	MaxOpeningsPerConnection int
+	// MaxQueryIDs defaults to 1024 retained IDs per connection, without eviction.
+	MaxQueryIDs int
+	// MaxOutboundJobs defaults to 64 pending/in-flight frames per connection.
+	MaxOutboundJobs int
+	// MaxQueuedBytes defaults to 32 MiB retained frames per connection.
+	MaxQueuedBytes int64
+	// MaxStreamingBytes defaults to 256 MiB retained hub frames per application.
+	MaxStreamingBytes int64
+	// KeepAliveInterval defaults to 30 seconds; hub SSE sends JSON Ping messages.
+	KeepAliveInterval time.Duration
+	// ConnectionLifetime defaults to twelve hours, bounding anonymous cookie lifetime.
+	ConnectionLifetime time.Duration
+	// AllowedOrigins adds exact origins to the default same-origin transport policy.
+	// The literal "null" explicitly permits opaque browser origins. No wildcards.
+	AllowedOrigins []string
+	// AnonymousOwner optionally supplies verified session ownership evidence.
+	// It is borrowed, concurrent, panic-protected and never authenticates a user.
+	// Nil uses an independent random HttpOnly cookie per anonymous SSE connection.
+	AnonymousOwner func(context.Context, *http.Request) (string, error)
 }
 
 // HTTPOptions controls bounded unary HTTP publication and owned-server timeouts.
@@ -85,6 +133,14 @@ func normalizeOptions(o Options) (Options, error) {
 	}
 	o.Authentication = slices.Clone(o.Authentication)
 	o.HTTP.QueryReaders = slices.Clone(o.HTTP.QueryReaders)
+	o.Observable.AllowedOrigins = slices.Clone(o.Observable.AllowedOrigins)
+	for i, origin := range o.Observable.AllowedOrigins {
+		canonical, err := transportOrigin(origin)
+		if err != nil {
+			return Options{}, ErrInvalidOptions
+		}
+		o.Observable.AllowedOrigins[i] = canonical
+	}
 	o.Introspection.Roles = slices.Clone(o.Introspection.Roles)
 	if o.Introspection.Enabled != nil {
 		v := *o.Introspection.Enabled
@@ -106,6 +162,56 @@ func normalizeOptions(o Options) (Options, error) {
 	}
 	if o.CleanupTimeout == 0 {
 		o.CleanupTimeout = 30 * time.Second
+	}
+	observable := &o.Observable
+	if observable.MaxObservations < 0 || observable.MaximumWait < 0 || observable.CloseGrace < 0 || observable.WriteTimeout < 0 {
+		return Options{}, ErrInvalidOptions
+	}
+	if observable.MaxObservations == 0 {
+		observable.MaxObservations = 1024
+	}
+	if observable.MaximumWait == 0 {
+		observable.MaximumWait = 5 * time.Minute
+	}
+	if observable.CloseGrace == 0 {
+		observable.CloseGrace = 5 * time.Second
+	}
+	if observable.WriteTimeout == 0 {
+		observable.WriteTimeout = 10 * time.Second
+	}
+	for _, limit := range []struct {
+		value    *int
+		fallback int
+	}{
+		{&observable.MaxConnections, 256}, {&observable.MaxConnectionsPerOwner, 8},
+		{&observable.MaxSubscriptions, 64}, {&observable.MaxOpenings, 32},
+		{&observable.MaxOpeningsPerConnection, 4}, {&observable.MaxQueryIDs, 1024},
+		{&observable.MaxOutboundJobs, 64},
+	} {
+		if *limit.value < 0 {
+			return Options{}, ErrInvalidOptions
+		}
+		if *limit.value == 0 {
+			*limit.value = limit.fallback
+		}
+	}
+	if observable.MaxQueuedBytes < 0 || observable.MaxStreamingBytes < 0 || observable.KeepAliveInterval < 0 || observable.ConnectionLifetime < 0 {
+		return Options{}, ErrInvalidOptions
+	}
+	if observable.MaxQueuedBytes == 0 {
+		observable.MaxQueuedBytes = 32 << 20
+	}
+	if observable.MaxStreamingBytes == 0 {
+		observable.MaxStreamingBytes = 256 << 20
+	}
+	if observable.KeepAliveInterval == 0 {
+		observable.KeepAliveInterval = 30 * time.Second
+	}
+	if observable.ConnectionLifetime == 0 {
+		observable.ConnectionLifetime = 12 * time.Hour
+	}
+	if observable.KeepAliveInterval < time.Millisecond || observable.ConnectionLifetime < time.Second {
+		return Options{}, ErrInvalidOptions
 	}
 	h := &o.HTTP
 	if h.MaxBodyBytes < 0 || h.MaxQueryBytes < 0 || h.MaxResponseBytes < 0 || h.MaxHeaderBytes < 0 || h.ReadHeaderTimeout < 0 || h.ReadTimeout < 0 || h.WriteTimeout < 0 || h.IdleTimeout < 0 || h.ShutdownTimeout < 0 {

@@ -5,7 +5,10 @@ description: Serve a model-bound command over HTTP without a container or event 
 
 You want a command endpoint, not a collection of transport handlers. Arc maps
 registered commands and queries when you build the application. This experimental
-Go API supports snapshot HTTP; streaming and generated adapters remain separate work.
+Go API supports snapshot and observable HTTP. Start with a unary command here;
+then use [observable queries](../queries/observable-queries.md) for live results.
+Model-bound adapter generation is experimental; observable generation remains
+separate tools work.
 
 ## Run a greeting command
 

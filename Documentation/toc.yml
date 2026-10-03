@@ -77,13 +77,27 @@
           href: backend/go/queries/using-the-http-query-method.md
         - name: Query validation
           href: backend/go/queries/validation.md
-    - name: Generate model-bound adapters
+        - name: Observable queries
+          href: backend/go/queries/observable-queries.md
+        - name: Observable HTTP
+          href: backend/go/queries/observable-http.md
+        - name: Observable query hub
+          href: backend/go/queries/observable-query-hub.md
+        - name: Emission guards
+          href: backend/go/queries/observable-emission-guards.md
+        - name: Collection change streams
+          href: backend/go/queries/change-stream.md
+    - name: Generate adapters and snapshot proxies
       href: backend/go/generation/index.md
       items:
+        - name: TypeScript snapshot proxies
+          href: backend/go/generation/typescript.md
         - name: Directives and signatures
           href: backend/go/generation/reference.md
     - name: Chronicle integration
       href: backend/go/chronicle/index.md
+    - name: MongoDB snapshots
+      href: backend/go/mongodb/index.md
     - name: Command results
       href: backend/go/commands/results.md
     - name: Query results

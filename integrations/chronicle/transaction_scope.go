@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/cratis/arc.go/commands"
+	"github.com/cratis/arc.go/integrations/chronicle/internal/appendorigin"
 )
 
 type transaction struct {
@@ -17,7 +18,7 @@ type transaction struct {
 	busy, closed bool
 	bound        bool
 	unsubscribe  func()
-	observation  *appendObservation
+	origin       any
 	immediate    commands.CompletionReport
 	coordinates  Coordinates
 	actor        Actor
@@ -70,7 +71,11 @@ func (s terminalScope) Complete(ctx context.Context, inv *commands.Invocation, r
 }
 
 func (i *Integration) begin(ctx context.Context, inv *commands.Invocation) error {
-	return commands.SetRootState(ctx, inv, i.root, &transaction{scopes: map[string]LabeledScope{}, aggregates: map[any]any{}})
+	tx := &transaction{scopes: map[string]LabeledScope{}, aggregates: map[any]any{}}
+	if provider, ok := i.options.Appends.(appendorigin.Provider); ok {
+		tx.origin = provider.NewAppendOrigin()
+	}
+	return commands.SetRootState(ctx, inv, i.root, tx)
 }
 func (i *Integration) transaction(ctx context.Context, inv *commands.Invocation) (*transaction, error) {
 	if inv == nil || inv.CommandContext().IsValidationOnly() {
@@ -254,11 +259,7 @@ func (i *Integration) finish(ctx context.Context, inv *commands.Invocation, tx *
 	tx.result.Report.Disposition = commands.OutcomeUnknown
 	stop := tx.unsubscribe
 	tx.unsubscribe = nil
-	observation := tx.observation
 	tx.mu.Unlock()
-	if observation != nil {
-		defer observation.release()
-	}
 	if stop != nil {
 		stop()
 	}
@@ -279,11 +280,7 @@ func (i *Integration) finish(ctx context.Context, inv *commands.Invocation, tx *
 			err = errors.Join(frameErr, tx.owner.Rollback())
 		} else {
 			// The factory/SDK owns the only production event buffer and single commit.
-			if observation != nil {
-				result, err = observation.commit(tx.owner, frame.context(ctx))
-			} else {
-				result, err = tx.owner.Commit(frame.context(ctx))
-			}
+			result, err = tx.owner.Commit(frame.context(ctx))
 		}
 	}
 	failure := errors.Join(poison, err)

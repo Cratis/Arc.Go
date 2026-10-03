@@ -1,0 +1,6 @@
+{
+  "source":[[{"id":"a1","title":"Original"}],[{"id":"a1","title":"Changed"},{"id":"a2","title":"New"}],[{"id":"a2","title":"New"}]],
+  "delta":[{"data":[{"id":"a1","title":"Original"}]},{"changeSet":{"added":[{"id":"a2","title":"New"}],"replaced":[{"id":"a1","title":"Changed"}],"removed":[]}},{"changeSet":{"added":[],"replaced":[],"removed":[{"id":"a1","title":"Changed"}]}}],
+  "legacyFirst":{"data":[{"id":"a1","title":"Original"}],"changeSet":{"added":[{"id":"a1","title":"Original"}],"replaced":[],"removed":[]}},
+  "privacy":{"delivered":[{"id":"a1","title":"Masked"}],"suppressed":[{"id":"a1","title":"Secret"}],"next":[],"removed":[{"id":"a1","title":"Masked"}]}
+}

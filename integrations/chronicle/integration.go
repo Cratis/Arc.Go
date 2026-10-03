@@ -52,8 +52,6 @@ type Integration struct {
 	installed       bool
 	closeOnce       sync.Once
 	closeError      error
-	observationMu   sync.Mutex
-	observations    map[observationKey]*observationGroup
 }
 
 // New validates immutable catalog membership without network I/O.

@@ -1,0 +1,5 @@
+{
+  "subscribe":{"connectionId":"fixture-connection","queryId":"q1","revision":1,"request":{"queryName":"Acme.Tasks.Task.All","arguments":{"prefix":"Ada"},"transferMode":"delta"}},
+  "unsubscribe":{"connectionId":"fixture-connection","queryId":"q1","revision":1},
+  "responses":{"accepted":{"status":200,"body":""},"stale":{"status":200,"body":""},"malformed":{"status":400,"body":""},"unknownOrWrongOwner":{"status":404,"body":""},"unauthorized":{"status":401,"body":""},"tooLarge":{"status":413,"body":""},"capacity":{"status":429,"body":""},"stopping":{"status":503,"body":""}}
+}

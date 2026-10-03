@@ -1,0 +1,21 @@
+[
+  {"name":"int32", "kind":"int32", "hex":"0c0000001076002a00000000", "json":"42", "write":true},
+  {"name":"int64-max", "kind":"int64", "hex":"10000000127600ffffffffffffff7f00", "json":"9223372036854775807", "write":true},
+  {"name":"double", "kind":"float64", "hex":"10000000017600000000000000454000", "json":"42", "write":true},
+  {"name":"bool-false", "kind":"bool", "hex":"090000000876000000", "json":"false", "write":true},
+  {"name":"empty-string", "kind":"string", "hex":"0d000000027600010000000000", "json":"\"\"", "write":true},
+  {"name":"uuid-rfc", "kind":"uuid", "hex":"1d000000057600100000000400112233445566778899aabbccddeeff00", "json":"\"00112233-4455-6677-8899-aabbccddeeff\"", "write":true},
+  {"name":"legacy-Value", "kind":"amount", "hex":"18000000037600100000001056616c7565002a0000000000", "json":"42", "write":false},
+  {"name":"legacy-value", "kind":"amount", "hex":"18000000037600100000001076616c7565002a0000000000", "json":"42", "write":false},
+  {"name":"concept-scalar", "kind":"amount", "hex":"0c0000001076002a00000000", "json":"42", "write":true},
+  {"name":"utc-noon-leap-date", "kind":"date", "hex":"100000000976000056bcf48d01000000", "json":"\"2024-02-29\"", "write":true},
+  {"name":"time-only-milliseconds", "kind":"clock", "hex":"10000000097600952cb3020000000000", "json":"\"12:34:56.7890000\"", "write":true},
+  {"name":"pre-epoch-time", "kind":"time", "hex":"10000000097600ffffffffffffffff00", "json":"\"1969-12-31T23:59:59.999Z\"", "write":true},
+  {"name":"empty-slice", "kind":"slice", "hex":"0d000000047600050000000000", "json":"[]", "write":true},
+  {"name":"null-slice", "kind":"slice", "hex":"080000000a760000", "json":"[]", "write":false},
+  {"name":"missing-slice", "kind":"slice", "hex":"0500000000", "json":"[]", "write":false},
+  {"name":"null-pointer", "kind":"pointer", "hex":"080000000a760000", "json":"null", "write":true},
+  {"name":"missing-pointer", "kind":"pointer", "hex":"0500000000", "json":"null", "write":false},
+  {"name":"zero-int32", "kind":"int32", "hex":"0c0000001076000000000000", "json":"0", "write":true},
+  {"name":"missing-int32", "kind":"int32", "hex":"0500000000", "json":"0", "write":false}
+]

@@ -121,9 +121,13 @@ borrowed, following the normal pipeline contract.
 ## Know the boundary
 
 Command scenarios pass typed input directly, as C# `CommandScenario` does. They do
-not JSON-round-trip the command or run HTTP middleware. Query scenarios are
-snapshot-only. Neither helper claims observable capture, generated adapters,
-Chronicle seeding, operations recovery assertions, or automatic extender discovery.
+not JSON-round-trip the command or run HTTP middleware. `NewQuery` reads snapshots;
+`NewObservableQuery[R](scenario, name).Capture(ctx, request, options)` synchronously
+captures full results through real admission/interception/guards and owns cleanup
+join. `CaptureOptions` defaults to 16 results, 1 MiB encoded retained results and a
+five-second timeout. Earlier results accompany failures; reaching the count limit
+succeeds only if cleanup joins. No helper claims HTTP/hub transfers, generated
+adapters, Chronicle seeding, operation recovery or automatic extender discovery.
 Use explicit fixture composition instead of C# service discovery and extension
 policies; use returned results instead of mutable `LastResult` state.
 
@@ -138,3 +142,27 @@ It runs the same nine selected Arc 22.14.0 cases through `httptest` and a separa
 process using the real Arc host. It is not the richer HTTP, browser or streaming
 parity suite. The fixture's README records the pinned source, limits and exact
 coverage.
+
+For observable framing, revisions, Full/Delta/Legacy transfers, terminal denial,
+reconnect and shutdown, run the separate real-listener harness:
+
+```sh
+go test -count=1 -timeout=2m ./ContractTests/observables
+```
+
+Its independent RFC client is not a browser test. To execute the actual pinned
+`@cratis/arc` transport/query APIs against the hosted Arc fixture, run:
+
+```sh
+GOWORK=off GOTOOLCHAIN=local node ContractTests/observables/frontend/run.mjs
+```
+
+This requires Node 26.8.1 and npm 12.0.2; it installs locked dependencies, compiles
+manual query classes, builds the Go host and joins it after the client tests.
+The observable contract README records the executed transport/mode cases and
+exclusions. Node WebSocket/EventSource polyfills and class hydration are executed;
+Guid/date hydration, browser cookies/origins and React-hook reconstruction remain
+unverified. Delta reconstruction uses an explicitly independent test consumer,
+not a claimed React hook. In-memory race/synctest cases separately prove
+candidate-budget release on cancellation, explicit resource-join retries without
+redisposal and retained channel cleanup after partial startup.

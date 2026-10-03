@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"reflect"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/cratis/arc.go/authorization"
@@ -29,17 +30,24 @@ import (
 // policy registry, never bypassing security. CleanupTimeout zero means 30 seconds.
 // Resources must open cheaply/lazily; direct shared extensions must be concurrent-safe.
 type PipelineOptions struct {
-	OpenResources          execution.OpenResources
-	ScopeFactory           di.ScopeFactory
-	DependencyCatalog      di.Catalog
-	Authorization          *authorization.Evaluator
-	Validation             *validation.Graph
-	Membership             tenancy.Membership
-	RequireTenant          bool
-	Clock                  func() time.Time
-	CleanupTimeout         time.Duration
-	ExposeExceptionDetails bool
-	Logger                 *slog.Logger
+	OpenResources     execution.OpenResources
+	ScopeFactory      di.ScopeFactory
+	DependencyCatalog di.Catalog
+	Authorization     *authorization.Evaluator
+	Validation        *validation.Graph
+	Membership        tenancy.Membership
+	RequireTenant     bool
+	Clock             func() time.Time
+	CleanupTimeout    time.Duration
+	// MaximumWait bounds observable waits; zero means five minutes.
+	MaximumWait time.Duration
+	// MaxObservations includes active and unjoined observations; zero means 1024.
+	MaxObservations int
+	// ObservationCleanupTimeout overrides CleanupTimeout for stream joining.
+	// Zero retains CleanupTimeout; root hosting supplies its five-second close grace.
+	ObservationCleanupTimeout time.Duration
+	ExposeExceptionDetails    bool
+	Logger                    *slog.Logger
 }
 
 // Pipeline is the public snapshot substitution boundary. Perform opens independent
@@ -51,10 +59,14 @@ type Pipeline interface {
 	PerformScoped(context.Context, *execution.Scope, FullyQualifiedQueryName, Request) (Result[any], error)
 }
 type queryPipeline struct {
-	options      PipelineOptions
-	queries      map[FullyQualifiedQueryName]Registration
-	filters      []filterEntry
-	interceptors []interceptorEntry
+	options              PipelineOptions
+	queries              map[FullyQualifiedQueryName]Registration
+	filters              []filterEntry
+	interceptors         []interceptorEntry
+	guards               []guardEntry
+	observationMu        sync.Mutex
+	observations         map[*Observation]struct{}
+	observationsStopping bool
 }
 
 // Build freezes complete registrations and validates declarations, output ownership,
@@ -66,11 +78,17 @@ func (r *Registry) Build(o PipelineOptions) (Pipeline, error) {
 	if r.frozen {
 		return nil, ErrFrozen
 	}
-	if o.CleanupTimeout < 0 || o.OpenResources != nil && o.ScopeFactory != nil {
+	if o.CleanupTimeout < 0 || o.MaximumWait < 0 || o.MaxObservations < 0 || o.ObservationCleanupTimeout < 0 || o.OpenResources != nil && o.ScopeFactory != nil {
 		return nil, ErrInvalidRegistration
 	}
 	if o.ScopeFactory != nil && nilValue(o.ScopeFactory) || o.DependencyCatalog != nil && nilValue(o.DependencyCatalog) || o.Membership != nil && nilValue(o.Membership) {
 		return nil, ErrInvalidRegistration
+	}
+	if o.MaximumWait == 0 {
+		o.MaximumWait = 5 * time.Minute
+	}
+	if o.MaxObservations == 0 {
+		o.MaxObservations = 1024
 	}
 	if o.Clock == nil {
 		o.Clock = time.Now
@@ -95,7 +113,7 @@ func (r *Registry) Build(o PipelineOptions) (Pipeline, error) {
 	if err := o.Validation.CheckDependencies(o.DependencyCatalog); err != nil {
 		return nil, err
 	}
-	p := &queryPipeline{options: o, queries: map[FullyQualifiedQueryName]Registration{}, filters: slices.Clone(r.filters), interceptors: slices.Clone(r.interceptors)}
+	p := &queryPipeline{options: o, queries: map[FullyQualifiedQueryName]Registration{}, filters: slices.Clone(r.filters), interceptors: slices.Clone(r.interceptors), guards: slices.Clone(r.guards), observations: map[*Observation]struct{}{}}
 	catalog := r.Catalog()
 	if _, err := metadata.Resolve(catalog, metadata.DefaultOptions()); err != nil {
 		return nil, err
@@ -103,7 +121,7 @@ func (r *Registry) Build(o PipelineOptions) (Pipeline, error) {
 	for _, q := range r.registrations {
 		q = r.materialize(q)
 		if q.renderer == nil && !q.page {
-			if entry, ok := r.renderers[q.returnType]; ok {
+			if entry, ok := r.renderers[q.emissionType]; ok {
 				copy := entry
 				q.renderer = &copy
 				q.dataType = entry.dataType
@@ -114,6 +132,11 @@ func (r *Registry) Build(o PipelineOptions) (Pipeline, error) {
 		}
 		if err := serialization.ValidateType(q.dataType); err != nil {
 			return nil, err
+		}
+		var err error
+		q.collection, err = compileCollection(q.dataType, q.identity)
+		if err != nil {
+			return nil, &RegistrationError{q.descriptor.Identity(), err}
 		}
 		if err := validateKeys(q.dependencies); err != nil {
 			return nil, err
@@ -145,6 +168,11 @@ func (r *Registry) Build(o PipelineOptions) (Pipeline, error) {
 		}
 	}
 	for _, entry := range p.interceptors {
+		if err := validateKeys(entry.keys); err != nil {
+			return nil, err
+		}
+	}
+	for _, entry := range p.guards {
 		if err := validateKeys(entry.keys); err != nil {
 			return nil, err
 		}
@@ -212,9 +240,15 @@ func Perform[R any](ctx context.Context, p Pipeline, name FullyQualifiedQueryNam
 	return NewResult(d, serialization.Some(value)), err
 }
 func (p *queryPipeline) Perform(ctx context.Context, name FullyQualifiedQueryName, r Request) (Result[any], error) {
+	if q, ok := p.Lookup(name); ok && q.toSource != nil {
+		return p.observableSnapshot(ctx, name, r)
+	}
 	return p.perform(ctx, nil, name, r, false)
 }
 func (p *queryPipeline) PerformScoped(ctx context.Context, s *execution.Scope, name FullyQualifiedQueryName, r Request) (Result[any], error) {
+	if q, ok := p.Lookup(name); ok && q.toSource != nil {
+		return finalize(FromError[any](correlation.FromContext(ctx), ErrUnsupportedObservable), p.options.ExposeExceptionDetails), ErrUnsupportedObservable
+	}
 	return p.perform(ctx, s, name, r, true)
 }
 func (p *queryPipeline) perform(ctx context.Context, scope *execution.Scope, name FullyQualifiedQueryName, request Request, borrowed bool) (Result[any], error) {
@@ -327,6 +361,19 @@ func (p *queryPipeline) perform(ctx context.Context, scope *execution.Scope, nam
 	return finish(err)
 }
 func (p *queryPipeline) core(ctx context.Context, s *execution.Scope, prepared authorization.Prepared, q Registration, a any, c QueryContext, result Result[any]) (Result[any], error) {
+	result, err := p.admitQuery(ctx, s, prepared, q, a, c, result)
+	if err != nil || !verdictSuccess(result) {
+		return result, err
+	}
+	data, err := p.invokeQuery(ctx, s, q, a, c)
+	if err != nil {
+		return result, err
+	}
+	return p.renderEmission(ctx, s, prepared, q, data, c, result)
+}
+
+// admitQuery runs input filters and validation once, without activating a source.
+func (p *queryPipeline) admitQuery(ctx context.Context, s *execution.Scope, prepared authorization.Prepared, q Registration, a any, c QueryContext, result Result[any]) (Result[any], error) {
 	if p.options.Membership != nil {
 		var allowed bool
 		err := boundary.Call(ctx, func(ctx context.Context) error {
@@ -361,7 +408,7 @@ func (p *queryPipeline) core(ctx context.Context, s *execution.Scope, prepared a
 			err = s.Use(ctx, func(ctx context.Context, view *execution.Scope) error {
 				return boundary.Call(ctx, func(ctx context.Context) error {
 					var err error
-					fragment, err = filter.OnPerform(ctx, &Invocation{queryContext: c, scope: view})
+					fragment, err = filter.OnPerform(ctx, &Invocation{queryContext: c, scope: view, subscriptionScope: subscriptionScopeFrom(ctx)})
 					return err
 				})
 			})
@@ -408,17 +455,25 @@ func (p *queryPipeline) core(ctx context.Context, s *execution.Scope, prepared a
 	if err != nil || !decision.IsAllowed() {
 		return Merge(result, Unauthorized[any](c.correlationID, decision.Reason())), err
 	}
+	return result, nil
+}
+
+func (p *queryPipeline) invokeQuery(ctx context.Context, s *execution.Scope, q Registration, a any, c QueryContext) (any, error) {
 	var data any
-	err = s.Use(ctx, func(ctx context.Context, view *execution.Scope) error {
+	err := s.Use(ctx, func(ctx context.Context, view *execution.Scope) error {
 		return boundary.Call(ctx, func(ctx context.Context) error {
 			var err error
 			data, err = q.invoke(ctx, &Invocation{queryContext: c, scope: view}, a)
 			return err
 		})
 	})
-	if err != nil {
-		return result, err
-	}
+	return data, err
+}
+
+// renderEmission is shared by unary and observable deliveries. Admission and
+// invocation remain separate so input filters are never rerun per emission.
+func (p *queryPipeline) renderEmission(ctx context.Context, s *execution.Scope, prepared authorization.Prepared, q Registration, data any, c QueryContext, result Result[any]) (Result[any], error) {
+	var err error
 	var total int64
 	if nilValue(data) {
 		// A nil provider output is ready-null, not a renderer invocation.
@@ -432,6 +487,13 @@ func (p *queryPipeline) core(ctx context.Context, s *execution.Scope, prepared a
 			return err
 		})
 		if err != nil {
+			return result, err
+		}
+	} else if observed, ok := data.(observedCollection); ok {
+		data = observed.collectionItems()
+	}
+	if q.toSource != nil {
+		if err := boundary.Call(ctx, func(context.Context) error { var err error; data, err = detachValue(data); return err }); err != nil {
 			return result, err
 		}
 	}

@@ -13,20 +13,32 @@ import (
 	"github.com/cratis/arc.go/commands"
 	"github.com/cratis/arc.go/correlation"
 	c "github.com/cratis/arc.go/integrations/chronicle"
+	"github.com/cratis/arc.go/integrations/chronicle/internal/appendorigin"
+	"github.com/cratis/chronicle.go/eventsequences"
 )
 
 type observationSubscription struct {
 	callback func(c.CommitResult, error)
+	origin   eventsequences.Origin
 	active   bool
 	calls    sync.WaitGroup
 }
 type notifyingFactory struct {
 	mu            sync.Mutex
 	subscriptions map[*observationSubscription]bool
+	origins       int
 }
 
-func (f *notifyingFactory) Subscribe(_ context.Context, _ c.Coordinates, _ correlation.ID, callback func(c.CommitResult, error)) (func(), error) {
-	subscription := &observationSubscription{callback: callback, active: true}
+func (f *notifyingFactory) NewAppendOrigin() any {
+	f.mu.Lock()
+	f.origins++
+	f.mu.Unlock()
+	return eventsequences.NewOrigin()
+}
+
+func (f *notifyingFactory) Subscribe(ctx context.Context, _ c.Coordinates, _ correlation.ID, callback func(c.CommitResult, error)) (func(), error) {
+	origin, _ := appendorigin.From(ctx).(eventsequences.Origin)
+	subscription := &observationSubscription{callback: callback, active: true, origin: origin}
 	f.mu.Lock()
 	if f.subscriptions == nil {
 		f.subscriptions = make(map[*observationSubscription]bool)
@@ -41,11 +53,11 @@ func (f *notifyingFactory) Subscribe(_ context.Context, _ c.Coordinates, _ corre
 		subscription.calls.Wait()
 	}, nil
 }
-func (f *notifyingFactory) notify(result c.CommitResult, err error) {
+func (f *notifyingFactory) notify(origin eventsequences.Origin, result c.CommitResult, err error) {
 	f.mu.Lock()
 	var callbacks []*observationSubscription
 	for subscription := range f.subscriptions {
-		if subscription.active {
+		if subscription.active && origin != (eventsequences.Origin{}) && subscription.origin == origin {
 			subscription.calls.Add(1)
 			callbacks = append(callbacks, subscription)
 		}
@@ -77,7 +89,7 @@ func (o *notifyingOwner) Commit(context.Context) (c.CommitResult, error) {
 		result.Report.Disposition = commands.NotCommitted
 		err = c.ErrInvalid
 	}
-	o.factory.notify(result, err)
+	o.factory.notify(eventsequences.NewOrigin(), result, err)
 	return result, err
 }
 func (*notifyingOwner) Rollback() error { return nil }

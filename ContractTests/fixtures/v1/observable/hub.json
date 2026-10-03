@@ -1,0 +1,10 @@
+[
+  {"type":"Connected","payload":"fixture-connection","keepAliveIntervalMs":30000,"supportsSubscriptionRevisions":true},
+  {"type":"Subscribe","queryId":"q1","revision":1,"payload":{"queryName":"Acme.Tasks.Task.All","arguments":{"prefix":"Ada","optional":null},"page":0,"pageSize":25,"sortBy":"title","sortDirection":"asc","transferMode":"delta"}},
+  {"type":"QueryResult","queryId":"q1","revision":1,"payload":{"paging":{"page":0,"size":0,"totalItems":0,"totalPages":0},"correlationId":"12345678-1234-4234-8234-123456789012","data":[],"isSuccess":true,"isReady":true,"isAuthorized":true,"isValid":true,"hasExceptions":false,"validationResults":[],"exceptionMessages":[],"exceptionStackTrace":""}},
+  {"type":"Unsubscribe","queryId":"q1","revision":1},
+  {"type":"Unauthorized","queryId":"q1","revision":1},
+  {"type":"Error","queryId":"q1","revision":1,"payload":"An internal error occurred."},
+  {"type":"Ping","timestamp":1700000000123},
+  {"type":"Pong","timestamp":1700000000123}
+]

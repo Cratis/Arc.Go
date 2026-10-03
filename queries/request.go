@@ -16,6 +16,7 @@ type Request struct {
 	parameters Parameters
 	typed      any
 	hasTyped   bool
+	wait       WaitOptions
 }
 
 // NewRequest constructs a raw request. Zero Arguments is valid and empty.
@@ -101,5 +102,13 @@ func (BodyRequestReader) Read(ctx context.Context, in ReaderInput) (Request, err
 	if err := ctx.Err(); err != nil {
 		return Request{}, err
 	}
-	return ReadQUERY(in.Body)
+	request, err := ReadQUERY(in.Body)
+	if err != nil {
+		return Request{}, err
+	}
+	controls, err := readWaitControls(in.Query)
+	if err != nil {
+		return Request{}, err
+	}
+	return request.WithWait(parseWait(controls)), nil
 }

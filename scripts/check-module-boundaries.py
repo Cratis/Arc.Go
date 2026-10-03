@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+"""Check the exact admitted modules and the resolved root dependency boundary."""
+
+import json
+import subprocess
+
+files = subprocess.check_output(["git", "ls-files", "-z"]).decode().split("\0")
+files = [path for path in files if path]
+modules = [path for path in files if path == "go.mod" or path.endswith("/go.mod")]
+expected = ["go.mod", "integrations/chronicle/go.mod", "integrations/mongodb/go.mod", "tools/go.mod"]
+if modules != expected:
+    raise SystemExit("Only root, tools, integrations/chronicle, and integrations/mongodb modules are supported.")
+if any(path == "go.work" or path.endswith("/go.work") for path in files):
+    raise SystemExit("Committed workspaces are not supported.")
+folded = [path.casefold() for path in files]
+if len(set(folded)) != len(folded):
+    raise SystemExit("Paths differing only by case are not portable.")
+for directory in [".", "tools", "integrations/chronicle", "integrations/mongodb"]:
+    module = json.loads(subprocess.check_output(["go", "mod", "edit", "-json"], cwd=directory))
+    if module.get("Replace"):
+        raise SystemExit("Published modules must not rely on replace directives; consumers ignore them.")
+
+
+def forbidden(path):
+    return (path == "golang.org/x/tools" or path.startswith("golang.org/x/tools/")
+            or path == "github.com/cratis/chronicle.go" or path.startswith("github.com/cratis/chronicle.go/")
+            or path == "go.mongodb.org/mongo-driver" or path.startswith("go.mongodb.org/mongo-driver/")
+            or path.startswith("github.com/cratis/arc.go/integrations/"))
+
+
+runtime = json.loads(subprocess.check_output(["go", "mod", "edit", "-json"]))
+if any(forbidden(requirement["Path"]) for requirement in runtime.get("Require", [])):
+    raise SystemExit("Optional dependencies must stay in their nested modules.")
+for command in [["go", "list", "-m", "-f", "{{.Path}}", "all"],
+                ["go", "list", "-deps", "-test", "-f", "{{.ImportPath}}", "./..."]]:
+    paths = subprocess.check_output(command).decode().splitlines()
+    if any(forbidden(path.split(" [", 1)[0]) for path in paths):
+        raise SystemExit("The resolved runtime graph must not import optional integrations or their dependencies.")
+print("Exact module allowlist and resolved root dependency boundary passed.")
