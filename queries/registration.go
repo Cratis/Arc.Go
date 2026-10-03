@@ -9,6 +9,7 @@ import (
 	"slices"
 
 	"github.com/cratis/arc.go/metadata"
+	"github.com/cratis/arc.go/observable"
 	"github.com/cratis/arc.go/serialization"
 	di "github.com/cratis/fundamentals.go/dependencyinjection"
 )
@@ -24,6 +25,9 @@ type Registration struct {
 	descriptor                                    metadata.Query
 	descriptorSet                                 bool
 	argumentType, returnType, dataType, modelType reflect.Type
+	emissionType                                  reflect.Type
+	toSource                                      func(any) (observationSource, error)
+	enumerable                                    bool
 	parameters                                    []Parameter
 	bind                                          func(Request) (any, error)
 	invoke                                        func(context.Context, *Invocation, any) (any, error)
@@ -46,6 +50,9 @@ func (r Registration) ArgumentType() reflect.Type { return r.argumentType }
 // ReturnType returns the performer's raw output type.
 func (r Registration) ReturnType() reflect.Type { return r.returnType }
 
+// EmissionType returns the source element type, or the raw unary output type.
+func (r Registration) EmissionType() reflect.Type { return r.emissionType }
+
 // DataType returns the rendered/unwrapped client data type.
 func (r Registration) DataType() reflect.Type { return r.dataType }
 
@@ -55,6 +62,16 @@ func (r Registration) ReadModelType() reflect.Type { return r.modelType }
 // Register associates a typed performer with one owning read-model query identity.
 // Namespace methods are adapted with direct calls; no method discovery or reflect.Call occurs.
 func Register[M, A, O any](r Registrar, name string, p Performer[A, O], options ...Option[A]) error {
+	return register[M](r, name, p, reflect.TypeFor[O](), nil, options...)
+}
+
+// RegisterObservable registers a lifecycle-bearing source, tracking its emission
+// type independently of the declared source and rendered client data types.
+func RegisterObservable[M, A, O any](r Registrar, name string, p Performer[A, observable.Source[O]], options ...Option[A]) error {
+	return register[M](r, name, p, reflect.TypeFor[O](), adaptSource[O], options...)
+}
+
+func register[M, A, O any](r Registrar, name string, p Performer[A, O], emission reflect.Type, source func(any) (observationSource, error), options ...Option[A]) error {
 	if nilValue(r) {
 		return ErrInvalidRegistration
 	}
@@ -100,24 +117,25 @@ func Register[M, A, O any](r Registrar, name string, p Performer[A, O], options 
 			return fail(err)
 		}
 	}
-	if c.descriptor.Observable {
+	if c.descriptor.Observable && source == nil || c.enumerable && source == nil {
 		return fail(ErrUnsupportedObservable)
 	}
+	c.descriptor.Observable = source != nil
 	bindings, parameters, err := compileArguments(c.arguments)
 	if err != nil {
 		return fail(err)
 	}
-	data := output
+	data := emission
 	page := false
-	if output.Kind() == reflect.Pointer && output.Implements(reflect.TypeFor[pageValue]()) {
+	if emission.Kind() == reflect.Pointer && emission.Implements(reflect.TypeFor[pageValue]()) {
 		return fail(ErrResponseType)
 	}
-	if pageOutput, ok := any(*new(O)).(pageValue); ok {
+	if pageOutput, ok := reflect.Zero(emission).Interface().(pageValue); ok {
 		data = pageOutput.pageDataType()
 		page = true
 	}
 	if c.renderer != nil {
-		if c.renderer.queryType != output || page {
+		if c.renderer.queryType != emission || page {
 			return fail(ErrResponseType)
 		}
 		data = c.renderer.dataType
@@ -128,7 +146,7 @@ func Register[M, A, O any](r Registrar, name string, p Performer[A, O], options 
 			return fail(ErrResponseType)
 		}
 	}
-	registration := Registration{descriptor: copyDescriptor(c.descriptor), descriptorSet: c.descriptorSet, argumentType: reflect.TypeFor[A](), returnType: output, dataType: data, modelType: m, parameters: parameters, validators: c.validators, withoutModel: c.withoutModel, dependencies: slices.Clone(c.dependencies), renderer: c.renderer, page: page}
+	registration := Registration{emissionType: emission, toSource: source, enumerable: c.enumerable, descriptor: copyDescriptor(c.descriptor), descriptorSet: c.descriptorSet, argumentType: reflect.TypeFor[A](), returnType: output, dataType: data, modelType: m, parameters: parameters, validators: c.validators, withoutModel: c.withoutModel, dependencies: slices.Clone(c.dependencies), renderer: c.renderer, page: page}
 	registration.bind = func(request Request) (any, error) { return bindArguments(request, bindings) }
 	registration.invoke = func(ctx context.Context, inv *Invocation, a any) (any, error) { return p.call(ctx, inv, a.(A)) }
 	return r.RegisterQuery(registration)

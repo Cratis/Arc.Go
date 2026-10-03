@@ -64,8 +64,9 @@ func ContextFrom(ctx context.Context) (QueryContext, bool) {
 // Invocation is a callback-scoped frame. Its scope expires after that callback,
 // cannot close operation resources, and must not be retained or used asynchronously.
 type Invocation struct {
-	queryContext QueryContext
-	scope        *execution.Scope
+	queryContext      QueryContext
+	scope             *execution.Scope
+	subscriptionScope *subscriptionScope
 }
 
 // QueryContext returns callback metadata without granting authority.

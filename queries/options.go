@@ -28,6 +28,7 @@ type queryOptions[A any] struct {
 	arguments     []Argument[A]
 	validators    []validatorEntry
 	withoutModel  bool
+	enumerable    bool
 	dependencies  []di.Key
 	renderer      *rendererEntry
 }
@@ -38,6 +39,12 @@ func (o queryOption[A]) applyQuery(c *queryOptions[A]) error {
 	}
 	c.seen[o.name] = true
 	return o.apply(c)
+}
+
+// WithEnumerable marks an observable source as requiring a streaming transport.
+// Plain snapshots fail explicitly, even when the source has a current value.
+func WithEnumerable[A any]() Option[A] {
+	return queryOption[A]{name: "enumerable", apply: func(c *queryOptions[A]) error { c.enumerable = true; return nil }}
 }
 
 // WithDescriptor replaces the complete query descriptor for stable-client migrations.

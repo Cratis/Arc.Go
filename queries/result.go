@@ -3,7 +3,8 @@
 
 // Package queries registers read-model-owned typed snapshots, binds caller inputs,
 // and stages authorized execution, optional rendering and ordered interception.
-// Pipelines own operation scopes, not persistence, transactions or subscriptions.
+// Pipelines own operation scopes and observable stream handles, not persistence
+// or transactions. Application-owned subjects remain borrowed.
 // Runtime method discovery and reflective invocation are not provided. Existing
 // outcome constructors remain independent of pipeline failure finalization.
 package queries
