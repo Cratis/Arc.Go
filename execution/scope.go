@@ -239,9 +239,15 @@ func (s *Scope) Close(ctx context.Context) (err error) {
 	err = errors.Join(state.disposalErr, state.joinErr)
 	pending := false
 	if resumable {
-		joinErr := invoke(ctx, func() error { return joiner.Join(ctx) })
-		var panicErr *PanicError
-		pending = errors.Is(joinErr, context.Canceled) || errors.Is(joinErr, context.DeadlineExceeded) || errors.As(joinErr, &panicErr)
+		returned := false
+		joinErr := invoke(ctx, func() error {
+			err := joiner.Join(ctx)
+			returned = true
+			return err
+		})
+		// A returned non-context failure certifies completion even if its
+		// diagnostic is PanicError; only a recovered callback panic is unknown.
+		pending = !returned || errors.Is(joinErr, context.Canceled) || errors.Is(joinErr, context.DeadlineExceeded)
 		// Retain non-waiting diagnostics from every attempt. A later successful
 		// Join resolves waiting, not an earlier domain failure or panic.
 		state.joinErr = errors.Join(state.joinErr, withoutWaitErrors(joinErr))

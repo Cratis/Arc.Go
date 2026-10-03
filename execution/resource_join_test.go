@@ -82,6 +82,25 @@ func TestResourceJoinRetainsPriorDiagnosticsWithoutWaitErrors(t *testing.T) {
 	}
 }
 
+func TestReturnedResourceJoinPanicDiagnosticCertifiesCompletion(t *testing.T) {
+	failure := &execution.PanicError{Value: "joined producer panic"}
+	h := &diagnosticJoinHolder{join: func() error { return failure }}
+	scope, err := execution.OpenScope(context.Background(), func(context.Context) (execution.Resources, error) { return h, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		err = scope.Close(context.Background())
+		var diagnostic *execution.PanicError
+		if !errors.Is(err, failure) || !errors.As(err, &diagnostic) || diagnostic != failure || errors.Is(err, execution.ErrScopeJoinPending) {
+			t.Fatal("returned diagnostic mistaken for unknown completion", err)
+		}
+	}
+	if h.closes != 1 || h.joins != 1 {
+		t.Fatalf("closes/joins = %d/%d", h.closes, h.joins)
+	}
+}
+
 type joinHolder struct {
 	closes  atomic.Int32
 	joins   atomic.Int32
