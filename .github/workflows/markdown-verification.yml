@@ -23,6 +23,7 @@ jobs:
             *.md
             Documentation/**/*.md
             examples/**/*.md
+            integrations/mongodb/**/*.md
             ContractTests/fixtures/**/*.md
             .github/ISSUE_TEMPLATE/*.md
             .github/pull_request_template.md

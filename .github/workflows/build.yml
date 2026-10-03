@@ -97,26 +97,7 @@ jobs:
       - name: Enforce runtime and tooling module layout and portable paths
         shell: bash
         run: |
-          python3 - <<'PY'
-          import json, subprocess
-          files = subprocess.check_output(['git', 'ls-files', '-z']).decode().split('\0')
-          files = [p for p in files if p]
-          modules = [p for p in files if p == 'go.mod' or p.endswith('/go.mod')]
-          if modules != ['go.mod', 'integrations/chronicle/go.mod', 'tools/go.mod']:
-              raise SystemExit('Only root, tools, and integrations/chronicle modules are supported.')
-          if any(p == 'go.work' or p.endswith('/go.work') for p in files):
-              raise SystemExit('Committed workspaces are not supported.')
-          folded = [p.casefold() for p in files]
-          if len(set(folded)) != len(folded):
-              raise SystemExit('Paths differing only by case are not portable.')
-          for directory in ['.', 'tools', 'integrations/chronicle']:
-              module = json.loads(subprocess.check_output(['go', 'mod', 'edit', '-json'], cwd=directory))
-              if module.get('Replace'):
-                  raise SystemExit('Published modules must not rely on replace directives; consumers ignore them.')
-          runtime = json.loads(subprocess.check_output(['go', 'mod', 'edit', '-json']))
-          if any(r['Path'] in {'golang.org/x/tools', 'github.com/cratis/chronicle.go'} for r in runtime.get('Require', [])):
-              raise SystemExit('Tooling and Chronicle dependencies must stay in their nested modules.')
-          PY
+          python3 scripts/check-module-boundaries.py
       - name: Guarantee the zero-container runtime path and DI-free example imports
         run: python3 scripts/check-no-container.py
       - name: Check tidy manifests with the minimum supported Go
@@ -240,6 +221,77 @@ jobs:
         run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
       - run: govulncheck ./...
 
+  mongodb-test:
+    name: MongoDB codecs (${{ matrix.os }}, Go ${{ matrix.go }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        go: ['1.26.x', '1.27.x']
+        include:
+          - os: macos-latest
+            go: '1.27.x'
+          - os: windows-latest
+            go: '1.27.x'
+    defaults:
+      run:
+        working-directory: integrations/mongodb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: ${{ matrix.go }}
+          cache-dependency-path: integrations/mongodb/go.sum
+      - run: go mod download
+      - run: go mod verify
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test -count=1 -timeout=2m ./...
+
+  integrations-mongodb:
+    name: MongoDB no-database module checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: integrations/mongodb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: integrations/mongodb/go.sum
+      - run: go mod download
+      - run: go test -race -count=1 -timeout=3m ./...
+      - name: Check tidy manifests and untracked checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          go mod tidy -diff
+          changes=$(git status --porcelain --untracked-files=normal -- go.mod go.sum)
+          if [ -n "$changes" ]; then
+            printf 'Commit module manifests:\n%s\n' "$changes"
+            exit 1
+          fi
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a
+        with:
+          version: v2.14.0
+          working-directory: integrations/mongodb
+          args: --timeout=3m --config=../../.golangci.yml
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.27.x'
+          cache-dependency-path: integrations/mongodb/go.sum
+      - name: Install pinned govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+      - run: govulncheck ./...
+
   chronicle-kernel:
     name: Chronicle kernel contracts
     runs-on: ubuntu-latest
@@ -275,7 +327,7 @@ jobs:
   gate:
     name: Go gate
     if: always()
-    needs: [test, race, lint, vulnerabilities, workflows, tools, integrations-chronicle, chronicle-kernel]
+    needs: [test, race, lint, vulnerabilities, workflows, tools, integrations-chronicle, mongodb-test, integrations-mongodb, chronicle-kernel]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
