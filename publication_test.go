@@ -12,6 +12,7 @@ import (
 	arc "github.com/cratis/arc.go"
 	"github.com/cratis/arc.go/commands"
 	"github.com/cratis/arc.go/execution"
+	boundary "github.com/cratis/arc.go/internal/pipeline"
 	"github.com/cratis/arc.go/serialization"
 	"github.com/cratis/arc.go/validation"
 )
@@ -55,6 +56,10 @@ func TestHTTPReceiptPrecedesAuthenticationAndNestedReceiptIsFresh(t *testing.T) 
 		received, _ := execution.ReceivedAt(ctx)
 		if !received.Equal(time.Unix(1, 0)) {
 			t.Fatal("receipt not established before authentication", received)
+		}
+		_, forwarded, err := boundary.Receipt(ctx, func() time.Time { return time.Unix(99, 0) })
+		if err != nil || !forwarded.Equal(time.Unix(99, 0)) {
+			t.Fatal("authentication received the pipeline forwarding marker", forwarded, err)
 		}
 		_ = clock()
 		return authentication.Anonymous(), nil

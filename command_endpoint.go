@@ -44,10 +44,10 @@ func (a *Application) commandEndpoint(w http.ResponseWriter, r *http.Request, e 
 		options = []commands.ExecuteOptions{{AllowedSeverity: &severity}}
 	}
 	if e.ValidateOnly {
-		result, _ := a.commands.Validate(r.Context(), value, options...)
+		result, _ := a.commands.Validate(httpPipelineContext(r.Context()), value, options...)
 		a.publish(w, r, result.StatusCode(), result)
 		return
 	}
-	result, _ := a.commands.Execute(r.Context(), value, options...)
+	result, _ := a.commands.Execute(httpPipelineContext(r.Context()), value, options...)
 	a.publish(w, r, result.StatusCode(), result)
 }

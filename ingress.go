@@ -15,6 +15,7 @@ import (
 	"github.com/cratis/arc.go/authentication"
 	"github.com/cratis/arc.go/commands"
 	"github.com/cratis/arc.go/correlation"
+	"github.com/cratis/arc.go/execution"
 	"github.com/cratis/arc.go/identity"
 	boundary "github.com/cratis/arc.go/internal/pipeline"
 	"github.com/cratis/arc.go/metadata"
@@ -50,7 +51,7 @@ func (a *Application) serveIngress(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
 		return
 	}
-	ctx = boundary.ForwardReceipt(ctx, received)
+	ctx = execution.WithReceivedAt(context.WithValue(ctx, httpReceiptKey{}, received), received)
 	work, release, err := a.admit(ctx)
 	if err != nil {
 		w.WriteHeader(503)
@@ -65,6 +66,21 @@ func (a *Application) serveIngress(w http.ResponseWriter, r *http.Request) {
 	}
 	a.requestHandler.ServeHTTP(w, r)
 }
+
+type httpReceiptKey struct{}
+
+// httpPipelineContext installs forwarding only for the immediate endpoint call.
+// The ingress timestamp is ordinary metadata everywhere else, not a capability
+// to reuse that timestamp for unrelated backend operations.
+func httpPipelineContext(ctx context.Context) context.Context {
+	received, ok := ctx.Value(httpReceiptKey{}).(time.Time)
+	ctx = context.WithValue(ctx, httpReceiptKey{}, nil)
+	if ok {
+		return boundary.ForwardReceipt(ctx, received)
+	}
+	return ctx
+}
+
 func (a *Application) prepareHeaders(w http.ResponseWriter, r *http.Request) {
 	methods := a.routeTable[r.URL.Path]
 	e, matched := methods[r.Method]

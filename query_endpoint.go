@@ -86,6 +86,6 @@ func (a *Application) queryEndpoint(w http.ResponseWriter, r *http.Request, e me
 		a.publish(w, r, 400, queries.FromError[any](id, err))
 		return
 	}
-	result, _ := a.queries.Perform(r.Context(), queries.FullyQualifiedQueryName(e.Identity), request)
+	result, _ := a.queries.Perform(httpPipelineContext(r.Context()), queries.FullyQualifiedQueryName(e.Identity), request)
 	a.publish(w, r, result.StatusCode(), result)
 }
