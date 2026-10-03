@@ -7,6 +7,7 @@ package integration_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 
@@ -22,9 +23,53 @@ type AuthorAggregate struct {
 	*integration.AggregateRoot
 	Name string
 }
+type SecondAuthorAggregate struct {
+	*integration.AggregateRoot
+	Name string
+}
+
 type RaceAuthor struct {
 	ID     integration.EventSourceID `json:"id"`
 	Target string                    `json:"target"`
+}
+
+func TestIncompatibleAggregateRoutesOnSameSourceRejectWithoutPersistence(t *testing.T) {
+	client, store, ctx := clientFor(t, func(registry *chronicle.Registry) {
+		_, err := chronicle.RegisterEvent[AuthorCreated](registry)
+		require(t, err)
+	})
+	builder, err := arc.NewBuilder(arc.Options{})
+	require(t, err)
+	adapter, err := sdk.New(client, sdk.Config{Store: store})
+	require(t, err)
+	require(t, adapter.Install(builder))
+	first, err := integration.DefineAggregate(func(root *integration.AggregateRoot) *AuthorAggregate {
+		return &AuthorAggregate{AggregateRoot: root}
+	}, integration.OnAggregateEvent(func(a *AuthorAggregate, e AuthorCreated) error { a.Name = e.Name; return nil }))
+	require(t, err)
+	second, err := integration.DefineAggregate(func(root *integration.AggregateRoot) *SecondAuthorAggregate {
+		return &SecondAuthorAggregate{AggregateRoot: root}
+	}, integration.OnAggregateEvent(func(a *SecondAuthorAggregate, e AuthorCreated) error { a.Name = e.Name; return nil }))
+	require(t, err)
+	require(t, commands.Register[CreatePair](builder, commands.Invoke(func(ctx context.Context, inv *commands.Invocation, _ CreatePair) (commands.NoResponse, error) {
+		a, err := first.Get(ctx, inv)
+		require(t, err)
+		require(t, a.Apply(ctx, AuthorCreated{Name: "must not persist"}))
+		b, err := second.Get(ctx, inv)
+		if !errors.Is(err, integration.ErrMismatch) || b != nil {
+			t.Fatal("incompatible route accepted", b, err)
+		}
+		return commands.NoResponse{}, nil
+	})))
+	app, err := builder.Build()
+	require(t, err)
+	require(t, app.Start(ctx))
+	t.Cleanup(func() { require(t, app.Shutdown(context.Background())) })
+	result, err := app.Commands().Execute(ctx, CreatePair{ID: "same"})
+	records := history(t, ctx, client, store, "Default", "same")
+	if result.IsSuccess() || !errors.Is(err, integration.ErrMismatch) || result.Completion().Disposition != commands.NotCommitted || len(records) != 0 {
+		t.Fatal(result, err, records)
+	}
 }
 
 func TestCompetingAggregateDecisionsAreAtomicAcrossTargets(t *testing.T) {

@@ -91,7 +91,9 @@ Explicit `Commit` finalizes the **whole shared owner**, not only this aggregate'
 
 With no flags or explicit scopes, the SDK's configured default strategy remains authoritative. Command flags resolve only their selected dimensions through `Sequence.ResolveScope`, separately for each actual target, and cache the result within that frame. Explicit `Resolve` scopes also use the configured policy. Aggregate-loaded scopes take precedence over flag resolution for aggregate mutations.
 
-`UpperBound(n)` rejects a newer matching tail; it is **not equality** and can accept absent or lower history. Use `NoMatchingEvent` for an empty-history requirement. Default route sentinels can mean wildcard selection. Incompatible checks sharing a source label fail; arbitrary multi-boundary checks for one source are not synthesized.
+`UpperBound(n)` rejects a newer matching tail; it is **not equality** and can accept absent or lower history. Use `NoMatchingEvent` for an empty-history requirement. Default route sentinels can mean wildcard selection. Incompatible checks sharing a source label fail before append; arbitrary multi-boundary checks for one source are not synthesized. In particular, two aggregate types with different default stream types, or differing routes on one source, cannot share this guarded owner. Use separate source IDs or the same route and expectation. The pinned SDK requires source-bound scope labels to equal the source ID, so source+route labels cannot work around this restriction.
+
+C# Chronicle 19.29.1 also rejects conflicting source scopes in strict ordered batches. Its legacy aggregate mutation path can overwrite an earlier source scope; Arc.Go deliberately fails closed instead of discarding a loaded-history check.
 
 The SDK's resolved expectation is opaque. The adapter retains it as an immutable `ProviderResolved` token, including resolved unchecked empty tails, rather than guessing a number or reading the tail again. Tokens cannot cross provider or coordinate boundaries.
 
