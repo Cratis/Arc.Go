@@ -34,6 +34,8 @@ var (
 	ErrExecutionClosed = errors.New("command execution closed")
 	// ErrConcurrentExecution identifies overlapping use of a bound executor.
 	ErrConcurrentExecution = errors.New("concurrent command execution")
+	// ErrExecutionFailed identifies a recorded failure in this command or an ancestor.
+	ErrExecutionFailed = errors.New("command execution has recorded failures")
 	// ErrExecutionMismatch identifies an incompatible frame or validation-only use.
 	ErrExecutionMismatch = errors.New("command execution mismatch")
 )

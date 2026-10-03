@@ -156,6 +156,60 @@ func TestNestedValidateFailureRemainsStickyDuringValidate(t *testing.T) {
 	}
 }
 
+func TestEarlyCompletionGuardObservesIgnoredNestedFailure(t *testing.T) {
+	for _, advisory := range []bool{false, true} {
+		var registry commands.Registry
+		var retained *commands.Execution
+		var retainedContext context.Context
+		must(t, commands.Register[Parent](&registry, commands.Invoke(func(ctx context.Context, inv *commands.Invocation, _ Parent) (commands.NoResponse, error) {
+			retained, retainedContext = inv.Execution(), ctx
+			must(t, retained.CheckRecordedFailures(ctx))
+			if advisory {
+				_, _ = inv.Pipeline().Validate(ctx, Child{})
+			} else {
+				_, _ = inv.Pipeline().Execute(ctx, Child{})
+			}
+			err := retained.CheckRecordedFailures(ctx)
+			if advisory {
+				must(t, err)
+			} else if !errors.Is(err, commands.ErrExecutionFailed) {
+				t.Fatal(err)
+			}
+			return commands.NoResponse{}, nil
+		})))
+		must(t, commands.Register[Child](&registry, commands.Void(func(Child, context.Context) error { t.Fatal("denied child executed"); return nil }), commands.WithAuthorization[Child](metadata.Authorization{})))
+		result, err := build(t, &registry, commands.PipelineOptions{}).Execute(t.Context(), Parent{})
+		must(t, err)
+		if result.IsSuccess() != advisory {
+			t.Fatal(result.Details())
+		}
+		if err := retained.CheckRecordedFailures(retainedContext); !errors.Is(err, commands.ErrExecutionClosed) {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestEarlyCompletionGuardChecksAncestorFailures(t *testing.T) {
+	var registry commands.Registry
+	must(t, commands.Register[Parent](&registry, commands.Invoke(func(ctx context.Context, inv *commands.Invocation, _ Parent) (commands.NoResponse, error) {
+		_, _ = inv.Pipeline().Execute(ctx, Grandchild{})
+		_, _ = inv.Pipeline().Execute(ctx, Child{})
+		return commands.NoResponse{}, nil
+	})))
+	must(t, commands.Register[Grandchild](&registry, commands.Void(func(Grandchild, context.Context) error { return nil }), commands.WithAuthorization[Grandchild](metadata.Authorization{})))
+	must(t, commands.Register[Child](&registry, commands.Invoke(func(ctx context.Context, inv *commands.Invocation, _ Child) (commands.NoResponse, error) {
+		if err := inv.Execution().CheckRecordedFailures(ctx); !errors.Is(err, commands.ErrExecutionFailed) {
+			t.Fatal(err)
+		}
+		return commands.NoResponse{}, nil
+	})))
+	result, err := build(t, &registry, commands.PipelineOptions{}).Execute(t.Context(), Parent{})
+	must(t, err)
+	if result.IsSuccess() {
+		t.Fatal(result.Details())
+	}
+}
+
 func TestIgnoredNestedFailureIsSticky(t *testing.T) {
 	var r commands.Registry
 	must(t, commands.Register[Parent](&r, commands.Invoke(func(ctx context.Context, inv *commands.Invocation, _ Parent) (int, error) {

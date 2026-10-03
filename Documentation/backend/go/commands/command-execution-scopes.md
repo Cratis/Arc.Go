@@ -33,6 +33,8 @@ Queries sharing an explicitly supplied operation scope do not enlist in command 
 
 Complete returns a `CompletionReport` and an error. Report `NoPersistedWork`, `NotCommitted`, `Committed`, `OutcomeUnknown`, or `MixedCommit` from provider evidence, not merely a nil error or a completed flag. Domain rejection belongs in a validation-bearing error; input severity filtering does not suppress terminal failures. Begin reserves ownership without connection or protected dependency activation. Validate never activates this participant.
 
+Before explicit early persistence, `Execution.CheckRecordedFailures(ctx)` checks this frame and its ancestors for already-recorded failures, including ignored nested Execute outcomes. Advisory nested Validate remains advisory. This guard grants no authorization and cannot predict later failures.
+
 `commands.ReportCommit` records an early completion. `Result.Completion()` retains the report through later command, resource-disposal, or serialization failures; `CompletionError` also retains the cause for `errors.Is` and `errors.As`. Neither the report nor disposition adds an HTTP envelope field. Failed commands still omit every response, including false, zero, and empty strings. Unknown outcomes require reconciliation or application idempotency before resubmission, not an automatic retry.
 
 Resource disposal follows persistence and can fail after a confirmed commit. Returning a failed command in that situation does not undo the write.

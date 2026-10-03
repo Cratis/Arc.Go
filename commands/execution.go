@@ -62,6 +62,26 @@ func (e *Execution) Check(ctx context.Context) error {
 	}
 	return nil
 }
+
+// CheckRecordedFailures checks callback/security continuity and fails if this
+// frame or an ancestor has already recorded a failure, including an ignored nested
+// Execute result. Advisory nested Validate remains advisory during Execute.
+// This read-only guard is useful before explicit early persistence. It is not an
+// authorization grant or a promise that subsequent callbacks will succeed.
+func (e *Execution) CheckRecordedFailures(ctx context.Context) error {
+	if e == nil {
+		return ErrNoContext
+	}
+	return withState(ctx, e.invocation, func(current *Execution) error {
+		for frame := current.frame; frame != nil; frame = frame.parent {
+			if frame.err != nil || !frame.result.IsSuccess() || (frame.nestedSet && !frame.nested.IsSuccess()) || frame.nestedErr != nil {
+				return errors.Join(ErrExecutionFailed, frame.err, frame.nestedErr)
+			}
+		}
+		return nil
+	})
+}
+
 func (f *frame) mergeNested() {
 	f.owner.mu.Lock()
 	if !f.nestedSet {
