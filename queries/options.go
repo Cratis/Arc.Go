@@ -31,6 +31,7 @@ type queryOptions[A any] struct {
 	enumerable    bool
 	dependencies  []di.Key
 	renderer      *rendererEntry
+	identity      *collectionIdentity
 }
 
 func (o queryOption[A]) applyQuery(c *queryOptions[A]) error {
@@ -39,6 +40,23 @@ func (o queryOption[A]) applyQuery(c *queryOptions[A]) error {
 	}
 	c.seen[o.name] = true
 	return o.apply(c)
+}
+
+// WithCollectionIdentity supplies a typed identity extractor for rendered collection
+// items without an exported ID/Id member. A nil identity skips the item in later
+// identity diffs. The callback is synchronous and must be concurrent-safe; errors
+// fail delivery. Build rejects an item type not matching the rendered collection.
+// This does not rename JSON properties: the stock JS client still requires id/Id.
+func WithCollectionIdentity[A, T any](extract func(T) (any, error)) Option[A] {
+	return queryOption[A]{name: "collection-identity", apply: func(c *queryOptions[A]) error {
+		if extract == nil {
+			return ErrInvalidRegistration
+		}
+		c.identity = &collectionIdentity{itemType: reflect.TypeFor[T](), get: func(item any) (any, error) {
+			return extract(item.(T))
+		}}
+		return nil
+	}}
 }
 
 // WithEnumerable marks an observable source as requiring a streaming transport.

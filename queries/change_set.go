@@ -9,8 +9,8 @@ import (
 	"github.com/cratis/arc.go/serialization"
 )
 
-// ChangeSet carries items (not IDs) added, replaced and removed. It is only a wire
-// value: this package does not compute differences or implement observable delivery.
+// ChangeSet carries items (not IDs) added, replaced and removed. ComputeChanges
+// produces immutable item snapshots; NewResult copies slices but borrows their items.
 type ChangeSet struct {
 	// Added contains new items; nil encodes as []. Items are borrowed.
 	Added []any

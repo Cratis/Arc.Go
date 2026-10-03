@@ -133,6 +133,11 @@ func (r *Registry) Build(o PipelineOptions) (Pipeline, error) {
 		if err := serialization.ValidateType(q.dataType); err != nil {
 			return nil, err
 		}
+		var err error
+		q.collection, err = compileCollection(q.dataType, q.identity)
+		if err != nil {
+			return nil, &RegistrationError{q.descriptor.Identity(), err}
+		}
 		if err := validateKeys(q.dependencies); err != nil {
 			return nil, err
 		}
@@ -484,6 +489,8 @@ func (p *queryPipeline) renderEmission(ctx context.Context, s *execution.Scope, 
 		if err != nil {
 			return result, err
 		}
+	} else if observed, ok := data.(observedCollection); ok {
+		data = observed.collectionItems()
 	}
 	if q.toSource != nil {
 		if err := boundary.Call(ctx, func(context.Context) error { var err error; data, err = detachValue(data); return err }); err != nil {

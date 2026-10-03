@@ -36,6 +36,8 @@ type Registration struct {
 	dependencies                                  []di.Key
 	renderer                                      *rendererEntry
 	page                                          bool
+	identity                                      *collectionIdentity
+	collection                                    *collectionShape
 }
 
 // Descriptor returns isolated declaration metadata.
@@ -126,6 +128,9 @@ func register[M, A, O any](r Registrar, name string, p Performer[A, O], emission
 		return fail(err)
 	}
 	data := emission
+	if observed, ok := reflect.Zero(emission).Interface().(observedCollection); ok {
+		data = observed.collectionType()
+	}
 	page := false
 	if emission.Kind() == reflect.Pointer && emission.Implements(reflect.TypeFor[pageValue]()) {
 		return fail(ErrResponseType)
@@ -146,7 +151,7 @@ func register[M, A, O any](r Registrar, name string, p Performer[A, O], emission
 			return fail(ErrResponseType)
 		}
 	}
-	registration := Registration{emissionType: emission, toSource: source, enumerable: c.enumerable, descriptor: copyDescriptor(c.descriptor), descriptorSet: c.descriptorSet, argumentType: reflect.TypeFor[A](), returnType: output, dataType: data, modelType: m, parameters: parameters, validators: c.validators, withoutModel: c.withoutModel, dependencies: slices.Clone(c.dependencies), renderer: c.renderer, page: page}
+	registration := Registration{emissionType: emission, toSource: source, enumerable: c.enumerable, descriptor: copyDescriptor(c.descriptor), descriptorSet: c.descriptorSet, argumentType: reflect.TypeFor[A](), returnType: output, dataType: data, modelType: m, parameters: parameters, validators: c.validators, withoutModel: c.withoutModel, dependencies: slices.Clone(c.dependencies), renderer: c.renderer, page: page, identity: c.identity}
 	registration.bind = func(request Request) (any, error) { return bindArguments(request, bindings) }
 	registration.invoke = func(ctx context.Context, inv *Invocation, a any) (any, error) { return p.call(ctx, inv, a.(A)) }
 	return r.RegisterQuery(registration)
