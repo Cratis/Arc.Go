@@ -184,6 +184,20 @@ a request context as the shared watcher's lifetime, and never bind `Find` from
 HTTP-authored BSON. Its JSON methods use a validated base64 BSON-byte envelope,
 not a lossy interface-valued JSON predicate. Decode is failure-atomic.
 
+All filter boundaries, including opaque JSON detachment, reject cycles and paths
+beyond 64 graph levels (containers, pointers and interfaces each count). The
+pre-encoding graph budget is 16 MiB, charging one byte per visited value plus
+string/byte payloads and field names/tags; shared subgraphs count on every visit.
+An independent writer budget admits at most 16 MiB of encoded BSON before the
+driver's internal buffer grows. Observe also enforces `MaxFilterBytes` during
+encoding. JSON envelopes are bounded before base64 allocation and raw BSON is
+size/depth checked before decoding. Exceeding byte budgets returns `ErrLimit`;
+cycles, excessive depth and unsupported opaque encoding hooks return `ErrValue`.
+Application JSON/text/BSON hooks (including concept conversion) and opaque driver
+vectors are unsupported in filters, without executing those hooks. Use ordinary
+scalars, BSON primitives, containers or validated raw BSON instead. These limits
+are Go-specific safety bounds, not a MongoDB or C# filter capability claim.
+
 Manually register `queries.RegisterObservable[M,A,mongodb.Find[M]]`, paired with
 `queries.WithRenderer[A,mongodb.Find[M],[]M]` for the **same collection binding**.
 The complete compiled

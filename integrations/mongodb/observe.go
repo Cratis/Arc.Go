@@ -30,12 +30,9 @@ func Observe[T any](watcher *Watcher, collection *Collection[T], selection Find[
 	if watcher == nil || watcher.client == nil || watcher.lifetime == nil || collection == nil || collection.registry == nil || collection.client != watcher.client {
 		return nil, ErrConfiguration
 	}
-	filter, err := freezeFilter(collection.registry, selection.Filter)
+	filter, err := freezeFilterBounded(collection.registry, selection.Filter, watcher.options.MaxFilterBytes)
 	if err != nil {
 		return nil, err
-	}
-	if len(filter) > watcher.options.MaxFilterBytes {
-		return nil, ErrLimit
 	}
 	return &findSource[T]{watcher, collection, filter}, nil
 }
