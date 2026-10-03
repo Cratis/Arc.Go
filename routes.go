@@ -180,7 +180,11 @@ func canonicalPath(r *http.Request) bool {
 	canonical := (&url.URL{Path: r.URL.Path}).EscapedPath()
 	return r.URL.EscapedPath() == canonical
 }
-func (a *Application) dispatch(w http.ResponseWriter, _ *http.Request, _ metadata.Endpoint) {
+func (a *Application) dispatch(w http.ResponseWriter, r *http.Request, e metadata.Endpoint) {
+	if e.Method == "POST" {
+		a.commandEndpoint(w, r, e)
+		return
+	}
 	w.WriteHeader(http.StatusServiceUnavailable)
 }
 

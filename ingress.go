@@ -18,7 +18,6 @@ import (
 	boundary "github.com/cratis/arc.go/internal/pipeline"
 	"github.com/cratis/arc.go/metadata"
 	"github.com/cratis/arc.go/queries"
-	"github.com/cratis/arc.go/serialization"
 	"github.com/cratis/arc.go/tenancy"
 )
 
@@ -132,16 +131,22 @@ func (a *Application) ingressFailure(w http.ResponseWriter, r *http.Request, e m
 	a.publish(w, r, status, queries.FromError[any](id, err))
 }
 func (a *Application) publish(w http.ResponseWriter, r *http.Request, status int, value any) {
-	body, err := serialization.Marshal(value)
+	body, err := encode(r.Context(), value)
 	if err != nil || int64(len(body)) > a.options.HTTP.MaxResponseBytes {
-		w.WriteHeader(500)
-		return
+		value, status = publicationFailure(value)
+		body, err = encode(r.Context(), value)
+		if err != nil || value == nil || int64(len(body)) > a.options.HTTP.MaxResponseBytes {
+			w.WriteHeader(500)
+			return
+		}
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	w.WriteHeader(status)
 	if r.Method != "HEAD" {
-		_, _ = w.Write(body)
+		if _, err := w.Write(body); err != nil && a.options.Logger != nil {
+			a.options.Logger.DebugContext(r.Context(), "HTTP publication interrupted", "method", r.Method, "correlationId", correlation.FromContext(r.Context()))
+		}
 	}
 }
 func privateCache(w http.ResponseWriter) {
