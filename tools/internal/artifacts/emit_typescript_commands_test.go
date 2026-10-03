@@ -139,6 +139,16 @@ func TestCommandPreflightRejectsUnsupportedCompletePlans(t *testing.T) {
 	}
 }
 
+func TestCommandRejectsNegativeLayoutSkipBeforePathPlanning(t *testing.T) {
+	graph := commandGraph(t)
+	skip := -1
+	graph.Profile.TypeScript.SegmentsToSkip = &skip
+	outputs, err := renderTypeScriptCommands(graph)
+	if outputs != nil || err == nil {
+		t.Fatalf("outputs %v, error %v; want nil output and invalid-profile error", outputs, err)
+	}
+}
+
 func TestCommandLayoutAndImportAliases(t *testing.T) {
 	graph := commandGraph(t)
 	graph.Types[0].Name.Name = "Command"

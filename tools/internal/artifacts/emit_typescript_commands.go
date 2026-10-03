@@ -43,6 +43,9 @@ func renderTypeScriptCommands(graph *Graph) ([]typescriptOutput, error) {
 	if graph == nil || graph.FormatVersion != GraphVersion {
 		return nil, fmt.Errorf("unsupported command graph format")
 	}
+	if err := validateProfile(graph.Profile); err != nil {
+		return nil, err
+	}
 	endpoints, err := metadata.Resolve(graph.Catalog, graph.Profile.routeOptions())
 	if err != nil {
 		return nil, err
