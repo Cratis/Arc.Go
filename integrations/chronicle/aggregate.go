@@ -115,18 +115,12 @@ type AggregateCommitResult struct {
 
 // Commit is explicit early finalization of the shared owner. No successor is ever
 // created; subsequent Apply or Commit fails. Automatic root completion retains it.
-// Early commitment requires the root's CheckRecordedFailures capability. Older
-// root versions fail closed with ErrUnsupported and poison staged work.
+// Already-recorded failures in this frame or an ancestor prevent persistence.
 func (a *AggregateRoot) Commit(ctx context.Context) (AggregateCommitResult, error) {
 	if err := a.check(ctx); err != nil {
 		return AggregateCommitResult{}, err
 	}
-	guard, supported := any(a.invocation.Execution()).(interface{ CheckRecordedFailures(context.Context) error })
-	if !supported {
-		a.transaction.poison(ErrUnsupported)
-		return AggregateCommitResult{}, ErrUnsupported
-	}
-	if err := guard.CheckRecordedFailures(ctx); err != nil {
+	if err := a.invocation.Execution().CheckRecordedFailures(ctx); err != nil {
 		a.transaction.poison(err)
 		return AggregateCommitResult{}, err
 	}

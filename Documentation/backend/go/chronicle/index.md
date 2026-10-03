@@ -83,9 +83,9 @@ History is loaded once per root, aggregate type, source and route. Empty history
 
 The default stream type is the aggregate's simple type name. `WithAggregateRoute` overrides routing; `ConfigureCommand.Sequence` selects the shared command sequence. History and dispatch must agree. Unknown generations and missing handlers fail explicitly. History is buffered, not a bounded-memory stream.
 
-Explicit `Commit` requires the root execution's `CheckRecordedFailures` capability so an ignored nested failure cannot be bypassed. The current root dependency pin lacks that guard; early Commit therefore fails closed with `ErrUnsupported` until the root pin advances. Automatic terminal completion is unaffected.
+Explicit `Commit` checks the root execution's `CheckRecordedFailures` guard before persistence. Already-recorded failures in this frame or an ancestor, including ignored nested authorization, validation and command-lookup failures, prevent commitment. Nested Validate remains advisory during Execute; the guard cannot predict failures that occur after commitment.
 
-With the guard available, explicit `Commit` finalizes the **whole shared owner**, not only this aggregate's events. Later staging fails without creating a successor. Its positions describe the shared batch and cannot be attributed to one aggregate in a mixed command. Returning `AggregateCommitResult` adopts its diagnostics into the Arc envelope, including warning findings after successful persistence.
+Explicit `Commit` finalizes the **whole shared owner**, not only this aggregate's events. Later staging fails without creating a successor. Its positions describe the shared batch and cannot be attributed to one aggregate in a mixed command. Returning `AggregateCommitResult` adopts its diagnostics into the Arc envelope, including warning findings after successful persistence. A later command failure retracts the response but retains the committed completion report; it cannot undo already-persisted events.
 
 ## Resolve concurrency for the actual target
 
