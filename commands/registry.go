@@ -36,11 +36,13 @@ type Registry struct {
 	admissions    []ReturnAdmission
 	models        map[reflect.Type][]readModelProvider
 	buildChecks   []func(BuildView) error
+	operations    map[reflect.Type]operationAdapter
 }
 type extension[T any] struct {
-	name    string
-	factory Factory[T]
-	keys    []di.Key
+	name       string
+	factory    Factory[T]
+	keys       []di.Key
+	operations bool
 }
 
 // NewRegistry validates namespace configuration without application callbacks.
@@ -136,6 +138,15 @@ func (r *Registry) Build(options PipelineOptions) (Pipeline, error) {
 	}
 	if r.frozen {
 		return nil, ErrFrozen
+	}
+	if options.Operations.CompensationTimeout < 0 {
+		return nil, ErrInvalidRegistration
+	}
+	for _, registration := range r.registrations {
+		if registration.operations {
+			// Declaration checkpoint fails closed until orchestration is installed.
+			return nil, ErrInvalidOperation
+		}
 	}
 	if options.CleanupTimeout < 0 || (options.OpenResources != nil && options.ScopeFactory != nil) || (options.ScopeFactory != nil && nilValue(options.ScopeFactory)) || (options.Membership != nil && nilValue(options.Membership)) {
 		return nil, ErrInvalidRegistration
@@ -249,7 +260,7 @@ func addExtension[T any](r *Registry, kind, name string, factory Factory[T], key
 		return ErrDuplicate
 	}
 	r.names[identity] = true
-	*entries = append(*entries, extension[T]{name, factory, append([]di.Key(nil), keys...)})
+	*entries = append(*entries, extension[T]{name: name, factory: factory, keys: append([]di.Key(nil), keys...)})
 	return nil
 }
 func validExtensionName(name string) bool {
@@ -284,6 +295,9 @@ func (r *Registry) extensionKeys() [][]di.Key {
 		result = append(result, e.keys)
 	}
 	for _, e := range r.terminal {
+		result = append(result, e.keys)
+	}
+	for _, e := range r.operations {
 		result = append(result, e.keys)
 	}
 	return result

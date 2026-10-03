@@ -74,6 +74,9 @@ func (a ReturnAdmission) claims(typ reflect.Type) bool {
 }
 
 func (f *frame) admitReturn(value any, kind leafKind) (leafKind, error) {
+	if operationReturn(reflect.TypeOf(value)) || bareOperationCollection(reflect.TypeOf(value)) {
+		return kind, ErrInvalidOperation
+	}
 	if kind == responseLeaf || kind == controlLeaf || value == nil {
 		return kind, nil
 	}

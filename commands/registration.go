@@ -46,6 +46,7 @@ type Registration struct {
 	responseKind     ResponseKind
 	responseType     reflect.Type
 	responseOverride bool
+	operations       bool
 }
 
 // Descriptor returns a copy-isolated declaration.
@@ -133,8 +134,18 @@ func Register[C any](r Registrar, options ...Option[C]) error {
 		key = func(value any) (string, bool, error) { key, present := c.key(value.(C)); return key, present, nil }
 	}
 	registration := Registration{descriptor: cloneDescriptor(c.descriptor), commandType: t, adapter: *c.handler, decode: decodeCommand[C], key: key, validators: slices.Clone(c.validators), withoutModel: c.withoutModel, dependencies: slices.Clone(c.dependencies), responseKind: c.handler.responseKind, responseType: c.handler.responseType, responseOverride: c.responseOverride}
+	registration.operations = c.operations || operationReturn(c.handler.returnType)
+	if bareOperationCollection(c.handler.returnType) || (c.operations && c.handler.returnType.Kind() == reflect.Interface && !operationReturn(c.handler.returnType)) {
+		return ErrInvalidOperation
+	}
 	if c.responseOverride {
+		if operationReturn(c.responseType) || bareOperationCollection(c.responseType) || (operationReturn(c.handler.returnType) && c.responseKind != ResponseNone) {
+			return ErrInvalidOperation
+		}
 		registration.responseKind, registration.responseType = c.responseKind, c.responseType
+	}
+	if operationReturn(registration.responseType) || bareOperationCollection(registration.responseType) {
+		return ErrInvalidOperation
 	}
 	return r.RegisterCommand(registration)
 }

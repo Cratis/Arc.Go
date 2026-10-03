@@ -34,6 +34,7 @@ type PipelineOptions struct {
 	RequireTenant          bool
 	Clock                  func() time.Time
 	CleanupTimeout         time.Duration
+	Operations             OperationOptions
 	ExposeExceptionDetails bool
 	Logger                 *slog.Logger
 }
