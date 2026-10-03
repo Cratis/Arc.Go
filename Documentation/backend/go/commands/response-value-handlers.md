@@ -19,13 +19,21 @@ Every matching handler runs in registration order. This is additive dispatch, no
 
 ## Understand the passes
 
-1. Flatten explicit outcome graphs in declaration order; typed nil leaves disappear, while scalar zeros remain.
+1. Admit leaves through any registered return policies, then flatten explicit outcome graphs in declaration order. Ordinary typed nil leaves disappear; admitted server-consumed typed nils fail. Scalar zeros remain.
 2. Run matching context updaters before selecting a response.
 3. Reserve an explicit Respond response or select at most one unhandled Values leaf.
 4. Reevaluate consumer predicates with the selected response installed.
 5. Preflight ambiguity, required consumption, and built-in controls before executing effects.
 
 A predicate may depend on the selected response. With Values, declaration order matters: put the response before an effect that becomes consumable only when that response exists. Respond reserves the response explicitly.
+
+## Classify known integration returns
+
+`AddReturnAdmission(name, ReturnAdmission{...})` supplies copied exact-type catalog metadata through `Types`, an optional runtime `Check`, or a dynamic Check with no Types. Build never calls Check. A static claim compiles a raw command return to `ResponseNone` unless the command has an explicit contract; dynamic classification leaves metadata unknown.
+
+Admission runs before every context updater and consumer. `ServerConsumedReturn` requires a real consumer and rejects typed nil rather than silently dropping it. Ordinary nil responses keep their existing behavior. `Respond` values and built-in controls bypass admission; an explicit response remains a client response. Exact pointer and value types are separate claims, and ordinary slices are never guessed to be event collections.
+
+Check validates/classifies only: it must not perform external effects. All leaves must pass before any consumer runs.
 
 ## Preserve the control boundary
 

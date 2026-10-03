@@ -57,22 +57,30 @@ func Values[R any](values ...any) Outcome[R] {
 func Control[R any](control Result[NoResponse]) Outcome[R] {
 	return Outcome[R]{[]outcomeLeaf{{controlLeaf, control}}}
 }
-func flatten(value any, kind leafKind, depth int, leaves *[]outcomeLeaf) error {
-	if nilValue(value) {
+func flatten(value any, kind leafKind, depth int, leaves *[]outcomeLeaf, admit func(any, leafKind) (leafKind, error)) error {
+	if value == nil {
 		return nil
 	}
 	if depth >= 64 {
 		return ErrUnhandledEffect
 	}
-	if graph, ok := value.(interface{ outcomeLeaves() []outcomeLeaf }); ok {
+	if graph, ok := value.(interface{ outcomeLeaves() []outcomeLeaf }); ok && !nilValue(value) {
 		for _, leaf := range graph.outcomeLeaves() {
-			if err := flatten(leaf.value, leaf.kind, depth+1, leaves); err != nil {
+			if err := flatten(leaf.value, leaf.kind, depth+1, leaves, admit); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
 	if _, void := value.(NoResponse); void {
+		return nil
+	}
+	var err error
+	kind, err = admit(value, kind)
+	if err != nil {
+		return err
+	}
+	if nilValue(value) {
 		return nil
 	}
 	*leaves = append(*leaves, outcomeLeaf{kind, value})

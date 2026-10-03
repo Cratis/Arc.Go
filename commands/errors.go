@@ -18,6 +18,12 @@ var (
 	ErrResponseType = errors.New("incompatible command response type")
 	// ErrMultipleResponses identifies ambiguous unconsumed return values.
 	ErrMultipleResponses = errors.New("multiple command responses")
+	// ErrCommitNotConfirmed identifies a completion that cannot report successful persistence.
+	ErrCommitNotConfirmed = errors.New("command commit not confirmed")
+	// ErrNilReturn identifies a typed nil claimed as a server-consumed return.
+	ErrNilReturn = errors.New("nil server-consumed command return")
+	// ErrReadModelProvider identifies a command dependency without a registered provider.
+	ErrReadModelProvider = errors.New("command read-model provider missing")
 	// ErrUnhandledEffect identifies an effect without a consumer.
 	ErrUnhandledEffect = errors.New("unhandled command effect")
 	// ErrInvalidPreparation identifies a zero preparation or missing payload.

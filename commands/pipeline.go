@@ -60,6 +60,9 @@ type pipeline struct {
 	authFilters  []extension[AuthorizationFilter]
 	responses    []extension[ResponseValueHandler]
 	participants []extension[ExecutionScope]
+	terminal     []extension[DeferredCommitParticipant]
+	admissions   []ReturnAdmission
+	models       map[reflect.Type]readModelProvider
 }
 
 func (p *pipeline) Lookup(name string) (Registration, bool) { r, ok := p.byName[name]; return r, ok }
@@ -120,7 +123,7 @@ func Execute[R any](ctx context.Context, p Pipeline, command any, options ...Exe
 		typed, ok := value.(R)
 		if !ok {
 			err = errors.Join(err, ErrResponseType)
-			return Merge(NewResult(result.Details(), response), FromError[NoResponse](result.Details().CorrelationID, ErrResponseType)), err
+			return Merge(NewResult(result.Details(), response), FromError[NoResponse](result.Details().CorrelationID, ErrResponseType)), withCompletionError(err, result.Completion())
 		}
 		response = serialization.Some(typed)
 	}
@@ -134,17 +137,20 @@ func contextID(ctx context.Context) correlation.ID {
 }
 
 type frame struct {
-	pipeline     *pipeline
-	registration Registration
-	ctx          context.Context
-	scope        *execution.Scope
-	snapshot     CommandContext
-	prepared     authorization.Prepared
-	policy       validation.Policy
-	result       Result[any]
-	err          error
-	owner        *executionState
-	parent       *frame
+	pipeline      *pipeline
+	registration  Registration
+	ctx           context.Context
+	scope         *execution.Scope
+	snapshot      CommandContext
+	prepared      authorization.Prepared
+	policy        validation.Policy
+	result        Result[any]
+	err           error
+	owner         *executionState
+	parent        *frame
+	parentContext CommandContext
+	state         map[*stateIdentity]any // guarded by owner.mu
+	ended         bool                   // guarded by owner.mu
 	// Nested fragments are guarded by owner.mu, independently for each frame.
 	nested    Result[NoResponse]
 	nestedErr error
@@ -196,20 +202,24 @@ func (p *pipeline) run(ctx context.Context, borrowed *execution.Scope, command a
 		f.owner = &executionState{top: f}
 	} else {
 		f.owner = parent.owner
+		f.parentContext = parent.snapshot
+		if current, ok := ContextFrom(ctx); ok {
+			f.parentContext = current
+		}
+		f.parentContext.values = f.parentContext.Values()
 		f.owner.mu.Lock()
 		f.owner.top = f
 		f.owner.mu.Unlock()
 	}
 	defer func() {
+		f.owner.mu.Lock()
+		f.ended, f.state = true, nil
 		if parent == nil {
-			f.owner.mu.Lock()
-			f.owner.closed = true
-			f.owner.mu.Unlock()
+			f.owner.closed, f.owner.values, f.owner.top = true, nil, nil
 		} else {
-			f.owner.mu.Lock()
 			f.owner.top = parent
-			f.owner.mu.Unlock()
 		}
+		f.owner.mu.Unlock()
 	}()
 	scope := borrowed
 	owned := scope == nil
@@ -247,14 +257,16 @@ func (p *pipeline) run(ctx context.Context, borrowed *execution.Scope, command a
 		}
 		f.fail(cleanupErr, false)
 	}
-	return f.final(), f.err
+	return f.final(), withCompletionError(f.err, f.completionReport())
 }
 func (f *frame) final() Result[any] {
 	response := serialization.Optional[any]{}
 	if f.snapshot.hasResponse {
 		response = serialization.Some(f.snapshot.response)
 	}
-	return NewResult(f.result.Details(), response)
+	details := f.result.Details()
+	details.Completion = f.completionReport()
+	return NewResult(details, response)
 }
 func (f *frame) merge(fragment Result[NoResponse], filter bool) {
 	d := fragment.Details()
@@ -348,8 +360,20 @@ func (f *frame) execute() {
 		return
 	}
 	var entered []ExecutionScope
+	var terminal DeferredCommitParticipant
 	if !f.snapshot.validationOnly && f.parent == nil {
+		if len(f.pipeline.terminal) != 0 {
+			candidate, err := activate(f, f.pipeline.terminal[0])
+			f.fail(err, false)
+			if err == nil {
+				terminal = candidate
+				f.fail(f.call(terminal.Begin), false)
+			}
+		}
 		for _, entry := range f.pipeline.participants {
+			if !f.result.IsSuccess() {
+				break
+			}
 			participant, err := activate(f, entry)
 			f.fail(err, false)
 			if err != nil {
@@ -390,6 +414,10 @@ func (f *frame) execute() {
 			}
 			f.fail(err, false)
 			f.mergeNested()
+		}
+		if !nilValue(terminal) {
+			f.fail(f.ctx.Err(), false)
+			f.completeTerminal(cleanup, terminal)
 		}
 	}()
 	if !f.result.IsSuccess() {

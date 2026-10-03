@@ -132,7 +132,7 @@ func (f *frame) consumers(handlers []ResponseValueHandler, leaf outcomeLeaf) ([]
 }
 func (f *frame) process(output any) {
 	var leaves []outcomeLeaf
-	if err := flatten(output, valueLeaf, 0, &leaves); err != nil {
+	if err := flatten(output, valueLeaf, 0, &leaves, f.admitReturn); err != nil {
 		f.fail(err, false)
 		return
 	}

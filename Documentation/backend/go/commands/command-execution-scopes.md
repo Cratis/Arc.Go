@@ -19,10 +19,20 @@ An `execution.Scope` guards security and resource lifetime. A `commands.Executio
 
 The unbound pipeline starts a fresh owner and independent resources even when called from inside Handle. `Invocation.Pipeline()` instead joins the active owner and borrows compatible resources. Participants begin and complete once at the root, not for each child.
 
-Child commands get distinct contexts and receipts while inheriting correlation unless explicitly changed. Ignored child failures remain sticky: discarding a result does not turn the root into success. A child uses its own bound executor for further nesting; reusing an active ancestor executor fails.
+Child commands get distinct contexts and receipts while preserving correlation. A bound executor rejects a changed correlation; use an independent root execution for a new operation. Ignored child failures remain sticky: discarding a result does not turn the root into success. A child uses its own bound executor for further nesting; reusing an active ancestor executor fails.
 
 ## Keep nested calls synchronous
 
 The bound executor rejects concurrent admission, expired callbacks, security mismatch, and Execute from a validation-only frame. Do not retain it or leave child work running after the callback returns. The framework joins an admitted child before expiring that callback and reports invalid concurrent lifetime use; it cannot forcibly stop an application callback that ignores cancellation.
 
-Queries sharing an explicitly supplied operation scope do not enlist in command completion. Chronicle transactions, operations, compensation, commit facts, and recovery are not implemented by these generic participants. Cleanup is not rollback.
+Queries sharing an explicitly supplied operation scope do not enlist in command completion. These generic participants do not implement Chronicle transactions, operations, compensation, or recovery. Cleanup is not rollback.
+
+## Complete deferred persistence last
+
+`AddDeferredCommitParticipant` registers one provider-neutral terminal participant. Its Begin runs before ordinary participants; its Complete runs after all ordinary completion callbacks, regardless of registration order. The result includes ignored nested failures and cancellation. The participant must not commit open work when that result is unsuccessful. New nested commands cannot enter during terminal completion. A second terminal participant is rejected: this is not distributed transaction coordination.
+
+Complete returns a `CompletionReport` and an error. Report `NoPersistedWork`, `NotCommitted`, `Committed`, `OutcomeUnknown`, or `MixedCommit` from provider evidence, not merely a nil error or a completed flag. Domain rejection belongs in a validation-bearing error; input severity filtering does not suppress terminal failures. Begin reserves ownership without connection or protected dependency activation. Validate never activates this participant.
+
+`commands.ReportCommit` records an early completion. `Result.Completion()` retains the report through later command, resource-disposal, or serialization failures; `CompletionError` also retains the cause for `errors.Is` and `errors.As`. Neither the report nor disposition adds an HTTP envelope field. Failed commands still omit every response, including false, zero, and empty strings. Unknown outcomes require reconciliation or application idempotency before resubmission, not an automatic retry.
+
+Resource disposal follows persistence and can fail after a confirmed commit. Returning a failed command in that situation does not undo the write.

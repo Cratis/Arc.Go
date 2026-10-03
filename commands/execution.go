@@ -8,14 +8,19 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/cratis/arc.go/correlation"
 	"github.com/cratis/arc.go/execution"
 	"github.com/cratis/arc.go/serialization"
 )
 
 type executionState struct {
-	mu     sync.Mutex
-	top    *frame
-	closed bool
+	mu         sync.Mutex
+	top        *frame
+	closed     bool
+	completing bool
+	values     map[*stateIdentity]any
+	report     CompletionReport
+	reports    uint64
 }
 
 // Execution is a callback-scoped view of synchronous command ownership. It is not
@@ -49,7 +54,13 @@ func (e *Execution) Check(ctx context.Context) error {
 	if top != e.frame {
 		return ErrExecutionMismatch
 	}
-	return scope.CheckContext(ctx)
+	if err := scope.CheckContext(ctx); err != nil {
+		return err
+	}
+	if correlation.FromContext(ctx) != e.frame.snapshot.correlation {
+		return ErrExecutionMismatch
+	}
+	return nil
 }
 func (f *frame) mergeNested() {
 	f.owner.mu.Lock()
@@ -110,9 +121,13 @@ func (b *boundPipeline) run(ctx context.Context, scope *execution.Scope, command
 	if err := b.invocation.owner.Check(ctx); err != nil {
 		return b.rejected(ctx, err, validate)
 	}
-	if scope != b.scope || (b.frame.snapshot.validationOnly && !validate) {
+	b.frame.owner.mu.Lock()
+	completing := b.frame.owner.completing
+	b.frame.owner.mu.Unlock()
+	if completing || scope != b.scope || (b.frame.snapshot.validationOnly && !validate) {
 		return b.rejected(ctx, ErrExecutionMismatch, validate)
 	}
+	ctx = context.WithValue(ctx, commandContextKey{}, b.invocation.CommandContext())
 	result, err = b.pipeline.run(ctx, scope, command, validate, b.frame, options)
 	if !result.IsSuccess() && (!validate || b.frame.snapshot.validationOnly) {
 		b.record(result, err)

@@ -31,6 +31,10 @@ func WithValidationResults(id correlation.ID, findings ...validation.Result) Res
 // It retains no response. The caller still owns and may inspect the original error.
 func FromError[R any](id correlation.ID, err error) Result[R] {
 	d := Details{CorrelationID: id, Authorized: true}
+	var completion *CompletionError
+	if errors.As(err, &completion) {
+		d.Completion = completion.Report
+	}
 	failure := boundary.Classify(err)
 	d.ValidationResults = failure.Findings
 	for _, exception := range failure.Exceptions {
@@ -52,6 +56,7 @@ func Merge[R any](result Result[R], fragments ...Result[NoResponse]) Result[R] {
 	d := result.Details()
 	for _, fragment := range fragments {
 		f := fragment.Details()
+		d.Completion = mergeCompletion(d.Completion, f.Completion)
 		d.Authorized = d.Authorized && f.Authorized
 		d.ValidationResults = append(d.ValidationResults, f.ValidationResults...)
 		d.ExceptionMessages = append(d.ExceptionMessages, f.ExceptionMessages...)

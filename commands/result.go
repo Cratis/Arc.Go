@@ -25,6 +25,8 @@ type NoResponse struct{}
 type Details struct {
 	// CorrelationID is echoed unchanged; transport normalization happens separately.
 	CorrelationID concepts.UUID
+	// Completion is server-side persistence evidence, never serialized in the envelope.
+	Completion CompletionReport `json:"-"`
 	// Authorized states the final authorization decision.
 	Authorized bool
 	// ValidationResults are retained findings after severity filtering.
@@ -80,6 +82,9 @@ func (r Result[R]) Details() Details {
 // omitted on the wire, even if present locally, matching C# null omission.
 func (r Result[R]) Response() (R, bool) { return r.response.Value() }
 
+// Completion returns persistence evidence, including after command/cleanup failure.
+func (r Result[R]) Completion() CompletionReport { return r.details.Completion }
+
 // IsAuthorized reports the final authorization decision.
 func (r Result[R]) IsAuthorized() bool { return r.details.Authorized }
 
@@ -104,7 +109,8 @@ func (r Result[R]) MarshalJSON() ([]byte, error) {
 
 // MarshalJSONWith encodes nested values using the supplied Arc traversal. The
 // callback is synchronous and is not retained; callers normally use MarshalJSON.
-func (r Result[R]) MarshalJSONWith(encode func(any) ([]byte, error)) ([]byte, error) {
+func (r Result[R]) MarshalJSONWith(encode func(any) ([]byte, error)) (body []byte, err error) {
+	defer func() { err = withCompletionError(err, r.Completion()) }()
 	var response json.RawMessage
 	if value, present := r.Response(); present {
 		var err error

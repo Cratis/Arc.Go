@@ -32,6 +32,9 @@ type Registry struct {
 	responses     []extension[ResponseValueHandler]
 	responseTypes map[string]reflect.Type
 	participants  []extension[ExecutionScope]
+	terminal      []extension[DeferredCommitParticipant]
+	admissions    []ReturnAdmission
+	models        map[reflect.Type][]readModelProvider
 }
 type extension[T any] struct {
 	name    string
@@ -144,7 +147,17 @@ func (r *Registry) Build(options PipelineOptions) (Pipeline, error) {
 		return nil, err
 	}
 	p := &pipeline{options: options, byType: make(map[reflect.Type]Registration), byName: make(map[string]Registration), providers: append([]extension[ContextValuesProvider](nil), r.providers...), keys: append([]extension[KeyResolver](nil), r.keys...), filters: append([]extension[Filter](nil), r.filters...), authFilters: append([]extension[AuthorizationFilter](nil), r.authFilters...), responses: append([]extension[ResponseValueHandler](nil), r.responses...), participants: append([]extension[ExecutionScope](nil), r.participants...)}
+	p.terminal = append([]extension[DeferredCommitParticipant](nil), r.terminal...)
+	p.admissions = append([]ReturnAdmission(nil), r.admissions...)
+	p.models = r.readModelProviders()
 	for _, entry := range r.registrations {
+		if !entry.responseOverride && entry.responseKind == ResponseUnknown {
+			for _, admission := range r.admissions {
+				if admission.claims(entry.adapter.returnType) {
+					entry.responseKind, entry.responseType = ResponseNone, nil
+				}
+			}
+		}
 		if entry.responseKind == ResponseUnknown && r.responsesCannotMatch(entry.adapter.returnType) && entry.adapter.returnType.Kind() != reflect.Interface {
 			entry.responseKind, entry.responseType = ResponseValue, entry.adapter.returnType
 		}
@@ -154,6 +167,11 @@ func (r *Registry) Build(options PipelineOptions) (Pipeline, error) {
 	return p, nil
 }
 func (r *Registry) responsesCannotMatch(output reflect.Type) bool {
+	for _, admission := range r.admissions {
+		if len(admission.Types) == 0 || admission.claims(output) {
+			return false
+		}
+	}
 	for _, handler := range r.responses {
 		typ, typed := r.responseTypes[handler.name]
 		if !typed || matchesConsumerType(typ, output) {
@@ -210,6 +228,9 @@ func (r *Registry) extensionKeys() [][]di.Key {
 		result = append(result, e.keys)
 	}
 	for _, e := range r.participants {
+		result = append(result, e.keys)
+	}
+	for _, e := range r.terminal {
 		result = append(result, e.keys)
 	}
 	return result
