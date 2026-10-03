@@ -35,7 +35,10 @@ fail binding; JSON-node collections require explicit custom bindings.
 
 Reserved names are case-insensitive: `page`, `pageSize`, `sortby`, `sortDirection`,
 `waitForFirstResult`, and `waitForFirstResultTimeout`. Repeated or case-folded duplicate
-controls fail; wait controls are excluded from arguments but no waiting is implemented.
+controls fail; wait controls are excluded from arguments. Observable registrations
+support bounded first-result waits with Boolean text and positive finite seconds;
+ordinary snapshots remain unary. For QUERY, the body supplies arguments while URL
+wait controls remain separate. See [observable HTTP](observable-http.md).
 Repeated caller collections collapse through comma splitting and trimming.
 
 Parsed int32 size enables paging even for zero/negative size; active pipeline

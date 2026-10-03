@@ -10,9 +10,11 @@ Keep selection logic beside the state it returns. Arc.Go queries belong to an
 ordinary read-model struct, with unnamed value-receiver methods standing in for
 C# static methods. You can also use explicitly owned top-level functions.
 
-This surface executes **snapshots**. HTTP hosting, generated adapters, subscriptions
-and persistence adapters are separate work; source directives do not register
-queries at runtime. No database or dependency-injection container is required.
+Start with a snapshot, or register an [observable source](observable-queries.md)
+when you need live results. HTTP hosting supports both; handwritten registration
+remains the observable authoring path while generated observable adapters await
+their separate tools lane. Source directives do not register queries at runtime.
+No database or dependency-injection container is required.
 
 ## Return a first snapshot
 
@@ -85,3 +87,6 @@ model is ready-null, not a pending query.
 - [Paging](model-bound/paging.md): provider rendering versus already-windowed pages.
 - [Query pipeline](query-pipeline.md): lifecycle, staging and local errors.
 - [Query results](results.md): the unchanged wire envelope and status precedence.
+- [Observable queries](observable-queries.md): owned sources, current values and subscriptions.
+- [Observable HTTP](observable-http.md): current/pending/wait and direct transports.
+- [Observable hubs](observable-query-hub.md): revisions, ownership and transfer modes.

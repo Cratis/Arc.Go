@@ -28,11 +28,16 @@ interceptors in registration order, and items run sequentially in collection ord
 This deliberately differs from C#'s concurrent item processing while preserving
 result order. Nil single models and nil pointer elements skip item transformation.
 
-Collection membership is copied before transformation, not deeply cloned. Return
-safe transformed models; a pointer interceptor that mutates a shared model can
-still expose a race or modify repository state. Shared callbacks must be concurrent-safe
-across independent query executions.
+For ordinary snapshots, collection membership is copied before transformation,
+not deeply cloned. Return safe transformed models; a pointer interceptor that
+mutates a shared repository model can still expose a race. Observable candidates
+are detached before rendering/interception and again before retention, so one
+subscriber's masking cannot mutate another's source view. Publishers must still
+honor the source's immutable-value or clone contract. Shared callbacks must be
+concurrent-safe across independent query executions.
 
 A factory error, panic, cancellation or item failure retracts the whole snapshot.
 No partly masked collection is published. Interceptors cannot secure pre-render
-counts; apply row authorization at the selection source.
+counts; apply row authorization at the selection source. Observable
+[emission guards](observable-emission-guards.md) run after interception, and
+[delta removals](change-stream.md) use previously delivered masked items.

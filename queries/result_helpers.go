@@ -49,7 +49,6 @@ func Merge[R any](outer Result[R], fragments ...Result[any]) Result[R] {
 }
 func finalize[R any](r Result[R], expose bool) Result[R] {
 	d := r.Details()
-	d.Ready = true
 	if !expose {
 		for i := range d.ExceptionMessages {
 			d.ExceptionMessages[i] = boundary.InternalErrorMessage
@@ -57,6 +56,7 @@ func finalize[R any](r Result[R], expose bool) Result[R] {
 		d.ExceptionStackTrace = ""
 	}
 	if !d.Authorized || len(d.ValidationResults) > 0 || len(d.ExceptionMessages) > 0 {
+		d.Ready = true
 		d.ChangeSet = nil
 		return NewResult(d, serialization.Optional[R]{})
 	}

@@ -5,7 +5,11 @@ description: Keep command and query behavior on your models and generate their t
 
 Writing a registration closure for every command repeats information already in
 its method signature. The experimental `arc-gen` tool reads opted-in Go packages
-and writes those adapters for you. Your business methods remain ordinary Go;
+and writes command/snapshot adapters for you. Observable source and
+`ObservedCollection` generation require the separate tools lane to pin a fetchable
+runtime revision and add its own executable evidence; use
+[manual observable registration](../queries/observable-queries.md) meanwhile.
+Your business methods remain ordinary Go;
 the generated code uses the same public registrars and pipelines as manual wiring.
 
 ## Put behavior on the model

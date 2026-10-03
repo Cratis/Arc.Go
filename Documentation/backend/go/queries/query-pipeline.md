@@ -26,6 +26,26 @@ All retained validation findings block queries, including information and warnin
 Snapshot results are ready; successful nil is ready-null. Failure never manufactures
 pending state. Existing result constructors remain independent of pipeline finalization.
 
+## Observable delivery
+
+`RegisterObservable` reuses admission, then owns one source stream and its resources
+for the observation lifetime. Current/pending/wait snapshots do not force pending
+success to ready. Every stream candidate rechecks authorization/membership, detaches
+its data, renders/intercepts, runs emission guards and waits for delivery acknowledgement.
+Input filters run once. Suppression never advances the delivered baseline.
+
+The additive `ObservablePipeline` provides Open and CloseObservations without
+extending custom snapshot-only Pipeline implementations. Run is single-use and
+synchronous; caller-created observations require Close. Failed opening cleanup
+remains counted until joining. Scope disposal is at most once; only an explicit
+`execution.ResourcesJoiner` may resume its join after a timeout. Ordinary completed
+disposal failures remain errors but do not retain an observation forever.
+
+See [observable queries](observable-queries.md),
+[emission guards](observable-emission-guards.md) and
+[collection baselines](change-stream.md). Observable PerformScoped is explicitly
+unsupported; it cannot borrow a command's shorter operation lifetime.
+
 ## Registries and extensions
 
 `Registry` is a single-owner builder; its zero value uses the global namespace.

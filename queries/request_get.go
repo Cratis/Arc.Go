@@ -48,5 +48,20 @@ func ReadGET(values url.Values) (Request, error) {
 		}
 		p.Sorting = Sorting{Field: SortField(field), Direction: d}
 	}
-	return NewRequest(a, p), nil
+	return NewRequest(a, p).WithWait(parseWait(controls)), nil
+}
+
+func readWaitControls(values url.Values) (map[string]string, error) {
+	controls := map[string]string{}
+	for name, entries := range values {
+		key := strings.ToLower(name)
+		if key != "waitforfirstresult" && key != "waitforfirstresulttimeout" {
+			continue
+		}
+		if _, exists := controls[key]; exists || len(entries) != 1 {
+			return nil, &ReadError{Malformed: true, Cause: ErrInvalidArguments}
+		}
+		controls[key] = entries[0]
+	}
+	return controls, nil
 }

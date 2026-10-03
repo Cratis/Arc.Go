@@ -1,6 +1,6 @@
 ---
-title: Snapshot HTTP contract
-description: Look up Arc.Go unary methods, status overrides, wire headers and privacy behavior.
+title: HTTP contract
+description: Look up Arc.Go methods, status overrides, wire headers and observable transport boundaries.
 ---
 
 ## Routes and methods
@@ -35,7 +35,8 @@ floors cannot be weakened. Default policy retains Error only.
 Normal precedence is success 200, unauthorized 403, invalid 400, query-not-ready
 202, otherwise 500. Transport overrides are credential rejection 401, reader
 failure 400, oversized input 413, unsupported representation 415, unavailable
-admission 503 and routing 404/405. Cancellation does not invent a 499 status.
+admission 503 and routing 404/405. Observable first-result wait expiry is 408;
+[hub controls](../queries/observable-query-hub.md) have their own empty-body status contract. Cancellation does not invent a 499 status.
 
 JSON is `application/json; charset=utf-8`, encoded before commitment. Required
 arrays stay `[]`; legitimate scalar zero/false/empty command responses remain
@@ -54,8 +55,12 @@ Production exception text is exactly:
 
 Stack detail is empty unless explicitly enabled. QUERY no-store applies to every
 matched failure, including authentication and admission. HEAD executes GET,
-computes status/representation length and suppresses bytes; snapshot reads never
-negotiate streams or fabricate wait behavior.
+computes status/representation length and suppresses bytes for snapshot queries.
+Observable HEAD checks admission without performer/source activation or waiting.
+Observable routes prioritize valid GET WebSocket upgrades, then SSE Accept, then
+current/pending/wait snapshots. Ordinary snapshot queries never become streams.
+See [observable HTTP](../queries/observable-http.md) for full framing, wait controls,
+terminal errors and non-resumable reconnection.
 
 ## Metadata and identity
 

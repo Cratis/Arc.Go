@@ -22,6 +22,7 @@ type Registry struct {
 	renderers     map[reflect.Type]rendererEntry
 	interceptors  []interceptorEntry
 	filters       []filterEntry
+	guards        []guardEntry
 }
 
 // NewRegistry validates namespace configuration without activating dependencies.

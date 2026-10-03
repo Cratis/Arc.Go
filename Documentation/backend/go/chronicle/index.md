@@ -7,6 +7,12 @@ An Arc command can return a registered event instead of calling the event store.
 
 **Source preview:** the integration has no tagged release. It requires Go 1.26 or later and independently fetchable Arc/Chronicle dependencies. The kernel contract tests target `cratis/chronicle:19.29.4-development`. Do not treat this slice as complete C# integration parity; the [parity ledger](../../../parity.md) records the boundaries.
 
+Arc's [observable sources](../queries/observable-queries.md) can consume an
+application-owned feed, but this module does not provide Chronicle read-model
+watches. Do not simulate authoritative watches from command append notifications;
+a future SDK watch adapter must own cancellation/join and store/namespace/key
+selection. MongoDB watches are also separate work.
+
 ## Run the task-board example
 
 From a repository checkout, start a development kernel and run the example in the nested module:

@@ -11,14 +11,53 @@ import (
 )
 
 // Resources is an application-owned holder for operation dependencies. Close
-// must honor its context. A Fundamentals dependencyinjection.Scope satisfies it
-// structurally; plain Go holders need no dependency-injection contract.
+// must honor its context. Close is called at most once; its returned failure is
+// final unless the holder explicitly implements ResourcesJoiner. A Fundamentals
+// dependencyinjection.Scope satisfies it structurally; plain Go holders need no
+// dependency-injection contract.
 type Resources = interface{ Close(context.Context) error }
+
+// ResourcesJoiner explicitly separates one-time disposal initiation from joining
+// owned cleanup. Scope calls Resources.Close at most once, then Join. Close must
+// initiate cleanup even if its context expires; Join must not initiate disposal or
+// repeat side effects. Join is serialized and may be called again after a context
+// error or panic (which leaves completion unknown). A returned non-context Join
+// result certifies that all owned cleanup has ended,
+// including on failure; repeated Join after completion must return that outcome.
+// Context errors from Close/Join mean incomplete waiting, not final disposal
+// failures. Non-context Close/Join diagnostics, including recovered panics,
+// remain inspectable alongside the eventual Join result.
+// Scope starts no cleanup goroutine; the holder owns, cancels and joins its work.
+type ResourcesJoiner interface {
+	Join(context.Context) error
+}
 
 // OpenResources opens cheap/lazy resources, not handler dependencies. A returned
 // holder is owned even when accompanied by an error. Arc owns this operation
 // seam; supplying a container is optional.
 type OpenResources = func(context.Context) (Resources, error)
+
+// PendingScopeError retains an owning scope whenever Scope.Close has not joined.
+// Callers of unary pipelines, RunWithResources and OpenScope must inspect this
+// error with errors.As and finish Scope().Close with a fresh budget. Failed
+// OpenScope still returns a nil scope with its error.
+// The scope admits no new work. Closing it joins admitted uses before at-most-once
+// disposal; after disposal starts, only an explicit resource join can resume.
+// A caller that transfers this error also transfers cleanup
+// ownership; ignoring it does not prove that resources have stopped.
+type PendingScopeError struct {
+	scope *Scope
+	err   error
+}
+
+// Error returns the original cleanup and any opening diagnostics.
+func (e *PendingScopeError) Error() string { return e.err.Error() }
+
+// Unwrap preserves opening, context and ErrScopeJoinPending error identities.
+func (e *PendingScopeError) Unwrap() error { return e.err }
+
+// Scope returns the retained owning scope for cleanup, never for execution.
+func (e *PendingScopeError) Scope() *Scope { return e.scope }
 
 // ErrResourceType identifies an absent or incompatible resource holder.
 var ErrResourceType = errors.New("incompatible operation resources")
@@ -26,7 +65,8 @@ var ErrResourceType = errors.New("incompatible operation resources")
 // OpenScope captures security before opening resources and rechecks it afterward.
 // Nil openers and nil resources yield valid empty scopes; typed nils are invalid.
 // Failed opening disposes acquired resources with a detached 30-second cleanup
-// budget and joins errors. Panics at application boundaries become PanicError.
+// budget and joins errors. If cleanup is incomplete, PendingScopeError retains
+// the scope for the caller to finish joining. Panics become PanicError.
 func OpenScope(ctx context.Context, open OpenResources) (*Scope, error) {
 	if ctx == nil {
 		return nil, ErrInvalidArgument
@@ -51,7 +91,13 @@ func OpenScope(ctx context.Context, open OpenResources) (*Scope, error) {
 	if err != nil {
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
-		return nil, errors.Join(err, scope.Close(cleanup))
+		closeErr := scope.Close(cleanup)
+		if pending, ok := closeErr.(*PendingScopeError); ok {
+			// Preserve the opening diagnostics in the ownership-bearing error
+			// without nesting the wrapper returned by Close.
+			return nil, &PendingScopeError{scope: scope, err: errors.Join(err, pending.err)}
+		}
+		return nil, errors.Join(err, closeErr)
 	}
 	return scope, nil
 }
