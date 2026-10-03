@@ -58,6 +58,7 @@ func finalize[R any](r Result[R], expose bool) Result[R] {
 	if !d.Authorized || len(d.ValidationResults) > 0 || len(d.ExceptionMessages) > 0 {
 		d.Ready = true
 		d.ChangeSet = nil
+		d.Paging = PagingInfo{}
 		return NewResult(d, serialization.Optional[R]{})
 	}
 	return NewResult(d, r.data)
