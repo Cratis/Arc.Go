@@ -6,6 +6,7 @@ package mongodb
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/cratis/arc.go/observable"
 	"github.com/cratis/arc.go/queries"
@@ -26,6 +27,11 @@ type findSource[T any] struct {
 // a fresh detached Find instruction, initially only after cursor establishment,
 // then on namespace invalidation. Rendering and authorization remain Arc-owned.
 // This Source has no Current value: plain non-wait snapshots remain pending.
+// Streams retain only Open's Done channel and copied deadline, not its values.
+// Cancellation first observed at/after that deadline is DeadlineExceeded;
+// otherwise it is Canceled. Historical cancellation errors/causes are not retained.
+// Next's supplied context still propagates its actual Err. Close releases the
+// subscription cancellation state after joining active Next work.
 func Observe[T any](watcher *Watcher, collection *Collection[T], selection Find[T]) (observable.Source[Find[T]], error) {
 	if watcher == nil || watcher.client == nil || watcher.lifetime == nil || collection == nil || collection.registry == nil || collection.client != watcher.client {
 		return nil, ErrConfiguration
@@ -40,7 +46,28 @@ func Observe[T any](watcher *Watcher, collection *Collection[T], selection Find[
 type findStream[T any] struct {
 	source *findSource[T]
 	sub    *watchSubscriber
-	ctx    context.Context // independently owned subscription, not shared reader
+	// Protected by watcher.mu. No parent context, method, callback or wrapper
+	// may retain performer values. subscriptionErr is only a standard sentinel.
+	subscriptionDone        <-chan struct{}
+	subscriptionDeadline    time.Time
+	subscriptionHasDeadline bool
+	subscriptionErr         error
+}
+
+// subscriptionError requires watcher.mu and fixes classification on first
+// observation. A Done channel cannot reveal an earlier cancellation's cause.
+func (s *findStream[T]) subscriptionError() error {
+	if s.subscriptionErr == nil {
+		select {
+		case <-s.subscriptionDone:
+			s.subscriptionErr = context.Canceled
+			if s.subscriptionHasDeadline && !time.Now().Before(s.subscriptionDeadline) {
+				s.subscriptionErr = context.DeadlineExceeded
+			}
+		default:
+		}
+	}
+	return s.subscriptionErr
 }
 
 func (source *findSource[T]) Open(ctx context.Context) (observable.Stream[Find[T]], error) {
@@ -116,19 +143,23 @@ func (source *findSource[T]) Open(ctx context.Context) (observable.Stream[Find[T
 	if start {
 		go w.readDatabase(d)
 	}
-	stream := &findStream[T]{source, sub, ctx}
+	stream := &findStream[T]{source: source, sub: sub, subscriptionDone: ctx.Done()}
+	if deadline, ok := ctx.Deadline(); ok {
+		stream.subscriptionDeadline = deadline.UTC()
+		stream.subscriptionHasDeadline = true
+	}
 	select {
 	case <-d.ready:
 	case <-ctx.Done():
 		w.mu.Lock()
-		w.stopSubscriber(sub, ctx.Err())
+		w.stopSubscriber(sub, stream.subscriptionError())
 		w.mu.Unlock()
 		return stream, ctx.Err()
 	}
 	w.mu.Lock()
 	err = errors.Join(sub.failure, ctx.Err())
 	if err != nil {
-		w.stopSubscriber(sub, err)
+		w.stopSubscriber(sub, errors.Join(sub.failure, stream.subscriptionError()))
 	}
 	w.mu.Unlock()
 	return stream, err
@@ -150,6 +181,8 @@ func (s *findStream[T]) Next(ctx context.Context) (Find[T], error) {
 		return zero, observable.ErrConcurrentNext
 	}
 	sub.active = make(chan struct{})
+	subscriptionDone := s.subscriptionDone
+	subscriptionErr := s.subscriptionError()
 	w.mu.Unlock()
 	defer func() {
 		w.mu.Lock()
@@ -157,19 +190,23 @@ func (s *findStream[T]) Next(ctx context.Context) (Find[T], error) {
 		sub.active = nil
 		w.mu.Unlock()
 	}()
-	if err := errors.Join(ctx.Err(), s.ctx.Err()); err != nil {
+	err := errors.Join(ctx.Err(), subscriptionErr)
+	if err != nil {
 		return zero, err
 	}
 	select {
 	case <-ctx.Done():
 		return zero, ctx.Err()
-	case <-s.ctx.Done():
-		return zero, s.ctx.Err()
+	case <-subscriptionDone:
+		w.mu.Lock()
+		err = s.subscriptionError()
+		w.mu.Unlock()
+		return zero, err
 	case <-sub.terminal:
 	case <-sub.markers:
 	}
 	w.mu.Lock()
-	err := sub.failure
+	err = sub.failure
 	w.mu.Unlock()
 	if err != nil {
 		return zero, err
@@ -202,6 +239,10 @@ func (s *findStream[T]) Close(ctx context.Context) error {
 		delete(sub.database.subs, sub)
 		sub.removed = true
 	}
+	s.subscriptionDone = nil
+	s.subscriptionDeadline = time.Time{}
+	s.subscriptionHasDeadline = false
+	s.subscriptionErr = nil
 	w.mu.Unlock()
 	// A subscriber owns no cursor/reader and must not stop the shared owner.
 	return nil

@@ -240,6 +240,16 @@ or resolved tenant databases do not. There is no global registry or client cache
 Without Arc query metadata, direct Open uses NotSet and an unnamed query key.
 Database selection is not tenant membership authorization.
 
+A stream retains only Open's cancellation channel and copied deadline, not the
+performer's context, query metadata or custom cancellation cause. When it first
+observes that channel closed, it records `context.DeadlineExceeded` at or after
+the copied deadline, otherwise `context.Canceled`. That classification stays
+fixed. Cancellation before a deadline but first observed after it therefore
+reports deadline exceeded; exact historical errors/custom causes cannot be
+reconstructed from the channel. Next's own supplied context still propagates
+its actual error. Joined Stream Close releases the copied cancellation state;
+a pending Close keeps it until the active Next joins.
+
 Zero options select: 32 databases, 1024 total subscribers, 64 subscribers per
 resolved database/collection/logical-query name, 16 queued markers, 64 KiB frozen
 filter, ten-second opening and five-second cursor-cleanup budgets. Negative
@@ -277,6 +287,8 @@ incremental membership/pages, and uses unbounded joined-observation channels.
 This checkpoint has none of that current/replay, single-result, join or automatic
 recovery parity. It retains no query scope for refetch callbacks.
 
+`stream_context_test.go` verifies metadata/context-method nonretention, first
+observation cancellation classification and continued/concurrent stream joins.
 `find_snapshot_test.go`, `watcher_test.go` and `observe_test.go` provide native BSON
 detachment, deterministic handoff/fanout/limits, cancellation/continued joining,
 terminal recovery and existing-Arc-renderer unit evidence. `watch_driver_test.go`

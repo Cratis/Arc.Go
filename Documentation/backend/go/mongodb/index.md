@@ -178,6 +178,14 @@ then subsequent changes. A generation hint alone does not reset delivery state.
 There is no live connection migration, durable checkpoint, replay, gap-free
 recovery or browser automatic-resubscription guarantee.
 
+Streams retain Open's cancellation channel and copied deadline, not its query
+metadata or context values. Cancellation first observed at/after that deadline
+reports `context.DeadlineExceeded`; before it, `context.Canceled`. The first
+classification stays fixed, so an earlier cancellation observed late cannot
+preserve its historical error or custom cause. Next's supplied context still
+propagates its actual error. Stream Close releases this state only after joining
+active Next work.
+
 Drain `CloseObservations`, then join `Watcher.Close`, then disconnect your borrowed
 client. Continue a canceled join wait with a fresh context. A failed cursor
 disposal remains an error and blocks generation replacement; repeating Close
