@@ -1,0 +1,10 @@
+[
+  {"name":"valid lower boundary","input":{"text":"ab","value":1,"tags":["x"]},"messages":[]},
+  {"name":"valid upper boundary","input":{"text":"abcd","value":4,"tags":["x"]},"messages":[]},
+  {"name":"short and zero and empty","input":{"text":"a","value":0,"tags":[]},"messages":["Minimum","Range","Above","At least","Tags"]},
+  {"name":"long and upper exclusive","input":{"text":"abcde","value":5,"tags":["x"]},"messages":["Maximum","Range","Below","At most"]},
+  {"name":"null presence","input":{"text":null,"value":2,"tags":null},"messages":["Present","Tags"]},
+  {"name":"UTF16 surrogate pair","input":{"text":"😀","value":2,"tags":["x"]},"messages":[]},
+  {"name":"fractional boundaries","input":{"text":"abc","value":0.5,"tags":["x"]},"messages":["At least"]},
+  {"name":"empty text and negative","input":{"text":"","value":-1,"tags":["x"]},"messages":["Minimum","Range","Above","At least"]}
+]

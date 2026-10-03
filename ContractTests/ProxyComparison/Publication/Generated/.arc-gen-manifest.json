@@ -1,0 +1,53 @@
+{
+  "format": 1,
+  "owner": "production-fixture",
+  "scope": "237b3b481f147a352ff1922e36c748a581ff4ff9d9d53948efc50c864571c0a8",
+  "fingerprint": "d1401925d0b68137f060add8cc05c30b26fdb1a5fbc0cabc1ae11d7d2d31e591",
+  "files": [
+    {
+      "root": "go",
+      "path": "zz_arc_generated.go",
+      "hash": "85e1af001d2c51d2981f3239ee4b2021c753d98e2e00c113c86777e1d91cbb85"
+    },
+    {
+      "root": "ts",
+      "path": "Shared/Detail.ts",
+      "hash": "40d06fe2c04cbaeca41e3d69ee08cf87042bf8abaf33d7780663ce8280989602"
+    },
+    {
+      "root": "ts",
+      "path": "Shared/Status.ts",
+      "hash": "ba8cacb0c8efa33967f0f90c7a9a62e28812bbb5c4c56da2acfef014a1a857d5"
+    },
+    {
+      "root": "ts",
+      "path": "Shared/index.ts",
+      "hash": "c60eba30cf234054e96f944ec1dea9d484b4354948faac4d6e1950ccf59065d2"
+    },
+    {
+      "root": "ts",
+      "path": "Tasks/All.ts",
+      "hash": "e6ef5ce7c5db8c9c6bd248d345f85cf193f9d544e3c017e74688954618397bda"
+    },
+    {
+      "root": "ts",
+      "path": "Tasks/Echo.ts",
+      "hash": "eec43f835107306b68209ce11a59679d24510368f42bcf83c089202cf2fd5357"
+    },
+    {
+      "root": "ts",
+      "path": "Tasks/Find.ts",
+      "hash": "6ed9655f94381b302d4994e8109ec845f37d6f26a452e72b71af2a2606b3a269"
+    },
+    {
+      "root": "ts",
+      "path": "Tasks/Listing.ts",
+      "hash": "cbbb2871af9f5a3765a802513e2ca2335067642e3cf4be6d8778033cbc50affd"
+    },
+    {
+      "root": "ts",
+      "path": "Tasks/index.ts",
+      "hash": "f65b82f9e3f3095a260d8bc9f71dc8dac5a66ec3b491f9faba21aadb5442aa86"
+    }
+  ]
+}

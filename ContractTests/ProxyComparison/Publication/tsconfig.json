@@ -1,0 +1,17 @@
+{
+  "extends": "../tsconfig.reference.json",
+  "compilerOptions": {
+    "verbatimModuleSyntax": true,
+    "experimentalDecorators": false,
+    "noEmit": false,
+    "rootDir": "../../../.ai-work/output/ts-publication/consumer/web",
+    "outDir": "../../../.ai-work/output/ts-publication/tsc",
+    "baseUrl": ".",
+    "paths": {
+      "@cratis/arc/*": ["../node_modules/@cratis/arc/dist/esm/*/index.d.ts"],
+      "@cratis/arc.react/*": ["../node_modules/@cratis/arc.react/dist/esm/*/index.d.ts"],
+      "@cratis/fundamentals": ["../node_modules/@cratis/fundamentals/dist/esm/index.d.ts"]
+    }
+  },
+  "include": ["../../../.ai-work/output/ts-publication/consumer/web/**/*.ts"]
+}
