@@ -5,8 +5,7 @@ description: Compile operation declarations and evaluate trusted identity before
 
 A validation warning must never bypass a permission check. Arc.Go separates
 metadata preparation, role checks and policy evaluation so you can gate an
-operation before constructing its validators or handler. These are foundations;
-command/query pipelines and HTTP enforcement are not implemented yet.
+operation before constructing its validators or handler. Both command/query pipelines and their HTTP endpoints enforce this ordering.
 
 ## Declare operation requirements
 
@@ -54,10 +53,10 @@ Names are nonempty exact strings with no surrounding whitespace or control
 characters. Empty roles, unknown/duplicate policies, invalid/duplicate artifact
 identities, contradictory declarations and unsupported catalog versions fail.
 Every named authentication-scheme declaration is rejected, matching native Core.
-Route resolution is separate: future root Build must call both compilers.
+Root Build compiles one evaluator over the combined command/query catalog.
 
-Service-resolved policies and provider/scope checks are deferred while the
-container integration is reconsidered. Use explicit constructor dependencies or
+`RegisterPolicy` supports lazy scoped factories and declared dependency keys,
+checked during pipeline composition without activation. Use explicit constructor dependencies or
 closures; do not capture request-bound identity or tenants in a shared policy.
 
 ## Prepare, evaluate and recheck
@@ -83,7 +82,7 @@ privileged.
 A zero Decision denies. `Deny(reason)` retains local diagnostics; `Decision.Err()`
 wraps `ErrDenied` without exposing the reason in text. Policy errors return a denied
 decision plus the original error. Cancellation remains cancellation. Unexpected
-policy panics belong to future pipeline recovery/redaction boundaries.
+policy panics are captured at the pipeline callback boundary and redacted.
 
 Use `errors.Is` for `ErrInvalidConfiguration`, `ErrDuplicate`, `ErrFrozen`,
 `ErrUnknownPolicy`, `ErrUnsupportedScheme`, `ErrUnknownTarget`,
@@ -94,5 +93,6 @@ error, and its error text does not include the requested identity.
 
 Explicit anonymous bypasses declaration policies, not configured
 [tenant membership](../tenancy/index.md). The evaluator does not create or verify
-service scopes. Full pipeline enforcement remains pending in the
-[parity ledger](../../../parity.md).
+service scopes. Discovery uses its own [exposure policy](../introspection/index.md), not operation
+fallback declarations. The [parity ledger](../../../parity.md) records remaining
+scheme and generation limitations.

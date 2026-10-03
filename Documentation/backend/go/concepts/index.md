@@ -88,8 +88,8 @@ Custom non-concept codecs are opaque, and interface values are checked at runtim
 Arc keeps using your codecs, never `ConceptValue`, to encode and bind values.
 Pointer concepts retain Arc's null semantics; slices and string-key map values
 retain their scalar encoding. Non-string map keys still need a custom codec.
-HTTP GET/QUERY string argument binding is not implemented yet; when authoring a
-concept, make its text decoder accept the same canonical scalar as its JSON codec.
+HTTP GET/QUERY arguments use the query binding adapters; when authoring a concept,
+make its text decoder accept the same canonical scalar as its JSON codec.
 Arc's contract tests run Fundamentals.Go's `CheckJSON` on encoded concept fields;
 responses do not pay that validation cost. Test your own codecs against `CheckJSON`
 as well: static recognition cannot prove what a method will emit.

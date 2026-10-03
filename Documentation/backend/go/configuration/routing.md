@@ -8,8 +8,8 @@ description: Resolve Arc command and query paths from explicit versioned metadat
 
 Use one `metadata.Catalog` for route decisions so later runtime and generated
 clients do not invent separate conventions. Set `Version: metadata.Version`;
-unsupported versions fail rather than being silently upgraded. The foundation
-resolves routes only. It does not register an HTTP handler.
+unsupported versions fail rather than being silently upgraded. `metadata.Resolve` itself only resolves routes. The application builder uses that
+same resolution to compile the HTTP handler.
 
 ## Identity is not a route
 
@@ -63,8 +63,9 @@ or configure a non-root conventional command route instead.
 including command validation routes. Inspect `*metadata.CollisionError` with
 `errors.As` for the key and both owners. Results and collision owner ordering are
 deterministic by identity, independent of registration order. Commands and queries
-may share a path because their methods differ. No HTTP matching/case behavior is
-implied by this preflight: HEAD, redirects and 405/Allow belong to hosting.
+may share a path because their methods differ. Runtime matching is exact and case-sensitive. Hosting adds explicit HEAD for GET,
+empty 404/405 with deterministic Allow and noncanonical-path rejection without
+redirects. See the [HTTP contract](../reference/http-contract.md).
 
 See [the executable example](../../../../example_test.go) and
 [the compatibility ledger](../../../parity.md) for the deliberately stricter

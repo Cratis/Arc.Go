@@ -5,8 +5,8 @@ description: Provide display data without changing trusted claims, roles or oper
 
 You may need profile data for a frontend without giving that data authority over
 a command. `identity.ProvideDetails` builds a caller-owned display View from a
-trusted principal and a plain details provider. It does not map `/.cratis/me`,
-register providers, expose a schema, or read/write cookies.
+trusted principal and a plain details provider. The built application maps `/.cratis/me` using the default or selected provider;
+the standalone helper itself performs no transport work.
 
 ## Provide fresh details
 
@@ -52,5 +52,19 @@ caller-owned output, never a principal you should install for authentication.
 
 For operation permission use [authorization policies](../authorization/index.md).
 For the immutable trusted snapshot use [execution metadata](../core/execution-context.md).
-[Parity](../../../parity.md) records pending hosting, provider registration and
-schema exposure.
+
+## Register a hosted provider
+
+`arc.RegisterIdentityDetails(builder, name, provider)` borrows a concurrently
+callable provider. `RegisterScopedIdentityDetails` accepts a lazy resource-scoped
+factory and optional declared DI keys. Anonymous callers never activate it.
+One custom provider is selected automatically; multiple providers require
+`Identity.DetailsProvider`, and unknown selections fail Build.
+
+`/.cratis/me` returns fresh unwrapped JSON, empty 401 for anonymous callers and
+empty 403 for provider denial. Provider/cleanup failures suppress success with
+empty 500. Legacy `.cratis-identity` cookies are expired, never decoded or issued.
+Responses use `no-store, private` and merged `Vary: Cookie`.
+
+See [schemas](../introspection/schemas.md) and [parity](../../../parity.md) for
+bounded schema support and current-source cookie behavior.

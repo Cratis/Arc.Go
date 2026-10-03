@@ -6,7 +6,8 @@ description: Select a tenant from explicit request inputs and enforce membership
 A tenant header tells you where a caller wants to work, not whether they belong
 there. You select a tenant with `tenancy.NewResolver(options)`, install it with
 `WithTenant`, and independently enforce any configured Membership. Arc.Go provides
-these contracts but no HTTP middleware, database routing or pipeline yet.
+these contracts at HTTP ingress and enforces configured membership in both
+pipelines; database routing remains separate.
 
 ## Choose one selector
 
@@ -60,9 +61,10 @@ full Unicode support is deferred.
 explicit tenant context ownership.
 
 `Membership.Authorize(ctx, principal, tenant)` returns `(bool, error)`; use an
-ordinary value or `MembershipFunc`. Selection never invokes it. Future hosting and
-pipelines must enforce configured membership after selection even for public
-operations. An authorization declaration's AllowAnonymous does not bypass it.
+ordinary value or `MembershipFunc`. Selection never invokes it. Hosting resolves the tenant once after authentication and shadows inherited tenant
+metadata, including NotSet. Pipelines enforce configured membership even for public
+operations. Invalid built-in selection returns 400; custom resolver infrastructure
+failure returns 500. Required-tenant/membership denial is normally 403. An authorization declaration's AllowAnonymous does not bypass it.
 Do not treat correlation, a selected tenant ID, display details or an arbitrary
 claim as membership approval.
 

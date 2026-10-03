@@ -10,10 +10,12 @@ Arc for Go is the Go port of Cratis Arc's HTTP CQRS framework. Without these
 foundation packages, each application must recreate Arc's routes, scalar codecs
 and result envelopes; with them, you share those contracts explicitly.
 
-**Start with the foundation example below.** Go 1.26 or later is required. This
-is early development: command/query pipelines, HTTP hosting and Chronicle
-integration are not implemented. Constructing metadata or a result does not
-execute a command or register a route.
+**Start with [your first running application](backend/go/core/getting-started.md).**
+Go 1.26 or later is required. This experimental port supports backend pipelines,
+snapshot HTTP hosting, identity and protected discovery. Observable HTTP,
+generated adapters, OpenAPI and Chronicle integration remain unsupported.
+Constructing metadata or a result alone does not execute business code; the
+application builder compiles the HTTP endpoints.
 
 ## Inspect a command route and result
 
@@ -66,5 +68,5 @@ POST /api/tasks/registration/register-task
 After the first tagged release, use `go get github.com/cratis/arc.go@latest`.
 The planned release series is v0.x; experimental APIs may change between minor
 releases. See the [contribution guide](../CONTRIBUTING.md) and
-[release policy](releases.md). No host or full-product parity claim follows from
-foundation fixture tests. Central documentation-site integration remains separate.
+[release policy](releases.md). Foundation fixtures and Go-owned hosting tests do not certify full-product,
+paired .NET or browser parity. Central documentation-site integration remains separate.

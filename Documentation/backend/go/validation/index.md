@@ -84,4 +84,4 @@ For ownership and permission use [authorization policies](../authorization/index
 not a severity-filterable finding.
 
 See [command results](../commands/results.md) and [query results](../queries/results.md)
-for final envelope flags and status precedence. HTTP enforcement remains future work.
+for final envelope flags and status precedence. [HTTP hosting](../core/hosting.md) forwards command allowances to that same pipeline policy.

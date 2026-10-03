@@ -2,6 +2,30 @@
   href: index.md
 - name: Go foundation
   items:
+    - name: Get started
+      href: backend/go/core/getting-started.md
+    - name: Hosting
+      href: backend/go/core/hosting.md
+      items:
+        - name: Lifecycle
+          href: backend/go/core/lifecycle.md
+        - name: Middleware
+          href: backend/go/core/middleware.md
+        - name: Hosting options
+          href: backend/go/configuration/hosting.md
+        - name: HTTP contract
+          href: backend/go/reference/http-contract.md
+        - name: Chi recipe
+          href: backend/go/recipes/chi.md
+        - name: Gin recipe
+          href: backend/go/recipes/gin.md
+        - name: Echo recipe
+          href: backend/go/recipes/echo.md
+    - name: Discovery
+      href: backend/go/introspection/index.md
+      items:
+        - name: Schemas
+          href: backend/go/introspection/schemas.md
     - name: Concepts and JSON values
       href: backend/go/concepts/index.md
     - name: Commands

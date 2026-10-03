@@ -11,7 +11,7 @@ The Go framework for [Cratis Arc](https://github.com/Cratis/Arc), bringing Arc's
 
 **Early development.** Foundation packages provide artifact metadata, route resolution, UUID/temporal codecs, presence-aware JSON and result envelopes. Backend model-bound command/query pipelines now add authorization, validation, preparation, nested execution, paging, rendering and interception through typed adapters, with optional guarded DI resources. Releases will remain **v0.x** while the API is experimental. There is no tagged Go release yet; the installation command and Go reference will become usable after the first release.
 
-See the [compiling foundation example](https://github.com/Cratis/Arc.Go/blob/main/example_test.go) and [feature-by-feature parity ledger](https://github.com/Cratis/Arc.Go/blob/main/Documentation/parity.md). Generated adapters, HTTP hosting, observable queries and Chronicle integration remain unimplemented; backend pipeline tests do not establish whole-server conformance.
+See the [compiling foundation example](https://github.com/Cratis/Arc.Go/blob/main/example_test.go) and [feature-by-feature parity ledger](https://github.com/Cratis/Arc.Go/blob/main/Documentation/parity.md). HTTP hosting now composes commands, snapshots, identity and protected discovery with explicit graceful lifecycle. Try the [minimal HTTP example](https://github.com/Cratis/Arc.Go/tree/develop/examples/hosting). Generated adapters, observable queries and Chronicle integration remain unimplemented; Go-owned hosting tests do not establish paired .NET or browser conformance.
 
 ## Installation
 

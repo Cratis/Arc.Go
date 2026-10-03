@@ -23,9 +23,9 @@ exception messages. Standard status selection is **200**, **403**, **400**, **20
 (not ready), then **500**, in that order. Like C#'s helper, a contradictory not-ready
 exception result still selects 202; normal producers should not construct that state.
 
-The future transport layer must separately select **401** for authentication,
-**408** for first-result waits and **400** for QUERY reader failures, even when
-those reader failures carry exceptions. `StatusCode()` is not a universal HTTP
+HTTP hosting separately selects **401** for credential rejection and **400** for
+QUERY reader failures, even when they carry exceptions. First-result waits and
+**408** remain unsupported; snapshot reads never pretend to wait. `StatusCode()` is not a universal HTTP
 error mapper.
 
 ## Paging and change sets

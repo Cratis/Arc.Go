@@ -4,8 +4,8 @@ description: Compose trusted credential adapters without treating display cookie
 ---
 
 Authentication decides who called; [authorization](../authorization/index.md)
-decides what they may do. Arc.Go supplies an ordered handler chain, not HTTP
-middleware or a credential verifier. You supply verified adapters as ordinary
+decides what they may do. Arc.Go applies an ordered handler chain at HTTP ingress, not a built-in token
+verifier. You supply verified adapters as ordinary
 values or `HandlerFunc` closures.
 
 ## Compose a trusted chain
@@ -45,13 +45,16 @@ is checked before and after callbacks; callbacks must cooperate.
 Other categories are `ErrInvalidHandler`, `ErrInvalidPrincipal` and
 `ErrInvalidRequest`.
 
-Future hosting must map explicit credential failure to 401 even for a public
+Application hosting maps explicit credential failure to 401 even for a public
 operation. An exhausted anonymous chain proceeds to authorization; ordinary
 denial is 403, including anonymous role denial. This differs from native C# Core
 middleware's blanket credential requirement and anonymous failure exemption.
-No status or response is written by these foundations.
+The standalone chain writes no response; the application owns that boundary.
 
-There is no automatic cookie, Basic, JWT, or Microsoft forwarded-header adapter.
+There is no automatic cookie, Basic or JWT adapter. Explicitly register
+`authentication.MicrosoftIdentityPlatform` with `MicrosoftIdentityOptions` to
+accept unsigned forwarded headers only when `TrustForwardedIdentityHeaders` is
+true. Repeated headers and oversized/malformed principals are rejected.
 Only trust forwarded identity when authenticated ingress strips caller-supplied
 headers, replaces them, and prevents direct access to the backend. See the
-[parity ledger](../../../parity.md) for pending hosting and pipeline work.
+[parity ledger](../../../parity.md) for the source-derived ingress differences.

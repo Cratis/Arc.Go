@@ -7,8 +7,8 @@ description: Construct Arc command outcomes with safe response presence and stan
 <!-- Licensed under the MIT license. See LICENSE file in the project root for full license information. -->
 
 A command result tells a caller whether an action was authorized, valid and free
-of exceptions. It is not an instruction to execute a handler. This foundation
-provides result values only; no pipeline or HTTP hosting is implemented.
+of exceptions. It is not an instruction to execute a handler. Result constructors create values only; the pipeline and HTTP application execute
+and publish them separately.
 
 ## Construct an outcome
 
@@ -40,8 +40,7 @@ when absent or nil, but `0`, `false` and `""` remain present on success.
 - `IsSuccess()` combines authorization, validity and absence of exceptions.
 
 `StatusCode()` selects success **200**, unauthorized **403**, invalid **400**, then
-exception failure **500**, in that order. Authentication **401** is a future
-transport concern. Safe exception messages must already be supplied; result
+exception failure **500**, in that order. Authentication **401** is an HTTP ingress override, not result status precedence. Safe exception messages must already be supplied; result
 construction does not log or redact secrets.
 
 These are output envelopes. To decode a remote response, use a consumer DTO rather

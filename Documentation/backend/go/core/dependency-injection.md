@@ -25,7 +25,7 @@ go run ./examples/nocontainer
 
 It prints `authorized: true`, `validation findings: 0`, `hello, Arc`, and
 `resources closed: true`. It does not register a command or query pipeline; those
-pipelines are not implemented yet.
+pipelines are demonstrated separately by the [HTTP hosting example](../../../../examples/hosting/main.go).
 
 ## Choose operation ownership
 
