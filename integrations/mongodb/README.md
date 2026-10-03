@@ -62,9 +62,11 @@ Only `omitempty` is accepted, never on `_id`. Anonymous/promoted/inline fields,
 excluded or unexported fields, empty/duplicate/dotted/operator names, arbitrary
 maps, interfaces/polymorphism, custom model codecs, decimal/opaque types and
 `serialization.Optional` are rejected with `ErrUnsupportedModel`. BSON document
-and value marshal/unmarshal hooks are rejected on every type and pointer method
-set, including concepts and containers, without executing them; concepts retain
-their required JSON/text conversion. Shared cached subgraphs cannot bypass the
+and value marshal/unmarshal hooks and application `bson.Zeroer` (`IsZero`)
+implementations are rejected on every type and pointer method set, including
+concepts and containers, without executing them; concepts retain
+their required JSON/text conversion. Exact `time.Time` and Fundamentals `UUID`
+primitives retain their callback-free zero checks. Shared cached subgraphs cannot bypass the
 maximum depth. Unknown stored fields are ignored; duplicate document keys are
 rejected by ordinary materialization.
 
@@ -192,9 +194,12 @@ An independent writer budget admits at most 16 MiB of encoded BSON before the
 driver's internal buffer grows. Observe also enforces `MaxFilterBytes` during
 encoding. JSON envelopes are bounded before base64 allocation and raw BSON is
 size/depth checked before decoding. Exceeding byte budgets returns `ErrLimit`;
-cycles, excessive depth and unsupported opaque encoding hooks return `ErrValue`.
-Application JSON/text/BSON hooks (including concept conversion) and opaque driver
-vectors are unsupported in filters, without executing those hooks. Use ordinary
+cycles (including recursive pointer types with nil values), excessive depth and
+unsupported opaque encoding hooks return `ErrValue`.
+Application JSON/text/BSON hooks (including concept conversion and `IsZero`) and opaque driver
+vectors are unsupported in filters, without executing those hooks. Exact known
+BSON/time primitives retain callback-free zero checks; named application wrappers
+do not inherit that exception. Use ordinary
 scalars, BSON primitives, containers or validated raw BSON instead. Raw documents,
 arrays and code-with-scope are recursively validated, including exact nested
 lengths/terminators and array keys `0` through `n-1`; ordered duplicate document
