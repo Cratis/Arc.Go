@@ -549,6 +549,15 @@ func (o *Observation) Run(ctx context.Context, options ObservationOptions, deliv
 			if errors.Is(err, io.EOF) {
 				return nil
 			}
+			// Cancellation reaches ancestor/source contexts before their children,
+			// and AfterFunc forwarding may still be pending. Check both owners,
+			// not only the derived work context, before sending a provider failure.
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if err := o.ctx.Err(); err != nil {
+				return err
+			}
 			if work.Err() != nil {
 				return work.Err()
 			}
