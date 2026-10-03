@@ -6,6 +6,7 @@ package arc
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/cratis/arc.go/execution"
@@ -55,8 +56,12 @@ func (a *Application) withResources(ctx context.Context, call func(context.Conte
 	}
 	return value, errors.Join(err, cleanupErr)
 }
-func (a *Application) hostFailure(ctx context.Context, message string, err error) {
+func (a *Application) hostFailure(ctx context.Context, message string, err error, levels ...slog.Level) {
 	if a.options.Logger != nil {
-		a.options.Logger.ErrorContext(ctx, message, "error", err)
+		level := slog.LevelError
+		if len(levels) > 0 {
+			level = levels[0]
+		}
+		a.options.Logger.Log(ctx, level, message, "error", err)
 	}
 }

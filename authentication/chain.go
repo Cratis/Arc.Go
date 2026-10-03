@@ -15,6 +15,9 @@ import (
 // Handler authenticates synchronously, borrowing request data for the call only.
 // Handlers must not read Body: it is shared with the caller, not cloned.
 // Shared handlers must support concurrent calls and honor cancellation.
+// Errors are server faults logged by the host and must not contain or wrap token
+// text, credentials or header values. Use Failed for credential rejection;
+// its diagnostic reason is never logged by Arc ingress.
 type Handler interface {
 	Authenticate(context.Context, *http.Request) (Result, error)
 }

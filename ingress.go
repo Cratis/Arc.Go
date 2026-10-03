@@ -6,6 +6,7 @@ package arc
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	"github.com/cratis/arc.go/metadata"
 	"github.com/cratis/arc.go/queries"
 	"github.com/cratis/arc.go/tenancy"
+	"github.com/cratis/arc.go/validation"
 )
 
 func headerValues(h http.Header, name string) []string {
@@ -126,6 +128,13 @@ func (a *Application) authenticateAndDispatch(w http.ResponseWriter, r *http.Req
 	a.handler.ServeHTTP(w, r.WithContext(ctx))
 }
 func (a *Application) ingressFailure(w http.ResponseWriter, r *http.Request, e metadata.Endpoint, err error, status int) {
+	if err != nil {
+		level := slog.LevelError
+		if status < 500 {
+			level = slog.LevelWarn
+		}
+		a.hostFailure(r.Context(), "HTTP ingress failed", err, level)
+	}
 	if strings.HasPrefix(e.Identity, "/.cratis/") {
 		w.WriteHeader(status)
 		return
@@ -148,10 +157,19 @@ func (a *Application) ingressFailure(w http.ResponseWriter, r *http.Request, e m
 		return
 	}
 	if status == 400 {
-		err = &queries.ReadError{Cause: err}
+		err = &ingressReadError{ReadError: &queries.ReadError{Malformed: true, Cause: err}}
 	}
 	a.publish(w, r, status, queries.FromError[any](id, err))
 }
+
+// ingressReadError classifies invalid tenant selection as caller validation.
+// Reader syntax exceptions retain their existing C# exception envelope.
+type ingressReadError struct{ *queries.ReadError }
+
+func (e *ingressReadError) ValidationResults() []validation.Result {
+	return []validation.Result{{Severity: validation.Error, Message: "The request tenant selection is malformed.", Reason: "malformedRequest"}}
+}
+
 func (a *Application) publish(w http.ResponseWriter, r *http.Request, status int, value any) {
 	body, err := encode(r.Context(), value)
 	if err != nil || int64(len(body)) > a.options.HTTP.MaxResponseBytes {
