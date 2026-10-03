@@ -41,6 +41,7 @@ func (a *Application) serveIngress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set(a.options.HTTP.CorrelationHeader, id.String())
+	a.prepareHeaders(w, r)
 	ctx := correlation.WithID(r.Context(), id)
 	var received time.Time
 	if err := boundary.Call(ctx, func(context.Context) error { received = a.options.Clock(); return nil }); err != nil {
@@ -60,7 +61,10 @@ func (a *Application) serveIngress(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(400)
 		return
 	}
-	methods, known := a.routeTable[r.URL.Path]
+	a.requestHandler.ServeHTTP(w, r)
+}
+func (a *Application) prepareHeaders(w http.ResponseWriter, r *http.Request) {
+	methods := a.routeTable[r.URL.Path]
 	e, matched := methods[r.Method]
 	if matched && r.Method == "QUERY" {
 		w.Header().Set("Cache-Control", "no-store")
@@ -71,18 +75,29 @@ func (a *Application) serveIngress(w http.ResponseWriter, r *http.Request) {
 			expireLegacyCookie(w, r)
 		}
 	}
+}
+func (a *Application) authenticateAndDispatch(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	methods, known := a.routeTable[r.URL.Path]
+	e, matched := methods[r.Method]
 	if known && !matched {
 		a.handler.ServeHTTP(w, r)
 		return
 	}
 	// Unknown-route outcomes are not authentication challenges.
 	if !known {
-		a.handler.ServeHTTP(w, r)
-		return
+		if _, pattern := a.rawMux.Handler(r); pattern == "" {
+			a.handler.ServeHTTP(w, r)
+			return
+		}
+		e = metadata.Endpoint{Identity: "/.cratis/raw"}
 	}
-	chain, _ := authentication.New(a.options.Authentication...)
 	var result authentication.Result
-	err = boundary.Call(ctx, func(ctx context.Context) error { var err error; result, err = chain.Authenticate(ctx, r); return err })
+	err := boundary.Call(ctx, func(ctx context.Context) error {
+		var err error
+		result, err = a.authentication.Authenticate(ctx, r)
+		return err
+	})
 	if err != nil {
 		a.ingressFailure(w, r, e, err, 500)
 		return

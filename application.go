@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"slices"
 
+	"github.com/cratis/arc.go/authentication"
 	"github.com/cratis/arc.go/commands"
 	"github.com/cratis/arc.go/metadata"
 	"github.com/cratis/arc.go/queries"
@@ -17,22 +18,25 @@ import (
 // Application is immutable compiled composition with explicit lifecycle. It must
 // be constructed with Builder.Build; borrowed callbacks must support concurrency.
 type Application struct {
-	options     Options
-	catalog     metadata.Catalog
-	endpoints   []metadata.Endpoint
-	commands    commands.Pipeline
-	queries     queries.Pipeline
-	handler     http.Handler
-	discovery   discoveryMode
-	routeTable  map[string]map[string]metadata.Endpoint
-	readers     map[string]queries.RequestReader
-	details     detailsRegistration
-	schemas     map[reflect.Type]json.RawMessage
-	catalogJSON map[string]json.RawMessage
-	users       []listProvider[UsersProvider]
-	tenants     []listProvider[TenantsProvider]
-	life        lifetime
-	server      serverState
+	options        Options
+	catalog        metadata.Catalog
+	endpoints      []metadata.Endpoint
+	commands       commands.Pipeline
+	queries        queries.Pipeline
+	handler        http.Handler
+	discovery      discoveryMode
+	routeTable     map[string]map[string]metadata.Endpoint
+	readers        map[string]queries.RequestReader
+	details        detailsRegistration
+	schemas        map[reflect.Type]json.RawMessage
+	catalogJSON    map[string]json.RawMessage
+	users          []listProvider[UsersProvider]
+	tenants        []listProvider[TenantsProvider]
+	life           lifetime
+	server         serverState
+	rawMux         *http.ServeMux
+	requestHandler http.Handler
+	authentication *authentication.Chain
 }
 
 // Catalog returns copied declarations, including artifacts excluded from discovery.
@@ -49,5 +53,5 @@ func (a *Application) Queries() queries.Pipeline { return admittedQueries{a} }
 
 // ServeHTTP requires explicit application startup before accepting work.
 func (a *Application) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	a.serveIngress(w, r)
+	a.serveObserved(w, r)
 }

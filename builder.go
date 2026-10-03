@@ -33,6 +33,7 @@ type Builder struct {
 	users       []listProvider[UsersProvider]
 	tenants     []listProvider[TenantsProvider]
 	hooks       []lifecycleEntry
+	middleware  []Middleware
 }
 
 // NewBuilder validates and copies configuration without activation or I/O.
@@ -156,6 +157,9 @@ func (b *Builder) build() (*Application, error) {
 		return nil, err
 	}
 	a.initLifetime(b.hooks)
+	if err := a.composeMiddleware(b.middleware); err != nil {
+		return nil, err
+	}
 	if err := a.compileCatalogs(); err != nil {
 		return nil, err
 	}

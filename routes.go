@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/cratis/arc.go/authentication"
 	"github.com/cratis/arc.go/metadata"
 )
 
@@ -39,6 +40,10 @@ func (a *Application) compileRoutes(raw []rawHandler) error {
 		return err
 	}
 	a.discovery = access
+	a.authentication, err = authentication.New(a.options.Authentication...)
+	if err != nil {
+		return err
+	}
 	a.routeTable = make(map[string]map[string]metadata.Endpoint)
 	endpoints := slices.Clone(a.endpoints)
 	for _, e := range a.endpoints {
@@ -138,6 +143,7 @@ func (a *Application) compileRoutes(raw []rawHandler) error {
 			}
 		}
 	}
+	a.rawMux = custom
 	a.endpoints = endpoints
 	a.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, known := a.routeTable[r.URL.Path]; known {
