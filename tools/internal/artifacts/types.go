@@ -225,12 +225,26 @@ func analyzeWireGraph(graph *Graph, analyses []*analysis, profile ApplicationPro
 			descriptor.Result = result
 			if !types.Identical(types.Unalias(query.call.output), query.model.typ) {
 				switch output := types.Unalias(query.call.output).(type) {
-				case *types.Slice, *types.Array:
-					descriptor.Result = WireType{Kind: "array", Element: &result}
+				case *types.Slice:
+					element, err := w.describe(output.Elem())
+					if err != nil {
+						return err
+					}
+					descriptor.Result = WireType{Kind: "array", Element: &element}
+				case *types.Array:
+					element, err := w.describe(output.Elem())
+					if err != nil {
+						return err
+					}
+					descriptor.Result = WireType{Kind: "array", Element: &element}
 				case *types.Named:
 					if namedType(output, runtimePath+"/queries", "Page") {
 						descriptor.Paged = true
-						descriptor.Result = WireType{Kind: "array", Element: &result}
+						element, err := w.describe(output.TypeArgs().At(0))
+						if err != nil {
+							return err
+						}
+						descriptor.Result = WireType{Kind: "array", Element: &element}
 					}
 				case *types.Pointer:
 					descriptor.Result.Nullable = true
