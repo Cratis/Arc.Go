@@ -220,13 +220,7 @@ func nonnilFilter(filter bson.D) bson.D {
 }
 
 func (r *Renderer[T]) freeze(filter bson.D) (bson.Raw, error) {
-	var buffer bytes.Buffer
-	encoder := bson.NewEncoder(bson.NewDocumentWriter(&buffer))
-	encoder.SetRegistry(r.collection.registry)
-	if err := encoder.Encode(filter); err != nil {
-		return nil, &operationError{"freeze filter", err}
-	}
-	return bson.Raw(bytes.Clone(buffer.Bytes())), nil
+	return freezeFilter(r.collection.registry, filter)
 }
 
 func (r *Renderer[T]) sort(s queries.Sorting) (bson.D, error) {
