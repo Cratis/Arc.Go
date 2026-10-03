@@ -43,11 +43,17 @@ unmanaged local additions shared with Chronicle.Go, not installer-managed files.
 
 ## Layout and commands
 
-Keep one root module, public packages grouped by capability, implementation-only
-helpers under `internal/`, and co-located `_test.go` files. Add directories only
-when implemented; do not copy the C# `Source/` namespace layout. Separate HTTP
-binding/hosting from command/query execution and the Chronicle adapter. Public
-examples should compile. Product documentation belongs in `Documentation/`.
+Keep one runtime root module and exactly one tooling-only nested module,
+`tools/go.mod` (`github.com/cratis/arc.go/tools`). The `tools/cmd/arc-gen` executable
+uses `go/packages` and `go/types`; `golang.org/x/tools` must not become a root
+runtime dependency. Tools pin a fetchable runtime version, never a local replace
+or workspace. Both modules must build independently with `GOWORK=off`.
+
+Group public packages by capability, keep implementation-only helpers under
+`internal/`, and co-locate `_test.go` files. Add directories only when implemented;
+do not copy the C# `Source/` namespace layout. Separate HTTP binding/hosting from
+command/query execution and the Chronicle adapter. Public examples should compile.
+Product documentation belongs in `Documentation/`.
 
 Run from the root using the version in `go.mod` and the matrix in CI:
 
@@ -59,8 +65,14 @@ go vet ./...
 govulncheck ./...
 ```
 
-After authorized dependency changes, run `go mod tidy` and inspect `go.mod` and
-`go.sum`. Use `GOWORK=off` to verify independent consumption. Use `httptest` and
+Repeat the Go gates independently from `tools/`, using the root lint configuration.
+The root `./...` pattern does not cross the tooling module boundary. Tooling tags
+would use `tools/vX.Y.Z`, but publication remains deferred pending
+[Fundamentals.Go#16](https://github.com/Cratis/Fundamentals.Go/issues/16); the root
+release workflow still publishes only root-module tags.
+
+After authorized dependency changes, run `go mod tidy` in the changed module and
+inspect its `go.mod` and `go.sum`. Use `GOWORK=off` to verify independent consumption. Use `httptest` and
 wire-contract fixtures for transport behavior, plus bounded Chronicle integration
 tests when that adapter exists. The exact required gates and tool pins are in
 [CONTRIBUTING](../CONTRIBUTING.md) and `.github/workflows/`; these quick commands

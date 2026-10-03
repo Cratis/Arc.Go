@@ -1,4 +1,4 @@
-# Validate the single root Go module independently of local workspaces.
+# Validate runtime and isolated tooling modules independently of local workspaces.
 name: Go Build
 
 on:
@@ -94,7 +94,7 @@ jobs:
             printf 'Run gofmt on:\n%s\n' "$unformatted"
             exit 1
           fi
-      - name: Enforce single-module layout and portable paths
+      - name: Enforce runtime and tooling module layout and portable paths
         shell: bash
         run: |
           python3 - <<'PY'
@@ -102,14 +102,18 @@ jobs:
           files = subprocess.check_output(['git', 'ls-files', '-z']).decode().split('\0')
           files = [p for p in files if p]
           modules = [p for p in files if p == 'go.mod' or p.endswith('/go.mod')]
-          if modules != ['go.mod']:
-              raise SystemExit('This release workflow supports exactly one root go.mod; design nested module releases first.')
+          if modules != ['go.mod', 'tools/go.mod']:
+              raise SystemExit('Only the root runtime module and tools/go.mod are supported.')
           folded = [p.casefold() for p in files]
           if len(set(folded)) != len(folded):
               raise SystemExit('Paths differing only by case are not portable.')
-          module = json.loads(subprocess.check_output(['go', 'mod', 'edit', '-json']))
-          if module.get('Replace'):
-              raise SystemExit('Published modules must not rely on replace directives; consumers ignore them.')
+          for directory in ['.', 'tools']:
+              module = json.loads(subprocess.check_output(['go', 'mod', 'edit', '-json'], cwd=directory))
+              if module.get('Replace'):
+                  raise SystemExit('Published modules must not rely on replace directives; consumers ignore them.')
+          runtime = json.loads(subprocess.check_output(['go', 'mod', 'edit', '-json']))
+          if any(r['Path'] == 'golang.org/x/tools' for r in runtime.get('Require', [])):
+              raise SystemExit('golang.org/x/tools belongs only in the tooling module.')
           PY
       - name: Guarantee the zero-container runtime path and DI-free example imports
         run: python3 scripts/check-no-container.py
@@ -160,10 +164,51 @@ jobs:
       - name: Lint workflows
         run: actionlint -color
 
+  tools:
+    name: Artifact generator
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: tools
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: tools/go.sum
+      - name: Download dependencies
+        run: go mod download
+      - name: Verify dependency checksums
+        run: go mod verify
+      - name: Compile tools
+        run: go build ./...
+      - name: Vet tools
+        run: go vet ./...
+      - name: Test tools and generated consumers
+        run: go test -count=1 -timeout=2m ./...
+      - name: Race detector
+        run: go test -race -count=1 -timeout=3m ./...
+      - name: Check generated adapters
+        run: go run ./cmd/arc-gen -dir .. -check ./ContractTests/generatedconsumer
+      - name: Check tidy manifests
+        run: go mod tidy -diff
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.14.0
+          working-directory: tools
+          args: --timeout=3m --config=../.golangci.yml
+      - name: Install pinned govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+      - name: Check vulnerabilities
+        run: govulncheck ./...
+
   gate:
     name: Go gate
     if: always()
-    needs: [test, race, lint, vulnerabilities, workflows]
+    needs: [test, race, lint, vulnerabilities, workflows, tools]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

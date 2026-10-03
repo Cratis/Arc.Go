@@ -13,7 +13,9 @@ The [Cratis contribution guide](https://github.com/Cratis/.github/blob/main/cont
 
 ## Layout and setup
 
-The repository has one root module, `github.com/cratis/arc.go`, with package `arc`. Product documentation lives in `Documentation/`. Add packages and examples only as implementation needs them; use lowercase package directories, co-located `_test.go` files, and compiling `Example` tests for public usage.
+The runtime is the root module, `github.com/cratis/arc.go`, with package `arc`. The only nested module is `tools/go.mod` (`github.com/cratis/arc.go/tools`), containing the `arc-gen` artifact generator. Its `golang.org/x/tools` dependency must not enter the runtime module. The tools module pins a fetchable runtime revision and builds independently with `GOWORK=off`.
+
+Product documentation lives in `Documentation/`. Add packages and examples only as implementation needs them; use lowercase package directories, co-located `_test.go` files, and compiling `Example` tests for public usage. Root releases remain `vX.Y.Z`. Future tooling releases need independent `tools/vX.Y.Z` tags; tagging and publishing tools is deferred pending the pattern in [Fundamentals.Go#16](https://github.com/Cratis/Fundamentals.Go/issues/16).
 
 Install Go 1.26 or later, golangci-lint v2.14.0, actionlint v1.7.12, ShellCheck, and markdownlint-cli2. CI tests Go 1.26 and 1.27, including the latest patches; golangci-lint must be built with a Go version at least as new as the code it analyzes.
 
@@ -45,7 +47,9 @@ go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 govulncheck ./...
 ```
 
-Format all Go source with `gofmt`; no source files should appear in `gofmt -l` output. After `go mod tidy`, also check `git status --short -- go.mod go.sum` for untracked manifests. Commit `go.sum` when dependencies require it. Do not commit nested modules, local `replace` directives, or personal `go.work` files: released modules must build without sibling checkouts.
+Repeat the Go build, vet, ordinary and race tests, lint, tidy-diff, and vulnerability checks from `tools/`, also with `GOWORK=off` and `GOTOOLCHAIN=local`. Use `golangci-lint run --config=../.golangci.yml` there. Regenerate the checked-in consumer adapters from `tools/` with `go run ./cmd/arc-gen -dir .. ./ContractTests/generatedconsumer`; verify them with the same command plus `-check` before the package pattern. Generator tests also compile and execute independent consumers against the pinned runtime version.
+
+Format all Go source in both modules with `gofmt`; no source files should appear in `gofmt -l` output. After `go mod tidy -diff`, also check `git status --short -- go.mod go.sum tools/go.mod tools/go.sum` for untracked manifests. Commit `go.sum` when dependencies require it. Do not add other nested modules, local `replace` directives, or personal `go.work` files: both modules must build without sibling checkouts.
 
 Hosted CI also runs the ordinary build, vet, and tests on macOS and Windows. Workflow lint invokes ShellCheck when it is available. Foundation behavioral and wire-fixture tests run without external services. They are not HTTP integration tests; add explicitly bounded integration checks before claiming HTTP contract conformance. CodeQL runs separately in GitHub Actions.
 
