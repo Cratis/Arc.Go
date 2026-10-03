@@ -8,7 +8,7 @@
 export const all{{.Name}} = {{.AllFlags}};
 {{end}}{{else}}{{if .DerivedID}}@{{.DerivedID}}
 {{end}}export class {{.Name}}{{if .Base}} extends {{.Base}}{{end}} {
-{{range .Properties}}    @{{.Constructor}}
+{{range .Properties}}    @{{.Decorator}}
     {{.Name}}{{.Marker}}: {{.Type}};
 {{end}}}
 {{end}}

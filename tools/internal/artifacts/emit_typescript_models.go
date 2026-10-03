@@ -28,8 +28,8 @@ type typescriptOutput struct {
 }
 
 type tsProperty struct {
-	Name, Type, Constructor, Marker string
-	Enumerable                      bool
+	Name, Type, Constructor, Decorator, Marker string
+	Enumerable                                 bool
 }
 type tsModel struct {
 	Name, Base, DerivedID string
@@ -241,6 +241,7 @@ type tsImports struct {
 	requests map[tsImport]bool
 	aliases  map[tsImport]string
 	own      string
+	reserved []string
 }
 
 func (i *tsImports) add(module, name string, value bool) tsImport {
@@ -260,6 +261,9 @@ func (i *tsImports) resolve() []string {
 		return keys[a].name < keys[b].name
 	})
 	used := map[string]bool{i.own: true, "Symbol": true, "String": true, "Number": true, "Boolean": true, "Object": true, "Date": true, "Record": true}
+	for _, name := range i.reserved {
+		used[name] = true
+	}
 	var lines []string
 	for _, key := range keys {
 		alias := key.name
@@ -294,8 +298,15 @@ func relativeModelImport(from, to string) (string, error) {
 }
 
 func planModel(node TypeDescriptor, nodes map[string]TypeDescriptor, paths map[string]string) (tsModel, error) {
-	view := tsModel{Name: node.Name.Name, Enum: node.Kind == "enum", DerivedID: strings.ToLower(node.DerivedID)}
 	imports := &tsImports{requests: map[tsImport]bool{}, aliases: map[tsImport]string{}, own: node.Name.Name}
+	return planModelUsingImports(node, nodes, paths, imports, true)
+}
+
+// planModelUsingImports shares exact wire types and constructors with command
+// planning. Commands register Fields explicitly because the pinned standard
+// field decorator does not support accessors.
+func planModelUsingImports(node TypeDescriptor, nodes map[string]TypeDescriptor, paths map[string]string, imports *tsImports, decorate bool) (tsModel, error) {
+	view := tsModel{Name: node.Name.Name, Enum: node.Kind == "enum", DerivedID: strings.ToLower(node.DerivedID)}
 	reference := func(key string, value bool) (tsImport, error) {
 		target, exists := nodes[key]
 		if !exists {
@@ -376,7 +387,7 @@ func planModel(node TypeDescriptor, nodes map[string]TypeDescriptor, paths map[s
 		}
 	}
 	var fieldImport, derivedImport tsImport
-	if len(fields) != 0 {
+	if len(fields) != 0 && decorate {
 		fieldImport = imports.add("@cratis/fundamentals", "field", true)
 	}
 	if node.DerivedID != "" {
@@ -462,12 +473,12 @@ func planModel(node TypeDescriptor, nodes map[string]TypeDescriptor, paths map[s
 			item.property.Constructor = imports.aliases[item.ctor]
 		}
 		// Decorator names are planned too: local exports may be named field/derivedType.
-		item.property.Constructor = imports.aliases[fieldImport] + "(" + item.property.Constructor
+		item.property.Decorator = imports.aliases[fieldImport] + "(" + item.property.Constructor
 		if item.property.Enumerable {
-			item.property.Constructor += ", true"
+			item.property.Decorator += ", true"
 			item.property.Type += "[]"
 		}
-		item.property.Constructor += ")"
+		item.property.Decorator += ")"
 		view.Properties = append(view.Properties, item.property)
 	}
 	if node.DerivedID != "" {
