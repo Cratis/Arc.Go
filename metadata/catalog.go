@@ -35,6 +35,8 @@ func (t TypeName) Identity() string {
 
 // Command describes a model-bound command, not its executable handler.
 type Command struct {
+	// DocumentationSummary is explicit/generated documentation, never read from source at runtime.
+	DocumentationSummary string `json:"documentationSummary,omitempty"`
 	// Type identifies the command and supplies its conventional route location.
 	Type TypeName `json:"type"`
 	// Path overrides the entire route verbatim; empty uses convention.
@@ -62,6 +64,8 @@ const (
 // Query describes a method on a read model. Its identity includes the model name,
 // but its conventional route includes only the namespace and method name.
 type Query struct {
+	// DocumentationSummary is explicit/generated method documentation.
+	DocumentationSummary string `json:"documentationSummary,omitempty"`
 	// ReadModel identifies the containing read model.
 	ReadModel TypeName `json:"readModel"`
 	// Name is the method name, not the read model name.

@@ -193,7 +193,7 @@ func (a *Application) dispatch(w http.ResponseWriter, r *http.Request, e metadat
 		a.identityEndpoint(w, r)
 		return
 	}
-	w.WriteHeader(http.StatusServiceUnavailable)
+	a.discoveryEndpoint(w, r)
 }
 
 type discoveryMode uint8

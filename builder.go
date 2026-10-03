@@ -29,6 +29,9 @@ type Builder struct {
 	buildErr    error
 	rawHandlers []rawHandler
 	details     []detailsRegistration
+	schemas     map[reflect.Type]json.RawMessage
+	users       []listProvider[UsersProvider]
+	tenants     []listProvider[TenantsProvider]
 }
 
 // NewBuilder validates and copies configuration without activation or I/O.
@@ -134,11 +137,24 @@ func (b *Builder) build() (*Application, error) {
 	if err != nil {
 		return nil, err
 	}
-	a := &Application{details: details, options: o, catalog: cloneCatalog(catalog), endpoints: slices.Clone(endpoints), commands: cp, queries: qp}
+	for _, p := range b.users {
+		if err := checkProviderKeys(o.DependencyCatalog, p.keys); err != nil {
+			return nil, err
+		}
+	}
+	for _, p := range b.tenants {
+		if err := checkProviderKeys(o.DependencyCatalog, p.keys); err != nil {
+			return nil, err
+		}
+	}
+	a := &Application{schemas: b.schemas, users: slices.Clone(b.users), tenants: slices.Clone(b.tenants), details: details, options: o, catalog: cloneCatalog(catalog), endpoints: slices.Clone(endpoints), commands: cp, queries: qp}
 	if err := a.compileReaders(); err != nil {
 		return nil, err
 	}
 	if err := a.compileRoutes(b.rawHandlers); err != nil {
+		return nil, err
+	}
+	if err := a.compileCatalogs(); err != nil {
 		return nil, err
 	}
 	return a, nil

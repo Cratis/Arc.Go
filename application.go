@@ -4,7 +4,9 @@
 package arc
 
 import (
+	"encoding/json"
 	"net/http"
+	"reflect"
 	"slices"
 
 	"github.com/cratis/arc.go/commands"
@@ -15,16 +17,20 @@ import (
 // Application is immutable compiled composition with explicit lifecycle. It must
 // be constructed with Builder.Build; borrowed callbacks must support concurrency.
 type Application struct {
-	options    Options
-	catalog    metadata.Catalog
-	endpoints  []metadata.Endpoint
-	commands   commands.Pipeline
-	queries    queries.Pipeline
-	handler    http.Handler
-	discovery  discoveryMode
-	routeTable map[string]map[string]metadata.Endpoint
-	readers    map[string]queries.RequestReader
-	details    detailsRegistration
+	options     Options
+	catalog     metadata.Catalog
+	endpoints   []metadata.Endpoint
+	commands    commands.Pipeline
+	queries     queries.Pipeline
+	handler     http.Handler
+	discovery   discoveryMode
+	routeTable  map[string]map[string]metadata.Endpoint
+	readers     map[string]queries.RequestReader
+	details     detailsRegistration
+	schemas     map[reflect.Type]json.RawMessage
+	catalogJSON map[string]json.RawMessage
+	users       []listProvider[UsersProvider]
+	tenants     []listProvider[TenantsProvider]
 }
 
 // Catalog returns copied declarations, including artifacts excluded from discovery.
