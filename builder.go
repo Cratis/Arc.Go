@@ -27,6 +27,7 @@ type Builder struct {
 	attempted   bool
 	application *Application
 	buildErr    error
+	rawHandlers []rawHandler
 }
 
 // NewBuilder validates and copies configuration without activation or I/O.
@@ -128,7 +129,11 @@ func (b *Builder) build() (*Application, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Application{options: o, catalog: cloneCatalog(catalog), endpoints: slices.Clone(endpoints), commands: cp, queries: qp}, nil
+	a := &Application{options: o, catalog: cloneCatalog(catalog), endpoints: slices.Clone(endpoints), commands: cp, queries: qp}
+	if err := a.compileRoutes(b.rawHandlers); err != nil {
+		return nil, err
+	}
+	return a, nil
 }
 func cloneCatalog(c metadata.Catalog) metadata.Catalog {
 	// Metadata contains only framework-controlled scalar data, never custom codecs.

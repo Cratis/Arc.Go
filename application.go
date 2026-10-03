@@ -15,11 +15,14 @@ import (
 // Application is immutable compiled composition with explicit lifecycle. It must
 // be constructed with Builder.Build; borrowed callbacks must support concurrency.
 type Application struct {
-	options   Options
-	catalog   metadata.Catalog
-	endpoints []metadata.Endpoint
-	commands  commands.Pipeline
-	queries   queries.Pipeline
+	options    Options
+	catalog    metadata.Catalog
+	endpoints  []metadata.Endpoint
+	commands   commands.Pipeline
+	queries    queries.Pipeline
+	handler    http.Handler
+	discovery  discoveryMode
+	routeTable map[string]map[string]metadata.Endpoint
 }
 
 // Catalog returns copied declarations, including artifacts excluded from discovery.
@@ -35,6 +38,10 @@ func (a *Application) Commands() commands.Pipeline { return a.commands }
 func (a *Application) Queries() queries.Pipeline { return a.queries }
 
 // ServeHTTP requires explicit application startup before accepting work.
-func (a *Application) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
-	w.WriteHeader(http.StatusServiceUnavailable)
+func (a *Application) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !canonicalPath(r) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	a.handler.ServeHTTP(w, r)
 }
