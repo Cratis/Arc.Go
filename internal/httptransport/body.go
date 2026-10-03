@@ -29,7 +29,8 @@ func ReadBody(w http.ResponseWriter, r *http.Request, limit int64) ([]byte, int,
 	}
 	if len(contentType) == 1 && contentType[0] != "" {
 		media, parameters, err := mime.ParseMediaType(contentType[0])
-		if err != nil || media != "application/json" && !(strings.HasPrefix(media, "application/") && strings.HasSuffix(media, "+json")) || parameters["charset"] != "" && !strings.EqualFold(parameters["charset"], "utf-8") {
+		jsonMedia := media == "application/json" || strings.HasPrefix(media, "application/") && strings.HasSuffix(media, "+json")
+		if err != nil || !jsonMedia || parameters["charset"] != "" && !strings.EqualFold(parameters["charset"], "utf-8") {
 			unsupported = true
 		}
 	}

@@ -77,7 +77,7 @@ func MicrosoftIdentityPlatform(options MicrosoftIdentityOptions) (Handler, error
 			if claim.Type == subject || claim.Type == "sub" || strings.EqualFold(claim.Type, MicrosoftIdentityProviderClaim) {
 				continue
 			}
-			claims = append(claims, identity.Claim{Type: claim.Type, Value: claim.Value})
+			claims = append(claims, identity.Claim(claim))
 		}
 		claims = append(claims, identity.Claim{Type: "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name", Value: principal.UserDetails}, identity.Claim{Type: subject, Value: values[0]}, identity.Claim{Type: "sub", Value: values[0]})
 		if strings.TrimSpace(principal.IdentityProvider) != "" {

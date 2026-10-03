@@ -2,6 +2,8 @@ package arc_test
 
 import (
 	"context"
+	"github.com/cratis/arc.go/authentication"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -49,7 +51,14 @@ func TestHTTPReceiptPrecedesAuthenticationAndNestedReceiptIsFresh(t *testing.T) 
 	tick := int64(0)
 	clock := func() time.Time { tick++; return time.Unix(tick, 0) }
 	var receipts []time.Time
-	b, err := arc.NewBuilder(arc.Options{Clock: clock})
+	b, err := arc.NewBuilder(arc.Options{Clock: clock, Authentication: []authentication.Handler{authentication.HandlerFunc(func(ctx context.Context, _ *http.Request) (authentication.Result, error) {
+		received, _ := execution.ReceivedAt(ctx)
+		if !received.Equal(time.Unix(1, 0)) {
+			t.Fatal("receipt not established before authentication", received)
+		}
+		_ = clock()
+		return authentication.Anonymous(), nil
+	})}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +83,7 @@ func TestHTTPReceiptPrecedesAuthenticationAndNestedReceiptIsFresh(t *testing.T) 
 	}
 	w := httptest.NewRecorder()
 	a.ServeHTTP(w, httptest.NewRequest("POST", "/receipt", strings.NewReader("{}")))
-	if w.Code != 200 || len(receipts) != 2 || !receipts[0].Equal(time.Unix(1, 0)) || !receipts[1].Equal(time.Unix(2, 0)) {
+	if w.Code != 200 || len(receipts) != 2 || !receipts[0].Equal(time.Unix(1, 0)) || !receipts[1].Equal(time.Unix(3, 0)) {
 		t.Fatal(w.Code, receipts, w.Body.String())
 	}
 }

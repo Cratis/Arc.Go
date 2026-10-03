@@ -211,6 +211,11 @@ const (
 )
 
 func discoveryAccess(o Options) (discoveryMode, error) {
+	for _, role := range o.Introspection.Roles {
+		if strings.TrimSpace(role) == "" {
+			return 0, ErrInvalidOptions
+		}
+	}
 	required := o.Environment != "Development"
 	explicit := o.Introspection.RequireAuthentication
 	if explicit != nil {

@@ -1,7 +1,6 @@
 package pipeline_test
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -20,5 +19,8 @@ func TestForwardedReceiptIsConsumedOnce(t *testing.T) {
 	if err != nil || got != second {
 		t.Fatal(got, err)
 	}
-	_ = execution.WithReceivedAt(context.Background(), second)
+	receipt, present := execution.ReceivedAt(ctx)
+	if !present || !receipt.Equal(second) {
+		t.Fatal(receipt, present)
+	}
 }

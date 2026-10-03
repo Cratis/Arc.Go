@@ -28,6 +28,7 @@ func TestDiscoveryExposureMatrix(t *testing.T) {
 		{"production authenticated", arc.Options{Authentication: []authentication.Handler{authentication.HostPrincipal()}}, 401, false},
 		{"explicit requires capability", arc.Options{Introspection: arc.IntrospectionOptions{RequireAuthentication: boolPointer(true)}}, 0, true},
 		{"explicit anonymous", arc.Options{Introspection: arc.IntrospectionOptions{RequireAuthentication: boolPointer(false)}}, 200, false},
+		{"empty discovery role", arc.Options{Authentication: []authentication.Handler{authentication.HostPrincipal()}, Introspection: arc.IntrospectionOptions{Roles: []string{" "}}}, 0, true},
 		{"roles cannot be anonymous", arc.Options{Introspection: arc.IntrospectionOptions{RequireAuthentication: boolPointer(false), Roles: []string{"admin"}}}, 0, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

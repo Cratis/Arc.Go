@@ -152,9 +152,10 @@ func (a *Application) admit(ctx context.Context) (context.Context, func(), error
 	defer l.mu.Unlock()
 	if l.state != stateRunning {
 		err := ErrNotStarted
-		if l.state == stateStopping {
+		switch l.state {
+		case stateStopping:
 			err = ErrShuttingDown
-		} else if l.state == stateStopped || l.state == stateFailed {
+		case stateStopped, stateFailed:
 			err = ErrStopped
 		}
 		return ctx, nil, err
