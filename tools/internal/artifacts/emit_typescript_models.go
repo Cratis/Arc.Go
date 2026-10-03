@@ -107,7 +107,7 @@ func modelPath(name metadata.TypeName, profile ApplicationProfile) (string, erro
 // or no output on any failure. It accepts only the normalized shared wire graph.
 // Filesystem ownership/publication and full proxy families are intentionally absent.
 func renderTypeScriptModels(graph *Graph) ([]typescriptOutput, error) {
-	if graph == nil || graph.FormatVersion != GraphVersion {
+	if graph == nil || graph.FormatVersion != GraphVersion && graph.FormatVersion != ContractGraphVersion {
 		return nil, fmt.Errorf("unsupported model graph format")
 	}
 	if err := validateProfile(graph.Profile); err != nil {
@@ -123,7 +123,12 @@ func renderTypeScriptModels(graph *Graph) ([]typescriptOutput, error) {
 	ids := map[string]string{}
 	exports := map[string]string{}
 	directories := map[string]string{}
-	ordered := append([]TypeDescriptor(nil), graph.Types...)
+	ordered := make([]TypeDescriptor, 0, len(graph.Types))
+	for _, node := range graph.Types {
+		if node.TSIncluded == nil || *node.TSIncluded {
+			ordered = append(ordered, node)
+		}
+	}
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Key < ordered[j].Key })
 	for _, node := range ordered {
 		if node.Key == "" {

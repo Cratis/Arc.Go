@@ -40,7 +40,7 @@ type tsCommand struct {
 // family. It never publishes files or enables Generate's public TS success mode.
 // Response is the finalized graph contract, not the server Handle return type.
 func renderTypeScriptCommands(graph *Graph) ([]typescriptOutput, error) {
-	if graph == nil || graph.FormatVersion != GraphVersion {
+	if graph == nil || graph.FormatVersion != GraphVersion && graph.FormatVersion != ContractGraphVersion {
 		return nil, fmt.Errorf("unsupported command graph format")
 	}
 	if err := validateProfile(graph.Profile); err != nil {
@@ -77,6 +77,9 @@ func renderTypeScriptCommands(graph *Graph) ([]typescriptOutput, error) {
 	models := *graph
 	models.Types = nil
 	for _, node := range graph.Types {
+		if node.TSIncluded != nil && !*node.TSIncluded {
+			continue
+		}
 		if inputs[node.Key] {
 			continue
 		}
