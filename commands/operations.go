@@ -138,6 +138,27 @@ func bareOperationCollection(typ reflect.Type) bool {
 	return typ != nil && (typ.Kind() == reflect.Array || typ.Kind() == reflect.Slice) && operationReturn(typ.Elem())
 }
 
+// checkOperationResponseGraph preserves the explicit response reservation through
+// the existing sealed graph grammar. It never searches DTOs or arbitrary containers.
+func checkOperationResponseGraph(value any, depth int) error {
+	if operationReturn(reflect.TypeOf(value)) || bareOperationCollection(reflect.TypeOf(value)) {
+		return ErrInvalidOperation
+	}
+	graph, ok := value.(interface{ outcomeLeaves() []outcomeLeaf })
+	if !ok || nilValue(value) {
+		return nil
+	}
+	if depth >= 64 {
+		return ErrUnhandledEffect
+	}
+	for _, leaf := range graph.outcomeLeaves() {
+		if err := checkOperationResponseGraph(leaf.value, depth+1); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // OperationFailureSource identifies the first failed pipeline phase.
 type OperationFailureSource uint8
 

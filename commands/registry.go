@@ -143,8 +143,7 @@ func (r *Registry) Build(options PipelineOptions) (Pipeline, error) {
 		return nil, ErrInvalidRegistration
 	}
 	for _, registration := range r.registrations {
-		if registration.operations {
-			// Declaration checkpoint fails closed until orchestration is installed.
+		if registration.operations && !operationScopesCompatible(r.participants, r.terminal) {
 			return nil, ErrInvalidOperation
 		}
 	}
@@ -214,6 +213,10 @@ func (r *Registry) Build(options PipelineOptions) (Pipeline, error) {
 	p.terminal = append([]extension[DeferredCommitParticipant](nil), r.terminal...)
 	p.admissions = append([]ReturnAdmission(nil), r.admissions...)
 	p.models = r.readModelProviders()
+	p.operations = make(map[reflect.Type]operationAdapter, len(r.operations))
+	for typ, adapter := range r.operations {
+		p.operations[typ] = adapter
+	}
 	for _, entry := range r.registrations {
 		if !entry.responseOverride && entry.responseKind == ResponseUnknown {
 			for _, admission := range r.admissions {

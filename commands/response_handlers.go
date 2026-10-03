@@ -131,12 +131,46 @@ func (f *frame) consumers(handlers []ResponseValueHandler, leaf outcomeLeaf) ([]
 	return result, nil
 }
 func (f *frame) process(output any) {
+	if f.registration.operations {
+		f.operations = &operationJournal{failedIndex: -1}
+		f.operationPhase = FailurePlanning
+	}
 	var leaves []outcomeLeaf
 	if err := flatten(output, valueLeaf, 0, &leaves, f.admitReturn); err != nil {
 		f.fail(err, false)
 		return
 	}
+	if f.operations != nil {
+		var err error
+		leaves, err = f.planOperations(leaves)
+		f.fail(err, false)
+		if err != nil {
+			return
+		}
+		f.operationPhase = FailureResponseHandling
+		// Controls precede even context updaters and consumer factories in the
+		// operation profile. Non-operation ordering remains unchanged.
+		ordinary := make([]outcomeLeaf, 0, len(leaves))
+		for _, leaf := range leaves {
+			if control, ok := builtinControl(leaf); ok {
+				f.merge(control, true)
+			} else {
+				ordinary = append(ordinary, leaf)
+			}
+		}
+		leaves = ordinary
+		if !f.result.IsSuccess() {
+			return
+		}
+		if err := f.checkOperationCommit(); err != nil {
+			f.fail(err, false)
+			return
+		}
+	}
 	if len(leaves) == 0 {
+		if f.operations != nil {
+			f.executeOperations()
+		}
 		return
 	}
 	var handlers []ResponseValueHandler
@@ -245,9 +279,12 @@ func (f *frame) process(output any) {
 				f.merge(fragment, false)
 			}
 			f.fail(err, false)
-			if err != nil {
+			if err != nil || (f.operations != nil && !f.result.IsSuccess()) {
 				return
 			}
 		}
+	}
+	if f.operations != nil {
+		f.executeOperations()
 	}
 }

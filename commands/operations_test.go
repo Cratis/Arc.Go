@@ -110,8 +110,14 @@ func TestOperationDeclarationFailsClosed(t *testing.T) {
 	if err := commands.Register[operationDeclarationCommand](&registry, commands.Handle(operationDeclarationCommand.Handle)); err != nil {
 		t.Fatal(err)
 	}
+	if err := registry.AddExecutionScope("unclassified", func(context.Context, *execution.Scope) (commands.ExecutionScope, error) {
+		t.Fatal("activated incompatible scope")
+		return nil, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := registry.Build(commands.PipelineOptions{}); !errors.Is(err, commands.ErrInvalidOperation) {
-		t.Fatalf("unimplemented boundary = %v", err)
+		t.Fatalf("incompatible boundary = %v", err)
 	}
 	entry, err := commands.NewRegistry(commands.RegistryOptions{})
 	if err != nil {
