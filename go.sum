@@ -1,2 +1,4 @@
+github.com/coder/websocket v1.8.15 h1:6B2JPeOGlpff2Uz6vOEH1Vzpi0iUz20A+lPVhPHtNUA=
+github.com/coder/websocket v1.8.15/go.mod h1:NX3SzP+inril6yawo5CQXx8+fk145lPDC6pumgx0mVg=
 github.com/cratis/fundamentals.go v0.0.0-20261002221826-0fd6b51d12e4 h1:cN323+1L2EJI3rAhqNpZ0hTOnD2/z/Jfr6ZnkN/AUIU=
 github.com/cratis/fundamentals.go v0.0.0-20261002221826-0fd6b51d12e4/go.mod h1:upTRXscJLeH63NqzzY51bPvvsgjtDpfug6a6VAaT2fI=
