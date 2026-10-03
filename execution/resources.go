@@ -21,10 +21,12 @@ type Resources = interface{ Close(context.Context) error }
 // owned cleanup. Scope calls Resources.Close at most once, then Join. Close must
 // initiate cleanup even if its context expires; Join must not initiate disposal or
 // repeat side effects. Join is serialized and may be called again after a context
-// error. A non-context Join result certifies that all owned cleanup has ended,
+// error or panic (which leaves completion unknown). A returned non-context Join
+// result certifies that all owned cleanup has ended,
 // including on failure; repeated Join after completion must return that outcome.
 // Context errors from Close/Join mean incomplete waiting, not final disposal
-// failures. Other Close errors are preserved alongside the eventual Join result.
+// failures. Non-context Close/Join diagnostics, including recovered panics,
+// remain inspectable alongside the eventual Join result.
 // Scope starts no cleanup goroutine; the holder owns, cancels and joins its work.
 type ResourcesJoiner interface {
 	Join(context.Context) error
@@ -35,18 +37,20 @@ type ResourcesJoiner interface {
 // seam; supplying a container is optional.
 type OpenResources = func(context.Context) (Resources, error)
 
-// PendingScopeError retains an owning scope when failed OpenScope cleanup has
-// not joined. OpenScope still returns a nil scope with its error; callers must
-// inspect this error with errors.As and finish Scope().Close with a fresh budget.
-// The scope admits no new work. Closing it resumes only an explicit resource join,
-// never repeats disposal. A caller that transfers this error also transfers cleanup
+// PendingScopeError retains an owning scope whenever Scope.Close has not joined.
+// Callers of unary pipelines, RunWithResources and OpenScope must inspect this
+// error with errors.As and finish Scope().Close with a fresh budget. Failed
+// OpenScope still returns a nil scope with its error.
+// The scope admits no new work. Closing it joins admitted uses before at-most-once
+// disposal; after disposal starts, only an explicit resource join can resume.
+// A caller that transfers this error also transfers cleanup
 // ownership; ignoring it does not prove that resources have stopped.
 type PendingScopeError struct {
 	scope *Scope
 	err   error
 }
 
-// Error returns the original opening and cleanup diagnostics.
+// Error returns the original cleanup and any opening diagnostics.
 func (e *PendingScopeError) Error() string { return e.err.Error() }
 
 // Unwrap preserves opening, context and ErrScopeJoinPending error identities.
@@ -88,11 +92,12 @@ func OpenScope(ctx context.Context, open OpenResources) (*Scope, error) {
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
 		closeErr := scope.Close(cleanup)
-		err = errors.Join(err, closeErr)
-		if errors.Is(closeErr, ErrScopeJoinPending) {
-			return nil, &PendingScopeError{scope: scope, err: err}
+		if pending, ok := closeErr.(*PendingScopeError); ok {
+			// Preserve the opening diagnostics in the ownership-bearing error
+			// without nesting the wrapper returned by Close.
+			return nil, &PendingScopeError{scope: scope, err: errors.Join(err, pending.err)}
 		}
-		return nil, err
+		return nil, errors.Join(err, closeErr)
 	}
 	return scope, nil
 }

@@ -10,6 +10,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/cratis/arc.go/execution"
 	"github.com/cratis/arc.go/observable"
 )
 
@@ -85,6 +86,61 @@ func TestChannelCleanupCanContinueAfterTimeout(t *testing.T) {
 			t.Fatalf("cleanup attempts = %d", calls)
 		}
 	})
+}
+
+func TestChannelCleanupPanicCanContinueWithoutRepeatingDisposal(t *testing.T) {
+	ready := make(chan struct{})
+	calls, initiations := 0, 0
+	source := observable.FromChannelFactory(func(context.Context) (<-chan int, func(context.Context) error, error) {
+		return make(chan int), func(context.Context) error {
+			calls++
+			if initiations == 0 {
+				initiations++
+				panic("cleanup before producer join")
+			}
+			<-ready
+			return nil
+		}, nil
+	})
+	stream, err := source.Open(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var diagnostic *execution.PanicError
+	err = stream.Close(context.Background())
+	if !errors.Is(err, observable.ErrJoinPending) || !errors.As(err, &diagnostic) || diagnostic.Value != "cleanup before producer join" {
+		t.Fatal("unknown completion lost ownership or diagnostic", err)
+	}
+	close(ready)
+	for range 2 {
+		err = stream.Close(context.Background())
+		if errors.Is(err, observable.ErrJoinPending) || !errors.As(err, &diagnostic) {
+			t.Fatal("completed join lost diagnostic or retained pending", err)
+		}
+	}
+	if calls != 2 || initiations != 1 {
+		t.Fatalf("attempts/initiations = %d/%d", calls, initiations)
+	}
+}
+
+func TestCompletedChannelCleanupFailureIsCached(t *testing.T) {
+	failure := errors.New("joined producer cleanup failed")
+	calls := 0
+	source := observable.FromChannelFactory(func(context.Context) (<-chan int, func(context.Context) error, error) {
+		return make(chan int), func(context.Context) error { calls++; return failure }, nil
+	})
+	stream, err := source.Open(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := stream.Close(context.Background()); !errors.Is(err, failure) || errors.Is(err, observable.ErrJoinPending) {
+			t.Fatal(err)
+		}
+	}
+	if calls != 1 {
+		t.Fatal("completed cleanup repeated", calls)
+	}
 }
 
 func TestProducerPanicIsReportedAndJoined(t *testing.T) {

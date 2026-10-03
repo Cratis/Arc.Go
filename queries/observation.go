@@ -343,7 +343,9 @@ func (o *Observation) cleanup() error {
 }
 
 // Close cancels observation work and synchronously joins it. A later call can
-// continue after a timeout. The pipeline retains failed-opening cleanup until
+// continue after a timeout or unknown cleanup completion (ErrJoinPending).
+// Recovered close panics retain ownership and diagnostics, never certify a join.
+// The pipeline retains failed-opening cleanup until
 // this completes; operation resources outlive source workers, never vice versa.
 func (o *Observation) Close(ctx context.Context) error {
 	if o == nil || ctx == nil {
@@ -371,9 +373,21 @@ func (o *Observation) Close(ctx context.Context) error {
 		return o.closeErr
 	}
 	if !o.streamClosed && o.stream.close != nil {
-		err := boundary.Call(ctx, o.stream.close)
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		returned := false
+		err := boundary.Call(ctx, func(ctx context.Context) error {
+			err := o.stream.close(ctx)
+			returned = true
 			return err
+		})
+		if !returned {
+			var diagnostic *execution.PanicError
+			if errors.As(err, &diagnostic) {
+				o.closeErr = errors.Join(o.closeErr, diagnostic)
+			}
+			return errors.Join(observable.ErrJoinPending, o.closeErr, err)
+		}
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || errors.Is(err, observable.ErrJoinPending) {
+			return errors.Join(o.closeErr, err)
 		}
 		o.closeErr = errors.Join(o.closeErr, err)
 		o.streamClosed = true

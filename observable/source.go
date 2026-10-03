@@ -23,6 +23,8 @@ type Source[T any] interface {
 // Stream has a single consumer. Next returns io.EOF only for normal completion;
 // zero and nil values are real emissions. Close cancels and joins owned work.
 // Repeated Close is safe; a timed-out Close may be continued with a later budget.
+// Context errors or ErrJoinPending mean joining is incomplete or unknown; any
+// other returned result certifies completion, including a final failure.
 type Stream[T any] interface {
 	Next(context.Context) (T, error)
 	Close(context.Context) error
@@ -36,6 +38,10 @@ type CurrentSource[T any] interface {
 }
 
 var (
+	// ErrJoinPending means stream cleanup completion is unknown or incomplete.
+	// Retain the stream and continue Close with a fresh budget; do not dispose
+	// dependencies beneath its producer. Continuation must not repeat side effects.
+	ErrJoinPending = errors.New("observable cleanup join pending")
 	// ErrClosed means the source or stream has been closed.
 	ErrClosed = errors.New("observable is closed")
 	// ErrConcurrentNext rejects overlapping consumption of the same stream.

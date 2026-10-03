@@ -57,6 +57,7 @@ type scopeState struct {
 	closeErr                        error
 	disposalStarted                 bool
 	disposalErr                     error
+	joinErr                         error
 }
 
 func newScope(ctx context.Context, owned bool) *Scope {
@@ -156,11 +157,12 @@ func (s *Scope) Use(ctx context.Context, call func(context.Context, *Scope) erro
 // at most once. Borrowed resources are never closed. Repeated calls return the
 // recorded disposal outcome. A canceled admitted-use join leaves admission closed.
 // ResourcesJoiner permits later calls to resume only the cleanup join, never Close
-// initiation. Incomplete joins wrap ErrScopeJoinPending; ordinary resource failures
+// initiation. Incomplete owned joins return PendingScopeError wrapping
+// ErrScopeJoinPending; ordinary resource failures
 // (including context errors without that capability) are final and cached.
 // Cleanup is synchronous and cooperative. Never call
 // an owning scope's Close from inside one of its own admitted callbacks.
-func (s *Scope) Close(ctx context.Context) error {
+func (s *Scope) Close(ctx context.Context) (err error) {
 	if s == nil || s.state == nil {
 		return ErrInvalidScope
 	}
@@ -171,6 +173,13 @@ func (s *Scope) Close(ctx context.Context) error {
 		return ErrInvalidArgument
 	}
 	state := s.state
+	// Wrap only the returned diagnostic, never the cached state: retaining a
+	// PendingScopeError in state.closeErr would create a recursive error graph.
+	defer func() {
+		if state.owned && errors.Is(err, ErrScopeJoinPending) {
+			err = &PendingScopeError{scope: s, err: err}
+		}
+	}()
 	state.mu.Lock()
 	if state.closed {
 		err := state.closeErr
@@ -227,12 +236,15 @@ func (s *Scope) Close(ctx context.Context) error {
 		}
 		state.disposalErr = err // This attempt exclusively owns cleanup state.
 	}
-	err := state.disposalErr
+	err = errors.Join(state.disposalErr, state.joinErr)
 	pending := false
 	if resumable {
 		joinErr := invoke(ctx, func() error { return joiner.Join(ctx) })
 		var panicErr *PanicError
 		pending = errors.Is(joinErr, context.Canceled) || errors.Is(joinErr, context.DeadlineExceeded) || errors.As(joinErr, &panicErr)
+		// Retain non-waiting diagnostics from every attempt. A later successful
+		// Join resolves waiting, not an earlier domain failure or panic.
+		state.joinErr = errors.Join(state.joinErr, withoutWaitErrors(joinErr))
 		err = errors.Join(err, joinErr)
 		if pending {
 			err = errors.Join(ErrScopeJoinPending, err)
@@ -258,10 +270,30 @@ func withoutWaitErrors(err error) error {
 		for _, part := range joined.Unwrap() {
 			remaining = errors.Join(remaining, withoutWaitErrors(part))
 		}
-		return remaining
+		if remaining == nil {
+			return nil
+		}
+		return &waitFilteredError{original: err, remaining: remaining}
 	}
 	if wrapped, ok := err.(interface{ Unwrap() error }); ok && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {
-		return withoutWaitErrors(wrapped.Unwrap())
+		remaining := withoutWaitErrors(wrapped.Unwrap())
+		if remaining == nil {
+			return nil
+		}
+		return &waitFilteredError{original: err, remaining: remaining}
 	}
 	return err
 }
+
+// Preserve wrapper identities and typed diagnostics while exposing only the
+// non-waiting tree to errors.Is. Unwrap never points back to original.
+type waitFilteredError struct {
+	original, remaining error
+}
+
+func (e *waitFilteredError) Error() string { return e.remaining.Error() }
+func (e *waitFilteredError) Unwrap() error { return e.remaining }
+func (e *waitFilteredError) Is(target error) bool {
+	return target != context.Canceled && target != context.DeadlineExceeded && errors.Is(e.original, target)
+}
+func (e *waitFilteredError) As(target any) bool { return errors.As(e.original, target) }

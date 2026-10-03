@@ -44,18 +44,29 @@ until workers actually join. See [observable lifetimes](../queries/observable-qu
 Operation resource `Close` still runs at most once. A holder that owns resumable
 cleanup can explicitly implement `execution.ResourcesJoiner`: Close initiates
 cleanup once and `Join(ctx)` waits for that same work without repeating disposal
-side effects. Context errors mean an incomplete join; later Close/Shutdown can
-retry only Join. Non-context Join outcomes certify completion, even on failure.
+side effects. Context errors mean an incomplete join; a recovered panic leaves
+completion unknown. Later Close/Shutdown can retry only Join. A returned
+non-context Join outcome certifies completion, even on failure. Non-context
+failures and panic diagnostics from earlier attempts remain inspectable through
+`errors.Is`/`errors.As`; only provisional canceled/deadline waiting errors clear
+when joining finishes.
 Plain holders without this capability have final, cached Close errors, including
 context errors; they must not return while leaving unowned background cleanup.
 `execution.ErrScopeJoinPending` distinguishes unfinished work from final failures.
-If resource opening itself fails and its cleanup cannot join, OpenScope returns
-nil plus an inspectable `*execution.PendingScopeError`. `Scope()` retains the
-closing scope; finish its Close with a fresh budget. Observable admission reclaims
-that scope automatically for later Shutdown. Other direct callers must handle the
-local error and its cleanup ownership explicitly; unary hosts do not automatically
-retain resource joins. Do not opt a holder into asynchronous cleanup there unless
-your host owns the pending error and its join.
+Every pending **owned** `Scope.Close` result includes an inspectable
+`*execution.PendingScopeError`, including after successful resource opening in
+command/query pipelines or `RunWithResources`. Use `errors.As` to obtain it;
+`Scope()` retains the closing scope so you can finish its Close with a fresh
+budget. `errors.Is` still exposes `ErrScopeJoinPending`, context errors and other
+cleanup diagnostics. Retain that scope while subsequent Close calls still report
+pending; a final failure certifies completion but must still be handled.
+
+If resource opening itself fails, OpenScope returns nil plus the pending error
+when cleanup cannot join. Observable admission reclaims that scope automatically
+for later Shutdown. Unary hosts do not automatically retain resource joins: your
+host must retain the pending scope and resume Close, not merely check or log the
+error. Do not opt a unary holder into asynchronous cleanup without that owner.
+Borrowed scopes never transfer resource-disposal ownership through this error.
 
 For embedded hosting, stop your external server as well. Arc owns its observable
 connections, not arbitrary raw hijacks; track those in your own lifecycle participant.

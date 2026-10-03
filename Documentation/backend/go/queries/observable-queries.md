@@ -64,7 +64,15 @@ Bare borrowed channels are not sufficient lifecycle-bearing query declarations.
 If a channel factory returns cleanup alongside a startup error or invalid channel,
 Open still returns an owned stream with that error. Close the nonnil handle using
 a separate cleanup budget; cancellation alone never joins its producer. The query
-pipeline retains timed-out failed-opening cleanup for later Shutdown.
+pipeline retains incomplete failed-opening cleanup for later Shutdown, including
+when cleanup panics. `observable.ErrJoinPending` means completion is unknown or
+incomplete; retain the handle and its dependencies. A channel factory's cleanup
+callback must allow serialized continuation after a context error, this sentinel
+or a panic. Initiate cancellation/disposal side effects at most once inside the
+callback; subsequent attempts only finish joining the same producer. Any other
+returned outcome certifies completion, including failure, and is cached rather
+than retried. A recovered panic remains inspectable as `execution.PanicError`
+after a successful later join, but no longer carries `ErrJoinPending`.
 `WithEnumerable[A]()` marks a streaming-only source, including the reference's
 direct null-skipping behavior; ordinary subject nils remain ready emissions.
 

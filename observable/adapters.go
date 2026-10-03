@@ -8,7 +8,9 @@ import (
 	"errors"
 	"io"
 	"iter"
-	"sync"
+
+	"github.com/cratis/arc.go/execution"
+	boundary "github.com/cratis/arc.go/internal/pipeline"
 )
 
 type producerSource[T any] struct {
@@ -138,8 +140,13 @@ func FromIterator[T any](open func(context.Context) iter.Seq2[T, error]) Source[
 }
 
 // ChannelFactory opens a borrowed channel and returns a cleanup callback that
-// must cancel and join its producer. The callback must support repeated calls
-// after a timed-out attempt. A nonnil cleanup callback transfers ownership even
+// must cancel and join its producer. The callback must support serialized
+// continuation after a context error, ErrJoinPending or panic, without repeating
+// disposal or side effects: initiate them at most once inside the callback.
+// Any other returned outcome certifies producer completion, including failure.
+// Panics leave completion unknown; Close retains PanicError diagnostics and
+// ErrJoinPending until a later attempt certifies completion. A nonnil callback
+// transfers ownership even
 // when startup fails or returns an invalid channel: Open returns a nonnil stream
 // alongside the error, and the caller must Close it with a separate cleanup budget.
 // Arc never closes the borrowed channel. Closing the channel means normal
@@ -153,8 +160,8 @@ type channelStream[T any] struct {
 	values   <-chan T
 	cleanup  func(context.Context) error
 	gate     chan struct{}
-	mu       sync.Mutex
-	closed   bool
+	closed   bool // guarded by gate
+	closeErr error
 	consumer consumer
 }
 
@@ -225,16 +232,27 @@ func (s *channelStream[T]) Close(ctx context.Context) error {
 		return err
 	}
 	defer func() { <-s.gate }()
-	s.mu.Lock()
-	closed := s.closed
-	s.mu.Unlock()
-	if !closed {
-		if err := s.cleanup(ctx); err != nil {
+	if !s.closed {
+		returned := false
+		err := boundary.Call(ctx, func(ctx context.Context) error {
+			err := s.cleanup(ctx)
+			returned = true
 			return err
+		})
+		if !returned {
+			// A recovered panic is not evidence that the producer joined. Keep
+			// its diagnostic, but not this attempt's provisional wait errors.
+			var diagnostic *execution.PanicError
+			if errors.As(err, &diagnostic) {
+				s.closeErr = errors.Join(s.closeErr, diagnostic)
+			}
+			return errors.Join(ErrJoinPending, s.closeErr, err)
 		}
-		s.mu.Lock()
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, ErrJoinPending) {
+			return errors.Join(ErrJoinPending, s.closeErr, err)
+		}
+		s.closeErr = errors.Join(s.closeErr, err)
 		s.closed = true
-		s.mu.Unlock()
 	}
-	return join(ctx, active)
+	return errors.Join(s.closeErr, join(ctx, active))
 }
