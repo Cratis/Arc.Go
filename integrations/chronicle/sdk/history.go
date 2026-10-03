@@ -5,7 +5,6 @@ package sdk
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"reflect"
 
@@ -24,6 +23,10 @@ func (a *adapter) ReadHistory(ctx context.Context, r integration.HistoryRequest)
 	if err != nil {
 		return integration.History{}, err
 	}
+	return a.decodeHistory(r, history)
+}
+
+func (a *adapter) decodeHistory(r integration.HistoryRequest, history eventsequences.History) (integration.History, error) {
 	result := integration.History{Scope: integration.LabeledScope{Label: string(r.Filter.Source), Filter: fromFilter(history.Filter), Expectation: integration.Expectation{Kind: integration.NoMatchingEvent}}}
 	for _, recorded := range history.Events {
 		descriptor, ok := a.events.LookupRef(recorded.Context.EventType)
@@ -31,7 +34,7 @@ func (a *adapter) ReadHistory(ctx context.Context, r integration.HistoryRequest)
 			return integration.History{}, fmt.Errorf("%w: historical event generation", integration.ErrUnsupported)
 		}
 		value := reflect.New(descriptor.GoType())
-		if err := json.Unmarshal(recorded.Content, value.Interface()); err != nil {
+		if err := descriptor.Unmarshal(recorded.Content, value.Interface()); err != nil {
 			return integration.History{}, err
 		}
 		result.Events = append(result.Events, integration.RecordedEvent{Event: value.Elem().Interface(), Type: integration.EventType{ID: string(recorded.Context.EventType.ID), Generation: uint32(recorded.Context.EventType.Generation)}, Position: uint64(recorded.Context.SequenceNumber)})
