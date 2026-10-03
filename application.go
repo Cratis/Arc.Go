@@ -24,6 +24,7 @@ type Application struct {
 	discovery  discoveryMode
 	routeTable map[string]map[string]metadata.Endpoint
 	readers    map[string]queries.RequestReader
+	details    detailsRegistration
 }
 
 // Catalog returns copied declarations, including artifacts excluded from discovery.

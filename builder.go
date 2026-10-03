@@ -28,6 +28,7 @@ type Builder struct {
 	application *Application
 	buildErr    error
 	rawHandlers []rawHandler
+	details     []detailsRegistration
 }
 
 // NewBuilder validates and copies configuration without activation or I/O.
@@ -107,6 +108,10 @@ func (b *Builder) Build() (*Application, error) {
 	return b.application, b.buildErr
 }
 func (b *Builder) build() (*Application, error) {
+	details, err := b.selectDetails()
+	if err != nil {
+		return nil, err
+	}
 	catalog := b.Catalog()
 	endpoints, err := metadata.Resolve(catalog, *b.options.Routes)
 	if err != nil {
@@ -129,7 +134,7 @@ func (b *Builder) build() (*Application, error) {
 	if err != nil {
 		return nil, err
 	}
-	a := &Application{options: o, catalog: cloneCatalog(catalog), endpoints: slices.Clone(endpoints), commands: cp, queries: qp}
+	a := &Application{details: details, options: o, catalog: cloneCatalog(catalog), endpoints: slices.Clone(endpoints), commands: cp, queries: qp}
 	if err := a.compileReaders(); err != nil {
 		return nil, err
 	}

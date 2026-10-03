@@ -189,6 +189,10 @@ func (a *Application) dispatch(w http.ResponseWriter, r *http.Request, e metadat
 		a.queryEndpoint(w, r, e)
 		return
 	}
+	if e.Path == "/.cratis/me" {
+		a.identityEndpoint(w, r)
+		return
+	}
 	w.WriteHeader(http.StatusServiceUnavailable)
 }
 
