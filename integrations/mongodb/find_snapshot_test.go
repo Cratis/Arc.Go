@@ -62,7 +62,7 @@ func TestFindDetachmentPreservesBSON(t *testing.T) {
 }
 
 func TestFindDecodeFailureIsAtomic(t *testing.T) {
-	for _, input := range []string{`null`, `{}`, `{"bson":null}`, `{"bson":"!"}`, `{"bson":"AQID"}`, `{"bson":"BQAAAAAAAA=="}`, `{"bson":"BQAAAAA=","extra":true}`, `{"bson":"BQAAAAA="} {}`} {
+	for _, input := range []string{`null`, `{}`, `{"bson":null}`, `{"bson":"!"}`, `{"bson":"AAAA=="}`, `{"bson":"AAA=\n"}`, `{"bson":"AQID"}`, `{"bson":"BQAAAAAAAA=="}`, `{"bson":"BQAAAAA=","extra":true}`, `{"bson":"BQAAAAA="} {}`} {
 		q := Find[author]{Filter: bson.D{{Key: "keep", Value: int64(9)}}}
 		before := q.Filter
 		if err := json.Unmarshal([]byte(input), &q); err == nil || !reflect.DeepEqual(before, q.Filter) {
@@ -86,6 +86,7 @@ func TestFindDecodeFailureIsAtomic(t *testing.T) {
 func FuzzFindEnvelope(f *testing.F) {
 	f.Add([]byte(`{"bson":"BQAAAAA="}`))
 	f.Add([]byte(`{"bson":"!"}`))
+	f.Add([]byte(`{"bson":"FAAAAARhAAwAAAAQMQAHAAAAAAA="}`))
 	f.Fuzz(func(t *testing.T, input []byte) {
 		q := Find[author]{Filter: bson.D{{Key: "keep", Value: int32(7)}}}
 		before := q.Filter

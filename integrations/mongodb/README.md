@@ -195,7 +195,10 @@ size/depth checked before decoding. Exceeding byte budgets returns `ErrLimit`;
 cycles, excessive depth and unsupported opaque encoding hooks return `ErrValue`.
 Application JSON/text/BSON hooks (including concept conversion) and opaque driver
 vectors are unsupported in filters, without executing those hooks. Use ordinary
-scalars, BSON primitives, containers or validated raw BSON instead. These limits
+scalars, BSON primitives, containers or validated raw BSON instead. Raw documents,
+arrays and code-with-scope are recursively validated, including exact nested
+lengths/terminators and array keys `0` through `n-1`; ordered duplicate document
+keys remain intact. Malformed raw values fail before driver normalization. These limits
 are Go-specific safety bounds, not a MongoDB or C# filter capability claim.
 
 Manually register `queries.RegisterObservable[M,A,mongodb.Find[M]]`, paired with

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"io"
 	"reflect"
+	"strings"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
@@ -61,6 +62,11 @@ func (q *Find[T]) UnmarshalJSON(data []byte) error {
 	}
 	if len(encoded) > base64.StdEncoding.EncodedLen(maxFilterBytes) {
 		return ErrLimit
+	}
+	// Only canonical padded envelopes are admitted. In particular, malformed
+	// padding must not make the destination smaller than a decoded quartet.
+	if len(encoded)%4 != 0 || strings.ContainsAny(encoded, "\r\n") {
+		return ErrValue
 	}
 	size := base64.StdEncoding.DecodedLen(len(encoded))
 	if len(encoded) > 0 && encoded[len(encoded)-1] == '=' {

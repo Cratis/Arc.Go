@@ -4,8 +4,11 @@
 package mongodb
 
 import (
+	"bytes"
 	"reflect"
+	"strconv"
 	"time"
+	"unicode/utf8"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/x/bsonx/bsoncore"
@@ -172,11 +175,17 @@ func guardRawDocument(raw []byte, array bool, depth, limit int) error {
 		return ErrValue
 	}
 	rest = rest[:len(rest)-1]
+	index := 0
 	for len(rest) > 0 {
 		element, next, ok := bsoncore.ReadElement(rest)
 		if !ok {
 			return ErrValue
 		}
+		key, keyErr := element.KeyBytesErr()
+		if keyErr != nil || !utf8.Valid(key) || (array && !bytes.Equal(key, []byte(strconv.Itoa(index)))) {
+			return ErrValue
+		}
+		index++
 		value, err := element.ValueErr()
 		if err != nil {
 			return ErrValue
@@ -193,7 +202,8 @@ func guardRawValue(value bsoncore.Value, depth, limit int) error {
 	if len(value.Data) > limit {
 		return ErrLimit
 	}
-	if depth > maxFilterDepth || value.Validate() != nil {
+	_, remainder, valid := bsoncore.ReadValue(value.Data, value.Type)
+	if depth > maxFilterDepth || !valid || len(remainder) != 0 {
 		return ErrValue
 	}
 	switch value.Type {
@@ -202,11 +212,66 @@ func guardRawValue(value bsoncore.Value, depth, limit int) error {
 	case bsoncore.TypeArray:
 		return guardRawDocument(value.Data, true, depth, limit)
 	case bsoncore.TypeCodeWithScope:
-		_, scope, rest, ok := bsoncore.ReadCodeWithScope(value.Data)
-		if !ok || len(rest) != 0 {
+		size, code, ok := bsoncore.ReadLength(value.Data)
+		if !ok || int64(size) != int64(len(value.Data)) {
 			return ErrValue
 		}
+		scope, err := guardRawString(code)
+		if err != nil {
+			return err
+		}
 		return guardRawDocument(scope, false, depth+1, limit)
+	case bsoncore.TypeString, bsoncore.TypeJavaScript, bsoncore.TypeSymbol:
+		rest, err := guardRawString(value.Data)
+		if err != nil || len(rest) != 0 {
+			return ErrValue
+		}
+	case bsoncore.TypeDBPointer:
+		rest, err := guardRawString(value.Data)
+		if err != nil || len(rest) != 12 {
+			return ErrValue
+		}
+	case bsoncore.TypeBoolean:
+		if value.Data[0] > 1 {
+			return ErrValue
+		}
+	case bsoncore.TypeBinary:
+		size, payload, ok := bsoncore.ReadLength(value.Data)
+		if !ok || int64(size)+1 != int64(len(payload)) {
+			return ErrValue
+		}
+		if payload[0] == 2 {
+			inner, data, ok := bsoncore.ReadLength(payload[1:])
+			if !ok || int64(inner) != int64(len(data)) {
+				return ErrValue
+			}
+		}
+	case bsoncore.TypeRegex:
+		pattern, rest, ok := bsoncore.ReadKeyBytes(value.Data)
+		if !ok || !utf8.Valid(pattern) {
+			return ErrValue
+		}
+		options, rest, ok := bsoncore.ReadKeyBytes(rest)
+		if !ok || len(rest) != 0 || !utf8.Valid(options) {
+			return ErrValue
+		}
+		// BSON regex options must be alphabetically ordered. The driver sorts
+		// on write; accepting another order would silently normalize raw BSON.
+		for i := 1; i < len(options); i++ {
+			if options[i] <= options[i-1] {
+				return ErrValue
+			}
+		}
 	}
 	return nil
+}
+
+// guardRawString validates the length, final NUL and UTF-8 before any decoder
+// copies a BSON string. The remainder permits DBPointer and code-with-scope.
+func guardRawString(raw []byte) ([]byte, error) {
+	size, rest, ok := bsoncore.ReadLength(raw)
+	if !ok || size < 1 || int64(size) > int64(len(rest)) || rest[size-1] != 0 || !utf8.Valid(rest[:size-1]) {
+		return nil, ErrValue
+	}
+	return rest[size:], nil
 }
