@@ -60,8 +60,13 @@ sorting, inherited snapshot perform, required arguments and hydration against
 controlled fetch responses. They do not substitute a handwritten observable proxy.
 No generated transport or delta algorithm is emitted.
 
-## Pending next checkpoint
+## Generated transport evidence
 
-Generated-registration Node fixture lifecycle and real default WebSocket-hub/Delta
-round-trip evidence remain pending commit 3. No real generated subscription,
-sharing/reconnect, mounted React or full observable-parity claim is made here.
+The separate [observable client fixture](../../observables/README.md) now generates
+an actual model-bound adapter and TypeScript class through production `arc-gen`.
+Its locked Node default WebSocket hub/Delta case exercises socket sharing,
+date/model hydration, exact envelopes/callback counts, argument replacement,
+independent cancellation, terminal Unauthorized, and joined source/host shutdown.
+The wider manual transport matrix remains separate. Delta final collections use
+an independent test-consumer reducer; no mounted React, browser, network-failure
+reconnect or full observable-parity claim is made.
