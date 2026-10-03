@@ -18,11 +18,21 @@ eligible because they happen to have the same fields.
 | `[]M`, `[]*M`, arrays of either | Same collection shape | None by default |
 | `Page[M]`, `Page[*M]` | `[]M`, `[]*M` | Already windowed; total supplied by performer |
 | Provider output `Q` with exact `Renderer[Q,R]` | Supported owning-model `R` | Renderer-owned |
-| Channel, iterator, observable metadata | Rejected | Deferred streaming surface |
+| Bare channel or iterator | Rejected | Adapt to an owned observable source |
 
 A successful nil single model is ready-null and skips interception. `Page` is
 unwrapped once and is never rendered or paged again. Plain slices stay unpaged
 unless you explicitly register a renderer.
+
+## Observable shapes
+
+Use `RegisterObservable[M,A,O]` for `observable.Source[O]`; its emitted/rendered
+model must satisfy the same owning-model rules. `State`, `Subject` and the owned
+producer/iterator/channel-factory adapters implement this source contract.
+`WithEnumerable[A]()` selects streaming-only behavior. Ordinary `Register`
+never treats arbitrary channels as lifecycle-bearing queries. See
+[observable queries](../observable-queries.md) and
+[collection transfers](../change-stream.md).
 
 ## Render a provider query
 
@@ -33,7 +43,10 @@ calling a factory. An unrelated raw output is rejected at Build unless an exact
 renderer supplies an eligible result shape.
 
 `Registration.ReturnType()` describes the raw performer output;
-`DataType()` describes the rendered/unwrapped data. The generic
+`DataType()` describes the rendered/unwrapped data. For `RegisterObservable`,
+`ReturnType()` is the declared `observable.Source[O]`, `EmissionType()` is `O`,
+and `DataType()` describes its rendered data. Value `ObservedCollection[T]`
+emissions unwrap to `[]T`; pointer wrappers are rejected. The generic
 `queries.Perform[R]` checks known compatibility before running application code.
 Provider dependencies, counting and storage I/O belong inside rendering, not Build.
 

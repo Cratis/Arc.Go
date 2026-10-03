@@ -36,6 +36,19 @@ dispose shared resources or claim success; a later Shutdown can continue joining
 Concurrent callers have independent waiting budgets. Hooks own their cooperative
 stop behavior, and no detached cleanup is launched to hide an unknown outcome.
 
-For embedded hosting, stop your external server as well. Raw hijacked connections
-are caller-owned unless your own lifecycle participant tracks and closes them.
-There are no Arc stream connections in this snapshot-only slice.
+Arc stops observable admission, cancels and joins observations and physical hub
+connections (including hijacked WebSockets) before ordinary request drain and user
+hooks. Failed source opening retains cleanup and its application admission lease
+until workers actually join. See [observable lifetimes](../queries/observable-queries.md).
+
+Operation resource `Close` still runs at most once. A holder that owns resumable
+cleanup can explicitly implement `execution.ResourcesJoiner`: Close initiates
+cleanup once and `Join(ctx)` waits for that same work without repeating disposal
+side effects. Context errors mean an incomplete join; later Close/Shutdown can
+retry only Join. Non-context Join outcomes certify completion, even on failure.
+Plain holders without this capability have final, cached Close errors, including
+context errors; they must not return while leaving unowned background cleanup.
+`execution.ErrScopeJoinPending` distinguishes unfinished work from final failures.
+
+For embedded hosting, stop your external server as well. Arc owns its observable
+connections, not arbitrary raw hijacks; track those in your own lifecycle participant.

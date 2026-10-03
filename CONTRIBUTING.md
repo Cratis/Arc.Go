@@ -1,6 +1,6 @@
 # Contributing to Arc for Go
 
-Thank you for helping build the Cratis Arc framework for Go. This repository is in early development: it provides foundation contracts, command and snapshot-query pipelines, HTTP hosting, `arctest` scenarios, an experimental model-bound adapter generator, and an optional Chronicle integration. Observable query transports and full product parity remain unsupported. Discuss larger changes before implementation, and document only capabilities that exist and have been verified.
+Thank you for helping build the Cratis Arc framework for Go. This repository is in early development: it provides foundation contracts, command, snapshot and observable-query pipelines, HTTP/SSE/WebSocket hosting, `arctest` scenarios, an experimental model-bound adapter generator, and an optional Chronicle integration. Observable wire contracts have real-listener evidence; actual locked JavaScript/browser execution, generated observable adapters, database watches and full product parity remain unverified or unsupported. Discuss larger changes before implementation, and document only capabilities that exist and have been verified.
 
 The [Cratis contribution guide](https://github.com/Cratis/.github/blob/main/contributing.md) and [code of conduct](https://github.com/Cratis/.github/blob/main/CODE_OF_CONDUCT.md) apply.
 
@@ -37,7 +37,7 @@ golangci-lint run
 go mod tidy
 git diff --exit-code -- go.mod go.sum
 actionlint -color
-npx markdownlint-cli2 '*.md' 'Documentation/**/*.md' 'examples/**/*.md' '.github/ISSUE_TEMPLATE/*.md' '.github/pull_request_template.md' '!AGENTS.md' '!CLAUDE.md'
+npx markdownlint-cli2 '*.md' 'Documentation/**/*.md' 'examples/**/*.md' 'ContractTests/fixtures/**/*.md' 'ContractTests/observables/*.md' '.github/ISSUE_TEMPLATE/*.md' '.github/pull_request_template.md' '!AGENTS.md' '!CLAUDE.md'
 ```
 
 Race detection requires a supported platform and a C compiler. Run govulncheck with Go 1.27:
