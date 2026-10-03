@@ -53,9 +53,6 @@ func NewBuilder(options Options) (*Builder, error) {
 	return &Builder{options: o, commands: c, queries: q}, nil
 }
 
-// CommandNamespace supplies logical defaults to typed command adapters.
-func (b *Builder) CommandNamespace() string { return b.options.Namespace }
-
 // RegisterCommand implements the generated/manual command registrar seam.
 func (b *Builder) RegisterCommand(r commands.Registration) error {
 	if b.attempted {

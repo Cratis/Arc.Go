@@ -3,6 +3,7 @@ package arc_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	arc "github.com/cratis/arc.go"
@@ -53,6 +54,28 @@ func TestBuilderCombinedFrozenComposition(t *testing.T) {
 		t.Fatal(again, err)
 	}
 }
+func TestBuilderNamespaceHintIsNotAnExportedMethod(t *testing.T) {
+	if _, exists := reflect.TypeFor[*arc.Builder]().MethodByName("CommandNamespace"); exists {
+		t.Fatal("namespace implementation hint escaped into public Builder API")
+	}
+	for _, root := range []bool{false, true} {
+		b, err := arc.NewBuilder(arc.Options{Namespace: "Tasks"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var registrar commands.Registrar = b.Commands()
+		if root {
+			registrar = b
+		}
+		if err := commands.Register[builderCommand](registrar); err != nil {
+			t.Fatal(err)
+		}
+		if got := b.Catalog().Commands[0].Type.Namespace; got != "Tasks" {
+			t.Fatal(root, got)
+		}
+	}
+}
+
 func TestBuilderFailedAttemptIsTerminal(t *testing.T) {
 	b, err := arc.NewBuilder(arc.Options{})
 	if err != nil {

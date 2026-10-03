@@ -29,6 +29,10 @@ const (
 // Registrar accepts frozen registrations; generated adapters use this seam.
 type Registrar interface{ RegisterCommand(Registration) error }
 
+// commandRegistryProvider uses the root's existing construction accessor without
+// adding a public namespace-hint contract to Builder or Registrar.
+type commandRegistryProvider interface{ Commands() *Registry }
+
 // Registration is an immutable typed command adapter and descriptor.
 type Registration struct {
 	descriptor       metadata.Command
@@ -76,10 +80,12 @@ func Register[C any](r Registrar, options ...Option[C]) error {
 		return ErrInvalidRegistration
 	}
 	namespace := ""
-	if defaults, ok := r.(interface{ CommandNamespace() string }); ok {
-		namespace = defaults.CommandNamespace()
-	} else if defaults, ok := r.(interface{ commandNamespace() string }); ok {
+	if defaults, ok := r.(interface{ commandNamespace() string }); ok {
 		namespace = defaults.commandNamespace()
+	} else if provider, ok := r.(commandRegistryProvider); ok {
+		if registry := provider.Commands(); registry != nil {
+			namespace = registry.commandNamespace()
+		}
 	}
 	t := reflect.TypeFor[C]()
 	model, err := metadata.InspectModel(t, namespace)
