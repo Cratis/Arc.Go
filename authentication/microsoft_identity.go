@@ -7,8 +7,10 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
+	"sync/atomic"
 
 	"github.com/cratis/arc.go/identity"
 )
@@ -24,7 +26,12 @@ const MicrosoftIdentityProviderClaim = "urn:cratis:arc:identity:provider"
 type MicrosoftIdentityOptions struct {
 	TrustForwardedIdentityHeaders bool
 	MaxPrincipalBytes             int
+	// Logger receives a warning once per process when untrusted forwarded headers
+	// are ignored. Nil disables diagnostics; header values are never logged.
+	Logger *slog.Logger
 }
+
+var untrustedForwardedIdentityReported atomic.Bool
 
 // MicrosoftIdentityPlatform explicitly constructs a borrowed concurrent-safe
 // handler; it is never registered automatically and does not validate JWTs.
@@ -40,6 +47,16 @@ func MicrosoftIdentityPlatform(options MicrosoftIdentityOptions) (Handler, error
 			return Result{}, err
 		}
 		if !options.TrustForwardedIdentityHeaders {
+			if options.Logger != nil {
+				for name := range r.Header {
+					if strings.EqualFold(name, "x-ms-client-principal") || strings.EqualFold(name, "x-ms-client-principal-id") || strings.EqualFold(name, "x-ms-client-principal-name") {
+						if untrustedForwardedIdentityReported.CompareAndSwap(false, true) {
+							options.Logger.WarnContext(ctx, "Forwarded identity headers (x-ms-client-principal*) were ignored because this host does not trust them; the request is anonymous. Opt in with MicrosoftIdentityOptions.TrustForwardedIdentityHeaders only behind an isolating, credential-validating ingress. Reported once per process.")
+						}
+						break
+					}
+				}
+			}
 			return Anonymous(), nil
 		}
 		names := []string{"x-ms-client-principal-id", "x-ms-client-principal-name", "x-ms-client-principal"}
