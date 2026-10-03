@@ -88,6 +88,16 @@ func (s *Subscriptions) validate(id string, revision *Revision) error {
 	return nil
 }
 
+// StaleSubscribe reports an already superseded control without changing state.
+// Transport admission must serialize its check/reservation pair. This lets stale
+// controls remain successful no-ops even when opening capacity is exhausted.
+func (s *Subscriptions) StaleSubscribe(id string, revision *Revision) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state := s.states[id]
+	return state.revision != nil && (revision == nil || *revision <= *state.revision)
+}
+
 // Subscribe reserves one opening owner, or returns nil for duplicate/stale controls.
 // replaced is canceled but remains capacity-counted until Joined. When replacing
 // a legacy owner, the transport must fence its writer before activating the new

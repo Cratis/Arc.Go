@@ -79,11 +79,23 @@ func (p admittedQueries) run(ctx context.Context, s *execution.Scope, name queri
 	return p.a.queries.Perform(work, name, r)
 }
 func (p admittedQueries) Open(ctx context.Context, name queries.FullyQualifiedQueryName, r queries.Request) (*queries.Observation, queries.Result[any], error) {
+	// A transport may forward a cleanup-join notification. Compose it with the
+	// application lease rather than replacing it; failed opening cleanup can
+	// remain retained even when Open returns a nil observation.
+	notify := boundary.TakeObservationAdmission(ctx)
 	work, release, err := p.a.admit(ctx)
 	if err != nil {
+		if notify != nil {
+			notify()
+		}
 		return nil, queries.FromError[any](contextID(ctx), err), err
 	}
-	work, lease := boundary.WithObservationAdmission(work, release)
+	work, lease := boundary.WithObservationAdmission(work, func() {
+		release()
+		if notify != nil {
+			notify()
+		}
+	})
 	defer lease.ReleaseUnused()
 	capability, ok := p.a.queries.(queries.ObservablePipeline)
 	if !ok {

@@ -65,6 +65,15 @@ func (a *Application) compileRoutes(raw []rawHandler) error {
 			endpoints = append(endpoints, metadata.Endpoint{Identity: path, Method: method, Path: path})
 		}
 	}
+	for _, path := range []string{hubSSEPath, hubSSEPath + "/subscribe", hubSSEPath + "/unsubscribe"} {
+		methods := []string{"POST"}
+		if path == hubSSEPath {
+			methods = []string{"GET", "HEAD"}
+		}
+		for _, method := range methods {
+			endpoints = append(endpoints, metadata.Endpoint{Identity: path, Method: method, Path: path})
+		}
+	}
 	for _, e := range endpoints {
 		if !strings.HasPrefix(e.Identity, "/.cratis/") && reservedPath(e.Path) {
 			return ErrRouteConflict
@@ -203,6 +212,17 @@ func canonicalPath(r *http.Request) bool {
 	return r.URL.EscapedPath() == canonical
 }
 func (a *Application) dispatch(w http.ResponseWriter, r *http.Request, e metadata.Endpoint) {
+	switch e.Path {
+	case hubSSEPath:
+		a.hubSSEEndpoint(w, r)
+		return
+	case hubSSEPath + "/subscribe":
+		a.hubSSEControl(w, r, true)
+		return
+	case hubSSEPath + "/unsubscribe":
+		a.hubSSEControl(w, r, false)
+		return
+	}
 	if e.Method == "POST" {
 		a.commandEndpoint(w, r, e)
 		return

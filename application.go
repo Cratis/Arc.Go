@@ -32,6 +32,7 @@ type Application struct {
 	catalogJSON    map[string]json.RawMessage
 	users          []listProvider[UsersProvider]
 	tenants        []listProvider[TenantsProvider]
+	hubs           hubConnections
 	life           lifetime
 	server         serverState
 	rawMux         *http.ServeMux

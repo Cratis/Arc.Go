@@ -227,21 +227,23 @@ func (a *Application) Shutdown(ctx context.Context) error {
 		l.shutdownDone = make(chan struct{})
 		idle := l.idle
 		l.mu.Unlock()
+		a.drainHubs()
 		var err error
 		if observations, ok := a.queries.(queries.ObservablePipeline); ok {
 			err = observations.CloseObservations(ctx)
-			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || ctx.Err() != nil {
-				// Cancellation is not a join. Leave scopes and hooks alive for a later
-				// shutdown attempt; the pipeline retains every unfinished observation.
-				l.mu.Lock()
-				for _, cancel := range l.active {
-					cancel()
-				}
-				close(l.shutdownDone)
-				l.shutdownDone = nil
-				l.mu.Unlock()
-				return errors.Join(err, ctx.Err())
+		}
+		err = errors.Join(err, a.closeHubs(ctx))
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || ctx.Err() != nil {
+			// Cancellation is not a join. Retain transports, scopes and hooks for
+			// a later shutdown attempt, including failed-opening cleanup.
+			l.mu.Lock()
+			for _, cancel := range l.active {
+				cancel()
 			}
+			close(l.shutdownDone)
+			l.shutdownDone = nil
+			l.mu.Unlock()
+			return errors.Join(err, ctx.Err())
 		}
 		err = errors.Join(err, a.shutdownServer(ctx))
 		select {

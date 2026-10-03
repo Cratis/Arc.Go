@@ -27,6 +27,9 @@ func WithObservationAdmission(ctx context.Context, release func()) (context.Cont
 
 // TakeObservationAdmission transfers release ownership to a registered observation.
 func TakeObservationAdmission(ctx context.Context) func() {
+	if ctx == nil {
+		return nil
+	}
 	lease, _ := ctx.Value(observationAdmissionKey{}).(*ObservationAdmission)
 	if lease == nil {
 		return nil

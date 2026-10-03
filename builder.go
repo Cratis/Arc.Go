@@ -151,6 +151,9 @@ func (b *Builder) build() (*Application, error) {
 		}
 	}
 	a := &Application{schemas: b.schemas, users: slices.Clone(b.users), tenants: slices.Clone(b.tenants), details: details, options: o, catalog: cloneCatalog(catalog), endpoints: slices.Clone(endpoints), commands: cp, queries: qp}
+	if err := a.initHubs(); err != nil {
+		return nil, err
+	}
 	if err := a.compileReaders(); err != nil {
 		return nil, err
 	}
