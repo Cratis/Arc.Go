@@ -32,10 +32,14 @@ type Options struct {
 	// SemanticSource optionally recognizes a provider's exact semantic identity type.
 	SemanticSource func(any) (EventSourceID, bool)
 	Logger         *slog.Logger
+	// Start and Close are explicit lifecycle hooks, never run by Install/Build.
+	Start func(context.Context) error
+	Close func() error
 }
 
 // Integration is single-owner during configuration and immutable after Install.
-// It owns no client or event payload buffer. Discard a builder after failed Install.
+// It retains no event payload buffer. Client closure requires explicit ownership
+// and an explicit Close call. Discard a builder after failed Install.
 type Integration struct {
 	options        Options
 	events         map[reflect.Type]EventDescriptor
@@ -44,6 +48,8 @@ type Integration struct {
 	frame          commands.StateKey[*commandFrame]
 	bindings       []func(*commands.Registry) error
 	installed      bool
+	closeOnce      sync.Once
+	closeError     error
 }
 
 // New validates immutable catalog membership without network I/O.
@@ -75,7 +81,9 @@ func (i *Integration) Install(builder *arc.Builder) error {
 	}
 	i.installed = true
 	registry := builder.Commands()
-	if err := registry.AddDeferredCommitParticipant("chronicle", func(context.Context, *execution.Scope) (commands.DeferredCommitParticipant, error) { return i, nil }); err != nil {
+	if err := registry.AddDeferredCommitParticipant("chronicle", func(context.Context, *execution.Scope) (commands.DeferredCommitParticipant, error) {
+		return terminalScope{i}, nil
+	}); err != nil {
 		return err
 	}
 	if err := registry.AddContextValuesProvider("chronicle", func(context.Context, *execution.Scope) (commands.ContextValuesProvider, error) { return i, nil }); err != nil {
@@ -102,6 +110,35 @@ func (i *Integration) Install(builder *arc.Builder) error {
 		}
 	}
 	return nil
+}
+
+// Start establishes configured startup readiness. Start Arc admission and bind
+// reactor executors first. Failure is not partial success; the caller owns recovery.
+func (i *Integration) Start(ctx context.Context) error {
+	if i == nil || ctx == nil {
+		return ErrInvalid
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if i.options.Start != nil {
+		return i.options.Start(ctx)
+	}
+	return nil
+}
+
+// Close releases explicitly owned collaborators once. Stop/join reactors, then
+// drain Arc before calling Close. Borrowed-client integrations are a no-op.
+func (i *Integration) Close() error {
+	if i == nil {
+		return ErrInvalid
+	}
+	i.closeOnce.Do(func() {
+		if i.options.Close != nil {
+			i.closeError = i.options.Close()
+		}
+	})
+	return i.closeError
 }
 
 // CommandOptions supplies explicit source/route/compliance and concurrency metadata.

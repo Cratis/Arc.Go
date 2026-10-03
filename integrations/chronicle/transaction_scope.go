@@ -59,7 +59,16 @@ func (frame *commandFrame) context(ctx context.Context) context.Context {
 	return WithMetadata(ctx, Metadata{Actor: frame.actor, Causes: frame.causes})
 }
 
-func (i *Integration) Begin(ctx context.Context, inv *commands.Invocation) error {
+type terminalScope struct{ integration *Integration }
+
+func (s terminalScope) Begin(ctx context.Context, inv *commands.Invocation) error {
+	return s.integration.begin(ctx, inv)
+}
+func (s terminalScope) Complete(ctx context.Context, inv *commands.Invocation, result commands.Result[any]) (commands.CompletionReport, error) {
+	return s.integration.complete(ctx, inv, result)
+}
+
+func (i *Integration) begin(ctx context.Context, inv *commands.Invocation) error {
 	return commands.SetRootState(ctx, inv, i.root, &transaction{scopes: map[string]LabeledScope{}, aggregates: map[any]any{}})
 }
 func (i *Integration) transaction(ctx context.Context, inv *commands.Invocation) (*transaction, error) {
@@ -119,9 +128,20 @@ func (i *Integration) stage(ctx context.Context, inv *commands.Invocation, batch
 			return err
 		}
 	}
-	for _, scope := range batch.Scopes {
+	for index, scope := range batch.Scopes {
 		if err = validateScope(scope); err != nil {
 			return err
+		}
+		if scope.Expectation.Kind == Resolve {
+			if isNil(i.options.Concurrency) {
+				return ErrUnsupported
+			}
+			resolved, resolveErr := i.options.Concurrency.ResolveScope(frame.context(ctx), ScopeRequest{Coordinates: frame.coordinates, Filter: scope.Filter})
+			if resolveErr != nil {
+				return resolveErr
+			}
+			resolved.Label = scope.Label
+			batch.Scopes[index] = resolved
 		}
 	}
 	if len(batch.Entries) == 0 && len(batch.Scopes) == 0 {
@@ -132,6 +152,16 @@ func (i *Integration) stage(ctx context.Context, inv *commands.Invocation, batch
 			return ErrUnsupported
 		}
 		for _, entry := range batch.Entries {
+			explicit := false
+			for _, scope := range batch.Scopes {
+				if scope.Label == string(entry.Source) {
+					explicit = true
+					break
+				}
+			}
+			if explicit {
+				continue
+			}
 			filter := Filter{Source: entry.Source}
 			if frame.options.ConcurrencySourceType {
 				filter.Route.SourceType = entry.Route.SourceType
@@ -186,7 +216,9 @@ func (i *Integration) stage(ctx context.Context, inv *commands.Invocation, batch
 		if isNil(tx.participant) || isNil(tx.owner) {
 			return ErrInvalid
 		}
+		tx.mu.Lock()
 		tx.coordinates, tx.actor, tx.bound = frame.coordinates, frame.actor, true
+		tx.mu.Unlock()
 	}
 	if err = inv.Execution().Check(ctx); err != nil {
 		return err
@@ -199,7 +231,7 @@ func (i *Integration) stage(ctx context.Context, inv *commands.Invocation, batch
 	}
 	return nil
 }
-func (i *Integration) Complete(ctx context.Context, inv *commands.Invocation, result commands.Result[any]) (commands.CompletionReport, error) {
+func (i *Integration) complete(ctx context.Context, inv *commands.Invocation, result commands.Result[any]) (commands.CompletionReport, error) {
 	tx, err := i.transaction(ctx, inv)
 	if err != nil {
 		return commands.CompletionReport{}, err
@@ -248,6 +280,9 @@ func (i *Integration) finish(ctx context.Context, inv *commands.Invocation, tx *
 		failure = result.Failure(inv.CommandContext().Command(), err)
 	}
 	result.Report = mergeObserved(result.Report, immediate)
+	if logger := i.options.Logger; logger != nil && (result.Report.Disposition == commands.OutcomeUnknown || result.Report.Disposition == commands.MixedCommit) {
+		logger.ErrorContext(ctx, "Chronicle outcome unknown; reconcile before resubmission", "correlationId", inv.CommandContext().CorrelationID(), "store", tx.coordinates.Store, "namespace", tx.coordinates.Namespace, "sequence", tx.coordinates.Sequence)
+	}
 	tx.mu.Lock()
 	tx.result, tx.failure = result, failure
 	tx.mu.Unlock()

@@ -156,9 +156,20 @@ func (i *Integration) Provide(ctx context.Context, inv *commands.Invocation) (co
 		}
 	}
 	properties := map[string]string{"commandType": command.Descriptor().Type.Name, "commandTypeFullName": command.Descriptor().Type.Identity(), "eventSequenceId": string(coordinates.Sequence)}
+	budget := 8192
+	for key, value := range properties {
+		runes := []rune(value)
+		if len(runes) > 1024 {
+			value = string(runes[:1024]) + "…"
+			properties[key] = value
+		}
+		budget -= len(key) + len(value)
+	}
+	if budget < 0 {
+		return commands.ContextValues{}, ErrInvalid
+	}
 	if i.options.Audit != nil {
 		// Explicit opt-in only. No reflected nested objects or unknown sensitivity.
-		budget := 8192
 		values := i.options.Audit(command)
 		for _, key := range slices.Sorted(maps.Keys(values)) {
 			value := values[key]

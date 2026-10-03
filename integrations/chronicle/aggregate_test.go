@@ -120,13 +120,21 @@ func TestAggregateFailurePoisonsIgnoredMutationAndValidation(t *testing.T) {
 func TestAggregateEarlyCommitCannotCreateSuccessor(t *testing.T) {
 	f := &fakeFactory{result: c.CommitResult{Report: commands.CompletionReport{Disposition: commands.Committed}}}
 	builder, factory := aggregateSetup(t, f, &historyReader{})
+	supported := false
 	must(t, commands.Register[Change](builder, commands.Invoke(func(ctx context.Context, inv *commands.Invocation, _ Change) (commands.NoResponse, error) {
 		aggregate, err := factory.Get(ctx, inv)
 		if err != nil {
 			return commands.NoResponse{}, err
 		}
 		must(t, aggregate.Apply(ctx, Changed{Name: "first"}))
+		_, supported = any(inv.Execution()).(interface{ CheckRecordedFailures(context.Context) error })
 		_, err = aggregate.Commit(ctx)
+		if !supported {
+			if !errors.Is(err, c.ErrUnsupported) {
+				t.Fatal(err)
+			}
+			return commands.NoResponse{}, err
+		}
 		must(t, err)
 		if err = aggregate.Apply(ctx, Changed{Name: "late"}); !errors.Is(err, c.ErrClosed) {
 			t.Fatal(err)
@@ -134,10 +142,35 @@ func TestAggregateEarlyCommitCannotCreateSuccessor(t *testing.T) {
 		return commands.NoResponse{}, nil
 	})))
 	result, err := start(t, builder).Commands().Execute(t.Context(), Change{ID: "a"})
+	if !supported {
+		if result.IsSuccess() || !errors.Is(err, c.ErrUnsupported) || f.commits != 0 || f.rollbacks != 1 {
+			t.Fatal(result, err, f)
+		}
+		return
+	}
 	if result.IsSuccess() || !errors.Is(err, c.ErrClosed) || f.commits != 1 || len(f.entries) != 1 || result.Completion().Disposition != commands.Committed {
 		t.Fatal(result, err, f)
 	}
 }
+func TestEarlyAggregateCommitCannotIgnoreNestedLookupFailure(t *testing.T) {
+	f := &fakeFactory{result: c.CommitResult{Report: commands.CompletionReport{Disposition: commands.Committed}}}
+	builder, factory := aggregateSetup(t, f, &historyReader{})
+	must(t, commands.Register[Change](builder, commands.Invoke(func(ctx context.Context, inv *commands.Invocation, _ Change) (commands.NoResponse, error) {
+		aggregate, err := factory.Get(ctx, inv)
+		if err != nil {
+			return commands.NoResponse{}, err
+		}
+		must(t, aggregate.Apply(ctx, Changed{Name: "must not persist"}))
+		_, _ = inv.Pipeline().Execute(ctx, struct{ Unknown string }{})
+		_, _ = aggregate.Commit(ctx) // Even ignoring both errors cannot commit.
+		return commands.NoResponse{}, nil
+	})))
+	result, err := start(t, builder).Commands().Execute(t.Context(), Change{ID: "a"})
+	if result.IsSuccess() || err == nil || f.commits != 0 || f.rollbacks != 1 || len(f.entries) != 0 {
+		t.Fatal(result, err, f)
+	}
+}
+
 func TestAggregateDuplicateHandlersRejected(t *testing.T) {
 	handler := c.OnAggregateEvent(func(*Aggregate, Changed) error { return nil })
 	_, err := c.DefineAggregate(func(root *c.AggregateRoot) *Aggregate { return &Aggregate{AggregateRoot: root} }, handler, handler)

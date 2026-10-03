@@ -88,8 +88,7 @@ func wireMember(t reflect.Type, path string) string {
 			}
 		}
 		if !found {
-			parts[index] = camel(part)
-			t = nil
+			return camel(path)
 		}
 	}
 	return strings.Join(parts, ".")
@@ -97,7 +96,7 @@ func wireMember(t reflect.Type, path string) string {
 func camel(value string) string {
 	chars := []rune(value)
 	// Fundamentals' pinned C# policy preserves leading acronyms.
-	if len(chars) > 0 && !(len(chars) > 1 && unicode.IsUpper(chars[1])) {
+	if len(chars) > 0 && (len(chars) <= 1 || !unicode.IsUpper(chars[1])) {
 		chars[0] = unicode.ToLower(chars[0])
 	}
 	return string(chars)

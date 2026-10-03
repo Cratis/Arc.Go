@@ -5,6 +5,7 @@ package sdk
 
 import (
 	"context"
+	"maps"
 	"reflect"
 
 	"github.com/cratis/arc.go/correlation"
@@ -22,7 +23,7 @@ func DeliveryFrom(event events.Context, delivery reactors.Delivery) integration.
 	}
 	value := integration.Delivery{ID: delivery.ID(), Coordinates: integration.Coordinates{Store: integration.StoreName(delivery.Store), Namespace: integration.Namespace(delivery.Namespace), Sequence: integration.SequenceID(delivery.Sequence)}, Correlation: correlation.ID([16]byte(event.CorrelationID)), Replay: event.ObservationState&events.ObservationReplay != 0}
 	for _, cause := range event.Causation {
-		value.Causes = append(value.Causes, integration.Cause{Occurred: cause.Occurred, Type: cause.Type, Properties: cause.Properties})
+		value.Causes = append(value.Causes, integration.Cause{Occurred: cause.Occurred, Type: cause.Type, Properties: maps.Clone(cause.Properties)})
 	}
 	return value
 }

@@ -28,6 +28,14 @@ func TestCommitMappingPreservesMixedFailuresAndWireMembers(t *testing.T) {
 		t.Fatal(envelope.Details())
 	}
 }
+func TestUnknownConstraintPathUsesPinnedCSharpCasing(t *testing.T) {
+	result := chronicle.CommitResult{Report: commands.CompletionReport{Disposition: commands.NotCommitted}, Constraints: []chronicle.ConstraintViolation{{Name: "nested", Property: "Address.FullName"}}}
+	envelope := commands.FromError[commands.NoResponse]([16]byte{}, result.Failure(struct{}{}, nil))
+	if got := envelope.Details().ValidationResults[0].Members[0]; got != "address.FullName" {
+		t.Fatal(got)
+	}
+}
+
 func TestUnknownNeverBecomesConcurrencyViolation(t *testing.T) {
 	result := chronicle.CommitResult{Report: commands.CompletionReport{Disposition: commands.OutcomeUnknown}}
 	err := result.Failure(nil, nil)

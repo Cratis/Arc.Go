@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/cratis/arc.go/commands"
@@ -20,13 +21,15 @@ import (
 )
 
 type adapter struct {
-	client *chronicle.Client
-	store  chronicle.StoreName
-	events *events.Catalog
-	models *readmodels.Catalog
+	client      *chronicle.Client
+	store       chronicle.StoreName
+	events      *events.Catalog
+	models      *readmodels.Catalog
+	typedModels map[reflect.Type]func(context.Context, integration.ModelRequest) (integration.ModelDocument, error)
 }
 
-// New borrows a client and its frozen selected-store catalogs without connecting.
+// New uses a client's frozen selected-store catalogs without connecting. Client
+// ownership is borrowed unless Config.OwnClient explicitly transfers closure.
 // The caller coordinates Arc admission, observer startup/drain and client closure.
 func New(client *chronicle.Client, config Config) (*integration.Integration, error) {
 	if client == nil || strings.TrimSpace(string(config.Store)) == "" {
@@ -36,8 +39,25 @@ func New(client *chronicle.Client, config Config) (*integration.Integration, err
 	if err != nil {
 		return nil, err
 	}
-	a := &adapter{client: client, store: config.Store, events: eventCatalog, models: models}
-	return integration.New(integration.Options{StoreResolver: func(_ context.Context, command commands.CommandContext) (integration.Coordinates, error) {
+	a := &adapter{client: client, store: config.Store, events: eventCatalog, models: models, typedModels: map[reflect.Type]func(context.Context, integration.ModelRequest) (integration.ModelDocument, error){}}
+	namespaces := slices.Clone(config.StartupNamespaces)
+	for _, namespace := range namespaces {
+		if strings.TrimSpace(string(namespace)) == "" {
+			return nil, integration.ErrInvalid
+		}
+	}
+	var closeClient func() error
+	if config.OwnClient {
+		closeClient = client.Close
+	}
+	return integration.New(integration.Options{Start: func(ctx context.Context) error {
+		for _, namespace := range namespaces {
+			if _, err := client.EventStore(ctx, config.Store, chronicle.WithNamespace(namespace)); err != nil {
+				return err
+			}
+		}
+		return nil
+	}, Close: closeClient, StoreResolver: func(_ context.Context, command commands.CommandContext) (integration.Coordinates, error) {
 		namespace := chronicle.DefaultNamespace
 		if !command.Tenant().IsDefault() {
 			namespace = chronicle.Namespace(command.Tenant().String())
@@ -50,7 +70,7 @@ func New(client *chronicle.Client, config Config) (*integration.Integration, err
 			}
 		}
 		return integration.Coordinates{Store: integration.StoreName(config.Store), Namespace: integration.Namespace(namespace), Sequence: "event-log"}, nil
-	}, Transactions: a, Events: a, History: a, Models: a, Appends: a, Concurrency: a, Actor: config.Actor, Audit: config.Audit, SemanticSource: func(value any) (integration.EventSourceID, bool) {
+	}, Transactions: a, Events: a, History: a, Models: a, Appends: a, Concurrency: a, Actor: config.Actor, Audit: config.Audit, Logger: config.Logger, SemanticSource: func(value any) (integration.EventSourceID, bool) {
 		switch id := value.(type) {
 		case events.SourceID:
 			return integration.EventSourceID(id), true

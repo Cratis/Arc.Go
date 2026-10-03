@@ -35,6 +35,8 @@ type aggregateState struct {
 	isNew    bool
 	findings []validation.Result
 	value    any
+	scope    LabeledScope
+	factory  any
 }
 
 func (s *aggregateState) enter() error {
@@ -78,7 +80,7 @@ func (a *AggregateRoot) Apply(ctx context.Context, event any) (err error) {
 		}
 		a.transaction.poison(err)
 	}()
-	if err = a.integration.stage(ctx, a.invocation, Batch{Entries: []Entry{{Source: a.source, Route: a.route, Event: event}}}); err != nil {
+	if err = a.integration.stage(ctx, a.invocation, Batch{Entries: []Entry{{Source: a.source, Route: a.route, Event: event}}, Scopes: []LabeledScope{a.state.scope}}); err != nil {
 		return err
 	}
 	return a.apply(event)
@@ -113,8 +115,19 @@ type AggregateCommitResult struct {
 
 // Commit is explicit early finalization of the shared owner. No successor is ever
 // created; subsequent Apply or Commit fails. Automatic root completion retains it.
+// Early commitment requires the root's CheckRecordedFailures capability. Older
+// root versions fail closed with ErrUnsupported and poison staged work.
 func (a *AggregateRoot) Commit(ctx context.Context) (AggregateCommitResult, error) {
 	if err := a.check(ctx); err != nil {
+		return AggregateCommitResult{}, err
+	}
+	guard, supported := any(a.invocation.Execution()).(interface{ CheckRecordedFailures(context.Context) error })
+	if !supported {
+		a.transaction.poison(ErrUnsupported)
+		return AggregateCommitResult{}, ErrUnsupported
+	}
+	if err := guard.CheckRecordedFailures(ctx); err != nil {
+		a.transaction.poison(err)
 		return AggregateCommitResult{}, err
 	}
 	a.transaction.mu.Lock()
@@ -223,7 +236,7 @@ func DefineAggregate[A any](construct func(*AggregateRoot) A, options ...Aggrega
 }
 
 type aggregateKey struct {
-	factory     any
+	typ         reflect.Type
 	source      EventSourceID
 	coordinates Coordinates
 	route       Route
@@ -257,7 +270,7 @@ func (f *AggregateFactory[A]) Get(ctx context.Context, inv *commands.Invocation)
 	if frame.source == "" || isNil(integration.options.History) {
 		return zero, ErrInvalid
 	}
-	key := aggregateKey{factory: f, source: frame.source, coordinates: frame.coordinates, route: f.definition.route}
+	key := aggregateKey{typ: reflect.TypeFor[A](), source: frame.source, coordinates: frame.coordinates, route: f.definition.route}
 	tx.mu.Lock()
 	if tx.closed || (tx.bound && (tx.coordinates != frame.coordinates || tx.actor != frame.actor)) {
 		tx.mu.Unlock()
@@ -274,14 +287,22 @@ func (f *AggregateFactory[A]) Get(ctx context.Context, inv *commands.Invocation)
 		if state == nil {
 			return zero, ErrConcurrent
 		}
+		if state.factory != f {
+			return zero, commands.ErrDuplicate
+		}
 	} else {
-		state = &aggregateState{busy: true}
+		state = &aggregateState{busy: true, factory: f}
 		history, err := integration.options.History.ReadHistory(frame.context(ctx), HistoryRequest{Coordinates: frame.coordinates, Filter: Filter{Source: frame.source, Route: f.definition.route}})
 		if err != nil {
 			tx.poison(err)
 			return zero, err
 		}
+		if history.Scope.Label != string(frame.source) || history.Scope.Filter.Source != frame.source {
+			tx.poison(ErrMismatch)
+			return zero, ErrMismatch
+		}
 		state.isNew = len(history.Events) == 0
+		state.scope = history.Scope
 		aggregate := f.construct(&AggregateRoot{state: state}) // deliberately no mutation capability during folding
 		if isNil(aggregate) {
 			tx.poison(ErrInvalid)

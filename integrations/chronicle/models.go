@@ -47,6 +47,15 @@ type modelCacheKey struct {
 	model       reflect.Type
 }
 
+// ReadModelProvider borrows the configured provider for typed adapter binding.
+// It grants no command/transaction ownership. Configure it only before Install.
+func (i *Integration) ReadModelProvider() ModelReader {
+	if i == nil {
+		return nil
+	}
+	return i.options.Models
+}
+
 // BindReadModel declares a producer-backed command dependency. A query marker
 // alone is insufficient. Handwritten/generated adapters use commands.RequireReadModel.
 func BindReadModel[M any](i *Integration, id string) error { return bindModel[M](i, id, false) }
