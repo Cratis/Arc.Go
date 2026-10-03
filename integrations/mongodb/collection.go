@@ -23,9 +23,8 @@ type Ownership uint8
 const (
 	// ApplicationOwned declares ordinary application documents.
 	ApplicationOwned Ownership = 1
-	// ChronicleOwned reserves Chronicle's mandatory raw-ciphertext release
-	// boundary before any future publication. A binding is not permission to
-	// publish decrypted or raw sink documents; no publication API exists yet.
+	// ChronicleOwned requires complete raw-ciphertext release through a
+	// renderer's application callback before typed publication.
 	ChronicleOwned Ownership = 2
 )
 
@@ -38,7 +37,7 @@ type CollectionOptions struct {
 	Database string
 	// Name is the exact case-preserving collection name.
 	Name string
-	// SortFields declares top-level JSON scalar names for later query rendering.
+	// SortFields declares top-level JSON scalar names for query rendering.
 	// The constructor copies this slice; BSON overrides remain storage names.
 	SortFields []queries.SortField
 	// Ownership must explicitly declare the document owner.
@@ -46,7 +45,7 @@ type CollectionOptions struct {
 }
 
 // Collection is a typed, immutable binding to an application-owned client.
-// It has no Close method, promoted driver API, or publication operations.
+// It has no Close method or promoted driver API.
 // Construct it with NewCollection; the zero value is not a valid binding.
 // Constructed bindings are safe for concurrent use without config mutation.
 type Collection[T any] struct {
@@ -54,6 +53,7 @@ type Collection[T any] struct {
 	options   CollectionOptions
 	registry  *bson.Registry
 	sortNames map[queries.SortField]string
+	id        field
 }
 
 // NewCollection borrows client and validates/copies options and T's storage
@@ -79,6 +79,7 @@ func NewCollection[T any](client *mongo.Client, config CollectionOptions) (*Coll
 		return nil, ErrUnsupportedModel
 	}
 	id := false
+	var identity field
 	fields := make(map[queries.SortField]*codec)
 	storage := make(map[queries.SortField]string)
 	for _, f := range model.fields {
@@ -86,6 +87,7 @@ func NewCollection[T any](client *mongo.Client, config CollectionOptions) (*Coll
 		storage[queries.SortField(f.jsonName)] = f.name
 		if f.name == "_id" {
 			id = f.codec.scalar()
+			identity = f
 		}
 	}
 	if !id {
@@ -115,11 +117,11 @@ func NewCollection[T any](client *mongo.Client, config CollectionOptions) (*Coll
 		}
 	}
 	config.SortFields = slices.Clone(config.SortFields)
-	return &Collection[T]{client, config, registry, sortNames}, nil
+	return &Collection[T]{client: client, options: config, registry: registry, sortNames: sortNames, id: identity}, nil
 }
 
 // forTenant creates only a local driver handle, not a connection or operation.
-// Kept private until rendering can enforce admission and publication boundaries.
+// Renderers resolve one handle per admitted execution.
 func (c *Collection[T]) forTenant(tenant tenancy.ID) (*mongo.Collection, error) {
 	if c == nil || c.client == nil || c.registry == nil {
 		return nil, ErrConfiguration
