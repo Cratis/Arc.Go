@@ -51,6 +51,16 @@ type board struct {
 // New builds an independent fixture with standard-library state and real Arc
 // registrations. Start or Serve owns admission; no handwritten envelopes exist.
 func New() (*arc.Application, error) {
+	builder, err := NewBuilder()
+	if err != nil {
+		return nil, err
+	}
+	return builder.Build()
+}
+
+// NewBuilder composes an independent fixture and leaves it configurable for
+// in-process scenarios. It starts no lifecycle participants or listeners.
+func NewBuilder() (*arc.Builder, error) {
 	state := &board{tasks: []Task{}}
 	b, err := arc.NewBuilder(arc.Options{})
 	if err != nil {
@@ -107,5 +117,5 @@ func New() (*arc.Application, error) {
 	}), queries.WithPath[ByID]("/api/tasks/by-id")); err != nil {
 		return nil, err
 	}
-	return b.Build()
+	return b, nil
 }
