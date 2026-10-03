@@ -64,7 +64,14 @@ func flatten(value any, kind leafKind, depth int, leaves *[]outcomeLeaf, admit f
 	if depth >= 64 {
 		return ErrUnhandledEffect
 	}
-	if graph, ok := value.(interface{ outcomeLeaves() []outcomeLeaf }); ok && !nilValue(value) {
+	// Operations remain reserved leaves even when embedding Outcome promotes
+	// its private graph methods. Admission must see the operation itself.
+	if graph, ok := value.(interface{ outcomeLeaves() []outcomeLeaf }); ok && !operationReturn(reflect.TypeOf(value)) && !nilValue(value) {
+		if kind == responseLeaf {
+			if err := checkOperationResponseGraph(value, depth); err != nil {
+				return err
+			}
+		}
 		for _, leaf := range graph.outcomeLeaves() {
 			if err := flatten(leaf.value, leaf.kind, depth+1, leaves, admit); err != nil {
 				return err

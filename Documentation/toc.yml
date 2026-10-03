@@ -41,6 +41,8 @@
           href: backend/go/commands/command-context.md
         - name: Command filters
           href: backend/go/commands/command-filters.md
+        - name: Flat command operations
+          href: backend/go/commands/operations.md
         - name: Command execution scopes
           href: backend/go/commands/command-execution-scopes.md
         - name: Validate commands

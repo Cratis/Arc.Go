@@ -138,7 +138,7 @@ func (b *Builder) build() (*Application, error) {
 	if o.ScopeFactory != nil {
 		pipelineOpener = nil
 	}
-	cp, err := b.commands.Build(commands.PipelineOptions{ScopeFactory: o.ScopeFactory, OpenResources: pipelineOpener, DependencyCatalog: o.DependencyCatalog, Authorization: evaluator, Validation: graph, Membership: o.Membership, RequireTenant: o.RequireTenant, Clock: o.Clock, CleanupTimeout: o.CleanupTimeout, ExposeExceptionDetails: o.ExposeExceptionDetails, Logger: o.Logger})
+	cp, err := b.commands.Build(commands.PipelineOptions{ScopeFactory: o.ScopeFactory, OpenResources: pipelineOpener, DependencyCatalog: o.DependencyCatalog, Authorization: evaluator, Validation: graph, Membership: o.Membership, RequireTenant: o.RequireTenant, Clock: o.Clock, CleanupTimeout: o.CleanupTimeout, Operations: o.CommandOperations, ExposeExceptionDetails: o.ExposeExceptionDetails, Logger: o.Logger})
 	if err != nil {
 		return nil, err
 	}

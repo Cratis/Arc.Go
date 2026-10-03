@@ -30,6 +30,7 @@ type configuration[C any] struct {
 	responseKind     ResponseKind
 	responseType     reflect.Type
 	responseOverride bool
+	operations       bool
 }
 type option[C any] struct {
 	name string
