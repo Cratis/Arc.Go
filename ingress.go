@@ -244,6 +244,6 @@ func privateCache(w http.ResponseWriter) {
 }
 func expireLegacyCookie(w http.ResponseWriter, r *http.Request) {
 	if _, err := r.Cookie(".cratis-identity"); err == nil {
-		http.SetCookie(w, &http.Cookie{Name: ".cratis-identity", Path: "/", Value: "", MaxAge: -1, Expires: time.Unix(1, 0), HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteLaxMode})
+		http.SetCookie(w, &http.Cookie{Name: ".cratis-identity", Path: "/", Value: "", Expires: time.Now().Add(-24 * time.Hour)})
 	}
 }

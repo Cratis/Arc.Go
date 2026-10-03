@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	arc "github.com/cratis/arc.go"
 	"github.com/cratis/arc.go/authentication"
@@ -39,7 +40,7 @@ func TestIdentityFreshUnwrappedAndLegacyCookieExpired(t *testing.T) {
 		w := httptest.NewRecorder()
 		w.Header().Set("Vary", "Origin")
 		a.ServeHTTP(w, r)
-		if w.Header().Get("Cache-Control") != "no-store, private" || w.Header().Get("Vary") != "Origin, Cookie" || !strings.Contains(w.Header().Get("Set-Cookie"), "Max-Age=0") {
+		if w.Header().Get("Cache-Control") != "no-store, private" || w.Header().Get("Vary") != "Origin, Cookie" || !strings.Contains(w.Header().Get("Set-Cookie"), "Expires=") {
 			t.Fatal(w.Header())
 		}
 		if authenticated {
@@ -54,6 +55,50 @@ func TestIdentityFreshUnwrappedAndLegacyCookieExpired(t *testing.T) {
 		t.Fatal(calls)
 	}
 }
+func TestLegacyCookieExpiryMatchesCSharpRemovalAttributes(t *testing.T) {
+	b, err := arc.NewBuilder(arc.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := buildStarted(t, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scheme := range []string{"http", "https"} {
+		for _, present := range []bool{false, true} {
+			r := httptest.NewRequest("GET", scheme+"://example.invalid/.cratis/me", nil)
+			if present {
+				r.Header.Set("Cookie", ".cratis-identity=SECRET")
+			}
+			w := httptest.NewRecorder()
+			a.ServeHTTP(w, r)
+			response := w.Result()
+			cookies := response.Cookies()
+			if err := response.Body.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if !present {
+				if len(cookies) != 0 {
+					t.Fatal(cookies)
+				}
+				continue
+			}
+			if len(cookies) != 1 {
+				t.Fatal(cookies)
+			}
+			c := cookies[0]
+			if c.Name != ".cratis-identity" || c.Value != "" || c.Path != "/" || c.Domain != "" || c.HttpOnly || c.Secure || c.SameSite != 0 || c.MaxAge != 0 || !c.Expires.Before(time.Now()) || c.Expires.Before(time.Now().Add(-25*time.Hour)) {
+				t.Fatal(scheme, c)
+			}
+			for _, attribute := range []string{"HttpOnly", "Secure", "SameSite", "Max-Age", "SECRET"} {
+				if strings.Contains(w.Header().Get("Set-Cookie"), attribute) {
+					t.Fatal(w.Header())
+				}
+			}
+		}
+	}
+}
+
 func TestIdentityAmbiguityFailsWithoutActivation(t *testing.T) {
 	b, err := arc.NewBuilder(arc.Options{})
 	if err != nil {
