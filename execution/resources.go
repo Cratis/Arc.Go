@@ -11,9 +11,24 @@ import (
 )
 
 // Resources is an application-owned holder for operation dependencies. Close
-// must honor its context. A Fundamentals dependencyinjection.Scope satisfies it
-// structurally; plain Go holders need no dependency-injection contract.
+// must honor its context. Close is called at most once; its returned failure is
+// final unless the holder explicitly implements ResourcesJoiner. A Fundamentals
+// dependencyinjection.Scope satisfies it structurally; plain Go holders need no
+// dependency-injection contract.
 type Resources = interface{ Close(context.Context) error }
+
+// ResourcesJoiner explicitly separates one-time disposal initiation from joining
+// owned cleanup. Scope calls Resources.Close at most once, then Join. Close must
+// initiate cleanup even if its context expires; Join must not initiate disposal or
+// repeat side effects. Join is serialized and may be called again after a context
+// error. A non-context Join result certifies that all owned cleanup has ended,
+// including on failure; repeated Join after completion must return that outcome.
+// Context errors from Close/Join mean incomplete waiting, not final disposal
+// failures. Other Close errors are preserved alongside the eventual Join result.
+// Scope starts no cleanup goroutine; the holder owns, cancels and joins its work.
+type ResourcesJoiner interface {
+	Join(context.Context) error
+}
 
 // OpenResources opens cheap/lazy resources, not handler dependencies. A returned
 // holder is owned even when accompanied by an error. Arc owns this operation

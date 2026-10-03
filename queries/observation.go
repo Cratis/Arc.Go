@@ -375,7 +375,7 @@ func (o *Observation) Close(ctx context.Context) error {
 	}
 	if o.scope != nil {
 		err := o.scope.Close(ctx)
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		if errors.Is(err, execution.ErrScopeJoinPending) {
 			return errors.Join(o.closeErr, err)
 		}
 		o.closeErr = errors.Join(o.closeErr, err)

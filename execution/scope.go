@@ -20,6 +20,9 @@ var (
 	ErrScopeClosed = errors.New("operation scope closed")
 	// ErrScopeExpired identifies a retained callback view.
 	ErrScopeExpired = errors.New("operation scope view expired")
+	// ErrScopeJoinPending means Close has stopped admission but owned work has
+	// not joined. Retry Close with a fresh budget; disposal is never restarted.
+	ErrScopeJoinPending = errors.New("operation scope cleanup join pending")
 	// ErrScopeView identifies an attempt to close a non-owning callback view.
 	ErrScopeView = errors.New("operation scope view cannot close resources")
 	// ErrIdentityChanged identifies changed principal/tenant values or presence.
@@ -52,6 +55,8 @@ type scopeState struct {
 	closing, disposing, closed      bool
 	done                            chan struct{}
 	closeErr                        error
+	disposalStarted                 bool
+	disposalErr                     error
 }
 
 func newScope(ctx context.Context, owned bool) *Scope {
@@ -149,8 +154,11 @@ func (s *Scope) Use(ctx context.Context, call func(context.Context, *Scope) erro
 
 // Close stops admission and joins admitted uses before closing owned resources
 // at most once. Borrowed resources are never closed. Repeated calls return the
-// recorded disposal outcome. A canceled join leaves admission closed; a later
-// Close must finish disposal. Cleanup is synchronous and cooperative. Never call
+// recorded disposal outcome. A canceled admitted-use join leaves admission closed.
+// ResourcesJoiner permits later calls to resume only the cleanup join, never Close
+// initiation. Incomplete joins wrap ErrScopeJoinPending; ordinary resource failures
+// (including context errors without that capability) are final and cached.
+// Cleanup is synchronous and cooperative. Never call
 // an owning scope's Close from inside one of its own admitted callbacks.
 func (s *Scope) Close(ctx context.Context) error {
 	if s == nil || s.state == nil {
@@ -175,7 +183,7 @@ func (s *Scope) Close(ctx context.Context) error {
 	select {
 	case <-idle:
 	case <-ctx.Done():
-		return ctx.Err()
+		return errors.Join(ErrScopeJoinPending, ctx.Err())
 	}
 	state.mu.Lock()
 	if state.closed {
@@ -193,23 +201,67 @@ func (s *Scope) Close(ctx context.Context) error {
 			state.mu.Unlock()
 			return err
 		case <-ctx.Done():
-			return ctx.Err()
+			return errors.Join(ErrScopeJoinPending, ctx.Err())
 		}
 	}
 	if err := ctx.Err(); err != nil {
 		state.mu.Unlock()
-		return err
+		return errors.Join(ErrScopeJoinPending, err)
 	}
 	state.disposing = true
+	state.done = make(chan struct{})
+	initiate := !state.disposalStarted
+	state.disposalStarted = true
 	state.mu.Unlock()
-	var err error
-	if state.owned && state.resources != nil {
-		err = invoke(ctx, func() error { return state.resources.Close(ctx) })
+	joiner, resumable := state.resources.(ResourcesJoiner)
+	resumable = resumable && state.owned
+	if initiate && state.owned && state.resources != nil {
+		// Once initiation is recorded, call Close even if cancellation races
+		// this point. The holder still receives the original bounded context.
+		err := invoke(context.WithoutCancel(ctx), func() error { return state.resources.Close(ctx) })
+		err = errors.Join(err, ctx.Err())
+		if resumable {
+			// Only an explicit join capability makes context errors provisional.
+			// Preserve other failures even when joined with a timeout.
+			err = withoutWaitErrors(err)
+		}
+		state.disposalErr = err // This attempt exclusively owns cleanup state.
+	}
+	err := state.disposalErr
+	pending := false
+	if resumable {
+		joinErr := invoke(ctx, func() error { return joiner.Join(ctx) })
+		var panicErr *PanicError
+		pending = errors.Is(joinErr, context.Canceled) || errors.Is(joinErr, context.DeadlineExceeded) || errors.As(joinErr, &panicErr)
+		err = errors.Join(err, joinErr)
+		if pending {
+			err = errors.Join(ErrScopeJoinPending, err)
+		}
 	}
 	state.mu.Lock()
 	state.closeErr = err
-	state.closed = true
+	state.closed = !pending
+	state.disposing = false
 	close(state.done)
 	state.mu.Unlock()
+	return err
+}
+
+// Strip only pure waiting leaves. A wrapped or joined non-context failure must
+// survive; arbitrary Resources.Close errors never pass through this helper.
+func withoutWaitErrors(err error) error {
+	if err == context.Canceled || err == context.DeadlineExceeded {
+		return nil
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		var remaining error
+		for _, part := range joined.Unwrap() {
+			remaining = errors.Join(remaining, withoutWaitErrors(part))
+		}
+		return remaining
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {
+		return withoutWaitErrors(wrapped.Unwrap())
+	}
 	return err
 }
