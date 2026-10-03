@@ -32,6 +32,7 @@ type Builder struct {
 	schemas     map[reflect.Type]json.RawMessage
 	users       []listProvider[UsersProvider]
 	tenants     []listProvider[TenantsProvider]
+	hooks       []lifecycleEntry
 }
 
 // NewBuilder validates and copies configuration without activation or I/O.
@@ -154,6 +155,7 @@ func (b *Builder) build() (*Application, error) {
 	if err := a.compileRoutes(b.rawHandlers); err != nil {
 		return nil, err
 	}
+	a.initLifetime(b.hooks)
 	if err := a.compileCatalogs(); err != nil {
 		return nil, err
 	}

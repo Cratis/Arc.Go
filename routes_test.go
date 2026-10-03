@@ -18,7 +18,7 @@ func TestExactRoutingMethodsAndCanonicalPaths(t *testing.T) {
 	if err := queries.Register[builderModel](b, "All", queries.Function(func(context.Context, queries.NoArguments) ([]builderModel, error) { return nil, nil }), queries.WithPath[queries.NoArguments]("/items/")); err != nil {
 		t.Fatal(err)
 	}
-	a, err := b.Build()
+	a, err := buildStarted(t, b)
 	if err != nil {
 		t.Fatal(err)
 	}

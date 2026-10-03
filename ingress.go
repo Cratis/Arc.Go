@@ -48,6 +48,13 @@ func (a *Application) serveIngress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx = boundary.ForwardReceipt(ctx, received)
+	work, release, err := a.admit(ctx)
+	if err != nil {
+		w.WriteHeader(503)
+		return
+	}
+	defer release()
+	ctx = work
 	r = r.WithContext(ctx)
 	if !canonicalPath(r) {
 		w.WriteHeader(400)

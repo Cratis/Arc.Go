@@ -23,7 +23,7 @@ func TestIdentityFreshUnwrappedAndLegacyCookieExpired(t *testing.T) {
 	})); err != nil {
 		t.Fatal(err)
 	}
-	a, err := b.Build()
+	a, err := buildStarted(t, b)
 	if err != nil {
 		t.Fatal(err)
 	}

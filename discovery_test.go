@@ -35,7 +35,7 @@ func TestDiscoveryExposureMatrix(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			a, err := b.Build()
+			a, err := buildStarted(t, b)
 			if tc.buildError {
 				if err == nil {
 					t.Fatal("accepted invalid exposure")
@@ -74,7 +74,7 @@ func TestCatalogsSchemasAndRoles(t *testing.T) {
 	if err := queries.Register[builderModel](b, "All", queries.Function(func(context.Context, httpArguments) ([]builderModel, error) { return nil, nil })); err != nil {
 		t.Fatal(err)
 	}
-	a, err := b.Build()
+	a, err := buildStarted(t, b)
 	if err != nil {
 		t.Fatal(err)
 	}

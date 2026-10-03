@@ -26,7 +26,7 @@ func TestTerminalCredentialsAndCorrelation(t *testing.T) {
 	if err := commands.Register[builderCommand](b); err != nil {
 		t.Fatal(err)
 	}
-	a, err := b.Build()
+	a, err := buildStarted(t, b)
 	if err != nil {
 		t.Fatal(err)
 	}

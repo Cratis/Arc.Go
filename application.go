@@ -31,6 +31,8 @@ type Application struct {
 	catalogJSON map[string]json.RawMessage
 	users       []listProvider[UsersProvider]
 	tenants     []listProvider[TenantsProvider]
+	life        lifetime
+	server      serverState
 }
 
 // Catalog returns copied declarations, including artifacts excluded from discovery.
@@ -40,10 +42,10 @@ func (a *Application) Catalog() metadata.Catalog { return cloneCatalog(a.catalog
 func (a *Application) Endpoints() []metadata.Endpoint { return slices.Clone(a.endpoints) }
 
 // Commands exposes the backend command substitution seam.
-func (a *Application) Commands() commands.Pipeline { return a.commands }
+func (a *Application) Commands() commands.Pipeline { return admittedCommands{a} }
 
 // Queries exposes the backend snapshot query substitution seam.
-func (a *Application) Queries() queries.Pipeline { return a.queries }
+func (a *Application) Queries() queries.Pipeline { return admittedQueries{a} }
 
 // ServeHTTP requires explicit application startup before accepting work.
 func (a *Application) ServeHTTP(w http.ResponseWriter, r *http.Request) {
