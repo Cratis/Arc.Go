@@ -50,7 +50,7 @@ func New(client *chronicle.Client, config Config) (*integration.Integration, err
 			}
 		}
 		return integration.Coordinates{Store: integration.StoreName(config.Store), Namespace: integration.Namespace(namespace), Sequence: "event-log"}, nil
-	}, Transactions: a, Events: a, History: a, Concurrency: a, Actor: config.Actor, Audit: config.Audit, SemanticSource: func(value any) (integration.EventSourceID, bool) {
+	}, Transactions: a, Events: a, History: a, Models: a, Concurrency: a, Actor: config.Actor, Audit: config.Audit, SemanticSource: func(value any) (integration.EventSourceID, bool) {
 		switch id := value.(type) {
 		case events.SourceID:
 			return integration.EventSourceID(id), true

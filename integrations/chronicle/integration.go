@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"reflect"
 	"strings"
+	"sync"
 
 	arc "github.com/cratis/arc.go"
 	"github.com/cratis/arc.go/commands"
@@ -23,6 +24,7 @@ type Options struct {
 	Transactions  TransactionFactory
 	Events        EventCatalog
 	History       HistoryReader
+	Models        ModelReader
 	Concurrency   ScopeResolver
 	Actor         func(identity.Principal) Actor
 	Audit         func(commands.CommandContext) map[string]string
@@ -130,6 +132,9 @@ type commandFrame struct {
 	actor       Actor
 	causes      []Cause
 	scopes      map[string]LabeledScope
+	modelMu     sync.Mutex
+	models      map[modelCacheKey]ModelDocument
+	modelBusy   map[modelCacheKey]bool
 }
 
 func (i *Integration) frameFor(ctx context.Context, inv *commands.Invocation) (*commandFrame, error) {
