@@ -95,6 +95,35 @@ func TestProductionCLIObservableMixedFamilyPublication(t *testing.T) {
 	}
 }
 
+func TestCompetingObservableIdentitiesRejectAllProductionPublication(t *testing.T) {
+	for _, fields := range []string{
+		"ID string `json:\"-\"`; Id string `json:\"id\"`",
+		"Id string `json:\"-\"`; ID string `json:\"id\"`",
+		"ID string `json:\"other\"`; Id string `json:\"id\"`",
+		"Id string `json:\"other\"`; ID string `json:\"id\"`",
+		"Embedded; ID string `json:\"id\"`",
+	} {
+		t.Run(fields, func(t *testing.T) {
+			dir := consumer(t)
+			input := "//arc:namespace Shop\npackage consumer\nimport \"github.com/cratis/arc.go/observable\"\ntype Embedded struct { Id string `json:\"-\"` }\n//arc:readmodel\ntype Task struct { ID string `json:\"id\"`; Title string `json:\"title\"` }\nfunc (Task) Watch() (observable.Source[[]Task],error) { return nil,nil }\nfunc (Task) All() ([]Task,error) { return nil,nil }\n"
+			put(t, filepath.Join(dir, "input.go"), input)
+			config := Config{Dir: dir, TypeScriptOut: "web"}
+			if err := Generate(t.Context(), config); err != nil {
+				t.Fatal(err)
+			}
+			// A valid snapshot family also changes. No adapter, proxy, barrel,
+			// manifest or journal may change after analyzer identity preflight.
+			input = strings.Replace(input, "ID string `json:\"id\"`; Title string `json:\"title\"`", fields+"; Title string `json:\"title\"`; Extra string `json:\"extra\"`", 1)
+			put(t, filepath.Join(dir, "input.go"), input)
+			before := outputInventory(t, dir)
+			if err := Generate(t.Context(), config); err == nil || !strings.Contains(err.Error(), "unambiguous conventional identity") {
+				t.Fatalf("competing runtime identity published: %v", err)
+			}
+			assertOutputInventory(t, dir, before)
+		})
+	}
+}
+
 func TestObservableCollectionsRejectUnsupportedClientIdentityBeforePublication(t *testing.T) {
 	for _, field := range []string{
 		"Key string `json:\"id\" arc:\"identity\"`",
