@@ -147,9 +147,14 @@ func (b *boundPipeline) run(ctx context.Context, scope *execution.Scope, command
 		b.frame.owner.mu.Lock()
 		b.frame.owner.operationAttempts++
 		b.frame.owner.mu.Unlock()
-		// callWith observes the attempt even if the caller discards this result.
-		// Compensation uses a per-callback baseline, not the original failure.
-		return FromError[any](contextID(ctx), ErrInvalidOperation), ErrInvalidOperation
+		result := FromError[any](contextID(ctx), ErrInvalidOperation)
+		// Forward refusal must be visible to persistence guards inside this
+		// callback, not just to callWith after the callback returns. Recovery
+		// uses per-callback attempts without contaminating the original failure.
+		if b.frame.operations == nil || !b.frame.operations.recovered {
+			b.record(result, ErrInvalidOperation)
+		}
+		return result, ErrInvalidOperation
 	}
 	b.frame.owner.mu.Lock()
 	completing := b.frame.owner.completing
