@@ -62,7 +62,23 @@ All 21 envelope fixtures and 11 scalar fixtures must execute. Status zero labels
 standalone validation value, not an HTTP response. Failed scalar response omission
 has a separate regression test and is a documented intentional C# correction.
 
-The Go tests exercise real result/scalar implementations, but no pipeline, host,
-redactor, authentication handler, malformed-request reader or observable transport.
-The 401 and 408 transport overrides, and exception-bearing QUERY reader 400, await
-their transport slices; they must not be inferred from `Result.StatusCode()`.
+The foundation tests exercise result/scalar implementations. Hosting evidence is
+separate: `ContractTests/hosting_test.go` executes all six `hosting.json` cases and
+all five `discovery.json` cases through an actual built and started application.
+The same test runs the nine task-board cases using real registrations and pipelines.
+`lifecycle_test.go` adds real loopback listener, HEAD and graceful-shutdown evidence.
+These tests are Go-owned adaptations, not paired .NET or browser conformance.
+Wait-timeout 408 and observable transports remain unsupported.
+
+## Hosting sources and differences
+
+At the same pinned Arc revision, hosting expectations come from
+`Commands/CommandEndpointMapper.cs`, `Queries/QueryEndpointMapper.cs`,
+`Queries/BodyQueryRequestReader.cs`, `Identity/IdentityEndpointMapper.cs`,
+`Identity/IdentityProvider.cs`, `Introspection/IntrospectionEndpointMapper.cs`,
+`Introspection/DiscoveryExposure.cs` and `Http/EndpointRouteHelper.cs`.
+`hosting.json` deliberately records Go-specific empty 404/405, explicit HEAD in
+Allow, terminal credential rejection 401 and reader-error 400 overrides.
+Discovery cache headers extend `no-store, private` protection to catalogs/schema;
+current C# does not uniformly apply those headers. Schemas are bounded Go metadata,
+not complete .NET JsonSchemaExporter output. No automatic golden update is allowed.

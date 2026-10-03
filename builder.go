@@ -131,11 +131,15 @@ func (b *Builder) build() (*Application, error) {
 		return nil, err
 	}
 	o := b.options
-	cp, err := b.commands.Build(commands.PipelineOptions{OpenResources: o.OpenResources, DependencyCatalog: o.DependencyCatalog, Authorization: evaluator, Validation: graph, Membership: o.Membership, RequireTenant: o.RequireTenant, Clock: o.Clock, CleanupTimeout: o.CleanupTimeout, ExposeExceptionDetails: o.ExposeExceptionDetails, Logger: o.Logger})
+	pipelineOpener := o.OpenResources
+	if o.ScopeFactory != nil {
+		pipelineOpener = nil
+	}
+	cp, err := b.commands.Build(commands.PipelineOptions{ScopeFactory: o.ScopeFactory, OpenResources: pipelineOpener, DependencyCatalog: o.DependencyCatalog, Authorization: evaluator, Validation: graph, Membership: o.Membership, RequireTenant: o.RequireTenant, Clock: o.Clock, CleanupTimeout: o.CleanupTimeout, ExposeExceptionDetails: o.ExposeExceptionDetails, Logger: o.Logger})
 	if err != nil {
 		return nil, err
 	}
-	qp, err := b.queries.Build(queries.PipelineOptions{OpenResources: o.OpenResources, DependencyCatalog: o.DependencyCatalog, Authorization: evaluator, Validation: graph, Membership: o.Membership, RequireTenant: o.RequireTenant, Clock: o.Clock, CleanupTimeout: o.CleanupTimeout, ExposeExceptionDetails: o.ExposeExceptionDetails, Logger: o.Logger})
+	qp, err := b.queries.Build(queries.PipelineOptions{ScopeFactory: o.ScopeFactory, OpenResources: pipelineOpener, DependencyCatalog: o.DependencyCatalog, Authorization: evaluator, Validation: graph, Membership: o.Membership, RequireTenant: o.RequireTenant, Clock: o.Clock, CleanupTimeout: o.CleanupTimeout, ExposeExceptionDetails: o.ExposeExceptionDetails, Logger: o.Logger})
 	if err != nil {
 		return nil, err
 	}
