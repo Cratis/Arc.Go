@@ -14,11 +14,16 @@ and result envelopes; with them, you share those contracts explicitly.
 Go 1.26 or later is required. This experimental port supports backend pipelines,
 snapshot and observable HTTP hosting, identity, and protected discovery. Typed Go
 adapters and bounded TypeScript model/command/snapshot/observable-query proxies are
-available, alongside optional Chronicle integration and MongoDB snapshots. The
-generated observable Node case exercises default WebSocket hub/Delta behavior;
-its final collection uses an independent consumer, not mounted React. Opaque
-provider-source generation, database watches, and OpenAPI remain unsupported;
-browser and mounted React-hook conformance remain unverified.
+available, alongside optional Chronicle integration and MongoDB snapshots and
+source-only watches. The generated observable Node case exercises default
+WebSocket hub/Delta behavior with an independent collection consumer. A separate
+bounded mounted React lane executes real generated hook reconstruction, cache
+reuse and joined cleanup with explicit WebSocket/Delta providers. This is not
+browser/DOM/StrictMode or full Arc-wrapper parity; suspense, reconnect, server
+paging, setter correctness and 30-second expiry remain unverified. MongoDB watches
+require explicit close/join/reopen after terminal loss; see the [Partial provider
+profiles and limits](parity.md). Opaque provider-source generation, Chronicle
+watches, and OpenAPI remain unsupported.
 Constructing metadata or a result alone does not execute business code; the
 application builder compiles the HTTP endpoints.
 
