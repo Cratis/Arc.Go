@@ -5,6 +5,7 @@ package queries_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"testing"
@@ -38,6 +39,17 @@ func ExampleObservedCollection() {
 	fmt.Println(present, items[0].Name)
 	// Output: true Ada
 }
+func TestObservedCollectionPointerDeclarationFailsWithoutCallingNilWrapper(t *testing.T) {
+	var r queries.Registry
+	err := queries.RegisterObservable[Item](&r, "All", queries.Function(func(context.Context, queries.NoArguments) (observable.Source[*queries.ObservedCollection[Item]], error) {
+		t.Fatal("registration activated performer")
+		return nil, nil
+	}), public[queries.NoArguments]())
+	if !errors.Is(err, queries.ErrResponseType) {
+		t.Fatalf("pointer wrapper error = %v", err)
+	}
+}
+
 func TestObservedCollectionDeclarationUnwrapsItemsAndRejectsWrongIdentity(t *testing.T) {
 	state, err := observable.NewState(queries.ObservedCollection[Item]{Items: []Item{}, Version: 1}, observable.SubjectOptions[queries.ObservedCollection[Item]]{})
 	mustRegister(t, err)

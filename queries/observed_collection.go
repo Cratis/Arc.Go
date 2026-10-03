@@ -26,7 +26,8 @@ type CollectionChange struct {
 
 // ObservedCollection carries a complete snapshot and optional source change hints.
 // Items and Changes are borrowed immutable values, subject to the source's cloning
-// contract. The query pipeline renders Items as []T, not this metadata wrapper.
+// contract. Emit this value, not a pointer wrapper; pointer declarations fail with
+// ErrResponseType. The query pipeline renders Items as []T, not this metadata wrapper.
 // Versions are source-local continuity hints, never wire subscription revisions.
 // Zero versions and an empty Generation disable continuity hints. Hints are always
 // verified against intercepted snapshots; they cannot hide independently found changes.

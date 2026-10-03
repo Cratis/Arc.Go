@@ -128,6 +128,9 @@ func register[M, A, O any](r Registrar, name string, p Performer[A, O], emission
 		return fail(err)
 	}
 	data := emission
+	if emission.Kind() == reflect.Pointer && emission.Implements(reflect.TypeFor[observedCollection]()) {
+		return fail(ErrResponseType)
+	}
 	if observed, ok := reflect.Zero(emission).Interface().(observedCollection); ok {
 		data = observed.collectionType()
 	}
