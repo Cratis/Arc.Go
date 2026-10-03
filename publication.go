@@ -38,6 +38,7 @@ func publicationFailure(value any) (any, int) {
 		return failedCommand(r.Details())
 	case queries.Result[any]:
 		d := r.Details()
+		d.Paging = queries.PagingInfo{}
 		d.ChangeSet = nil
 		d.ValidationResults = safeFindings(d.ValidationResults)
 		d.ExceptionMessages = []string{boundary.InternalErrorMessage}
