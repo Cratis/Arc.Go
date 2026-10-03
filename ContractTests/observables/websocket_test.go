@@ -105,13 +105,14 @@ func (c *webSocket) read() (map[string]any, error) {
 			return nil, fmt.Errorf("server frame is compressed or masked")
 		}
 		length := uint64(header[1] & 0x7f)
-		if length == 126 {
+		switch length {
+		case 126:
 			var size [2]byte
 			if _, err := io.ReadFull(c.reader, size[:]); err != nil {
 				return nil, err
 			}
 			length = uint64(binary.BigEndian.Uint16(size[:]))
-		} else if length == 127 {
+		case 127:
 			var size [8]byte
 			if _, err := io.ReadFull(c.reader, size[:]); err != nil {
 				return nil, err
