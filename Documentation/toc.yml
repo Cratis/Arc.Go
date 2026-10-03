@@ -81,6 +81,8 @@
       href: backend/go/commands/results.md
     - name: Query results
       href: backend/go/queries/results.md
+    - name: Testing
+      href: backend/go/testing/index.md
     - name: Validation and severity
       href: backend/go/validation/index.md
     - name: Authentication handlers
