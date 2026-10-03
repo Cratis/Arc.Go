@@ -15,6 +15,7 @@ import (
 
 	arc "github.com/cratis/arc.go"
 	"github.com/cratis/arc.go/integrations/chronicle/examples/sharedmodel"
+	"github.com/cratis/arc.go/integrations/chronicle/sdk"
 	"github.com/cratis/arc.go/queries"
 	"github.com/cratis/chronicle.go"
 	"github.com/cratis/chronicle.go/readmodels"
@@ -44,7 +45,7 @@ func TestOneModelRegistersWithBothFrameworksWithoutKernel(t *testing.T) {
 	registry := chronicle.NewRegistry()
 	model, err := sharedmodel.RegisterChronicle(registry)
 	must(t, err)
-	client, err := chronicle.NewClient(chronicle.WithRegistry(registry))
+	client, err := chronicle.NewClient(chronicle.WithAppendOriginResolver(sdk.ResolveAppendOrigin), chronicle.WithRegistry(registry))
 	must(t, err)
 	t.Cleanup(func() { must(t, client.Close()) })
 	_, catalog, err := client.Catalogs("offline")

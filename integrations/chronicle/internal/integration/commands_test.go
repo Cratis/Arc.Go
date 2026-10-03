@@ -54,7 +54,7 @@ func clientFor(t *testing.T, register func(*chronicle.Registry), names ...chroni
 	t.Log("kernel cratis/chronicle:19.29.4-development", os.Getenv("CHRONICLE_INTEGRATION_IMAGE_DIGEST"))
 	registry := chronicle.NewRegistry()
 	register(registry)
-	client, err := chronicle.NewClient(chronicle.WithRegistry(registry), chronicle.WithConnectionString(endpoint), chronicle.WithDevelopmentDefaults())
+	client, err := chronicle.NewClient(chronicle.WithAppendOriginResolver(sdk.ResolveAppendOrigin), chronicle.WithRegistry(registry), chronicle.WithConnectionString(endpoint), chronicle.WithDevelopmentDefaults())
 	require(t, err)
 	t.Cleanup(func() { require(t, client.Close()) })
 	id, err := concepts.NewUUID()

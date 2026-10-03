@@ -4,8 +4,8 @@ go 1.26
 
 require (
 	github.com/cratis/arc.go v0.0.0-20261003061649-435a136792b6
-	github.com/cratis/chronicle.go v0.0.0-20261003055955-e7bd2b327e55
-	github.com/cratis/fundamentals.go v0.0.0-20261002221826-0fd6b51d12e4
+	github.com/cratis/chronicle.go v0.0.0-20261003123849-fd90dd48861d
+	github.com/cratis/fundamentals.go v0.1.0
 	google.golang.org/grpc v1.84.0
 )
 

@@ -115,9 +115,22 @@ Inspect `Result.Completion()` and `commands.CompletionError` on the server. A fa
 
 Immediate SDK writes remain immediate. After authorization, the adapter establishes readiness and subscribes to the selected cached sequence. For an attributable append, an ignored rejection fails the command and rolls back deferred work; an earlier confirmed immediate write cannot be undone. The subscription ends before deferred or early aggregate completion. Raw low-level sequence handles, other sequences, and errors before dispatch are outside this observation window: always inspect direct SDK append results yourself.
 
-Append attribution is an interim safeguard, not execution identity. Within one installed integration, a notification is attributed only when exactly one in-flight command owner holds its store, namespace, sequence and exact request correlation. Zero correlation is not a broadcast. Shared-correlation ambiguity attributes to none and logs once at Debug per in-flight key lifetime, without event payloads. Membership remains until owner completion returns, and notifications matching an integration owner-commit window are excluded, so another command's rejected or successful owner commit cannot poison the remaining command.
+Configure append attribution once when constructing the shared Chronicle client:
 
-This suppression can miss a genuine immediate append racing an owner commit or another same-correlation command. It cannot distinguish an unrelated SDK caller or separate integration sharing the correlation; an append started during ambiguity can also notify after the key becomes a singleton. Always check direct append results, use distinct correlations for independent commands, and do not treat observation as a persistence guarantee. [Chronicle.Go execution-identity issue 47](https://github.com/Cratis/Chronicle.Go/issues/47) tracks the SDK seam needed to remove this limitation.
+```go
+client, err := chronicle.NewClient(
+    chronicle.WithRegistry(registry),
+    chronicle.WithAppendOriginResolver(sdk.ResolveAppendOrigin),
+)
+```
+
+This is a construction excerpt; configure your connection and authentication too. `sdk.New` borrows the already-built client and cannot retrofit its frozen resolver option. Without this option, arbitrary handler appends are **not attributed**. The task-board example includes it.
+
+Each root execution allocates a fresh, immutable local origin, even without staged work. After mandatory authorization, every executing frame publishes it in Arc's command snapshot. Joined children and grandchildren share the root origin; an independent root Execute selects a new origin even when its context inherits the same correlation or an explicit SDK origin. Advisory Validate publishes no origin: its snapshot resolves to zero and masks inherited attribution.
+
+Notifications must match the exact nonzero origin and the selected store, namespace and sequence. Correlation is diagnostic only, so concurrent same-correlation commands remain separate. SDK-owned unit commits use their own origin and bypass the resolver; they are not counted as immediate handler appends. Resolver errors or panics fail before dispatch without fallback. Origins are local attribution metadata, not authorization credentials or persistence guarantees.
+
+Coverage requires the supplied callback context and this configured client. Appends that discard that context, use another client or raw low-level handles, target other coordinates, or outlive the command's subscription are outside the mechanism. Zero-origin notifications are ignored. Pre-dispatch failures do not emit notifications. Always inspect every direct append result, including rejected and uncertain outcomes; immediate persistence cannot be rolled back by a later command failure.
 
 ## Inject keyed read models
 

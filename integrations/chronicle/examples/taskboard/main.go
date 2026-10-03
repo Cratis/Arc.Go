@@ -92,7 +92,7 @@ func createApplication(endpoint string, storeName chronicle.StoreName) (app *arc
 	if err := registry.AddProjection(projections.ModelBound(model, projections.FromEvent(event), projections.Passive())); err != nil {
 		return nil, nil, err
 	}
-	client, err := chronicle.NewClient(chronicle.WithRegistry(registry), chronicle.WithConnectionString(endpoint), chronicle.WithDevelopmentDefaults())
+	client, err := chronicle.NewClient(chronicle.WithAppendOriginResolver(sdk.ResolveAppendOrigin), chronicle.WithRegistry(registry), chronicle.WithConnectionString(endpoint), chronicle.WithDevelopmentDefaults())
 	if err != nil {
 		return nil, nil, err
 	}
