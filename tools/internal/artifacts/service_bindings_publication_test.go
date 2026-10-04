@@ -120,6 +120,94 @@ func TestServicesPreserveMixedOutputOwnershipCollisions(t *testing.T) {
 	}
 }
 
+func TestServiceOnlySymbolCollisionsLeaveAllOutputsUnchanged(t *testing.T) {
+	for _, declaration := range []string{"type ArcBindings struct{}", "func RegisterArtifacts() {}", "func RegisterServices() {}"} {
+		t.Run(declaration, func(t *testing.T) {
+			dir := consumer(t)
+			put(t, filepath.Join(dir, "input.go"), "package consumer\ntype Foo struct{}\nfunc NewFoo() Foo{return Foo{}}\n")
+			put(t, filepath.Join(dir, "other", "input.go"), "package other\n//arc:command\ntype Add struct{}\nfunc (Add) Handle() error{return nil}\n")
+			config := Config{Dir: dir, Patterns: []string{".", "./other"}, BindingsConfigFile: bindingsConfig(t, dir, serviceBindingsConfig{})}
+			generate(t, config)
+			put(t, filepath.Join(dir, "collision.go"), "package consumer\n"+declaration+"\n")
+			// Both existing owned outputs and a fresh publication must be preflighted.
+			for _, fresh := range []bool{false, true} {
+				if fresh {
+					if err := os.Remove(filepath.Join(dir, Filename)); err != nil {
+						t.Fatal(err)
+					}
+				}
+				before := outputInventory(t, dir)
+				if err := Generate(t.Context(), config); err == nil || !strings.Contains(err.Error(), "conflicts with a handwritten declaration") {
+					t.Fatalf("collision accepted: %v", err)
+				}
+				assertOutputInventory(t, dir, before)
+			}
+		})
+	}
+}
+
+func TestInvalidServiceImportsLeaveAllOutputsUnchanged(t *testing.T) {
+	cases := []struct {
+		name, foreign, constructor string
+		files                      map[string]string
+		existing                   []serviceExistingConfig
+		want                       string
+	}{
+		{name: "direct back import", foreign: "feature", constructor: "NewFoo", files: map[string]string{
+			"feature/input.go": "package feature\nimport \"example.test/consumer\"\nvar _ consumer.Foo\ntype Bar struct{}\nfunc NewFoo() Bar{return Bar{}}\n",
+		}, want: "import cycle"},
+		{name: "transitive back import", foreign: "feature", constructor: "NewFoo", files: map[string]string{
+			"feature/input.go": "package feature\nimport _ \"example.test/consumer/bridge\"\ntype Bar struct{}\nfunc NewFoo() Bar{return Bar{}}\n",
+			"bridge/input.go":  "package bridge\nimport _ \"example.test/consumer\"\n",
+		}, want: "import cycle"},
+		{name: "foreign main", foreign: "program", constructor: "NewFoo", files: map[string]string{
+			"program/input.go": "package main\ntype Bar struct{}\nfunc NewFoo() Bar{return Bar{}}\nfunc main(){}\n",
+		}, want: "is a program, not an importable package"},
+		{name: "internal boundary", foreign: "private/internal/service", constructor: "NewFoo", files: map[string]string{
+			"private/internal/service/input.go": "package service\ntype Bar struct{}\nfunc NewFoo() Bar{return Bar{}}\n",
+		}, want: "not allowed"},
+		{name: "foreign main Existing key", foreign: "program", files: map[string]string{
+			"program/input.go": "package main\ntype Bar struct{}\nfunc main(){}\n",
+		}, existing: []serviceExistingConfig{{Key: "example.test/consumer/program.Bar", Lifetime: "singleton"}}, want: "is a program, not an importable package"},
+		{name: "internal Existing key", foreign: "private/internal/service", files: map[string]string{
+			"private/internal/service/input.go": "package service\ntype Bar struct{}\n",
+		}, existing: []serviceExistingConfig{{Key: "example.test/consumer/private/internal/service.Bar", Lifetime: "singleton"}}, want: "not allowed"},
+		{name: "nested generic key back import", foreign: "feature", files: map[string]string{
+			"feature/input.go": "package feature\nimport \"example.test/consumer\"\nvar _ consumer.Foo\ntype Bar struct{}\n",
+		}, existing: []serviceExistingConfig{{Key: "Key", Lifetime: "singleton"}}, want: "import cycle"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := consumer(t)
+			put(t, filepath.Join(dir, "input.go"), "package consumer\ntype Foo struct{}\nfunc NewFoo() Foo{return Foo{}}\n")
+			put(t, filepath.Join(dir, "other", "input.go"), "package other\n//arc:command\ntype Add struct{}\nfunc (Add) Handle() error{return nil}\n")
+			config := Config{Dir: dir, Patterns: []string{".", "./other"}, BindingsConfigFile: bindingsConfig(t, dir, serviceBindingsConfig{})}
+			generate(t, config)
+			for path, source := range tc.files {
+				put(t, filepath.Join(dir, path), source)
+			}
+			cfg := serviceBindingsConfig{Constructors: []string{}, Existing: tc.existing}
+			if tc.constructor != "" {
+				cfg.Constructors = []string{"example.test/consumer/" + tc.foreign + "." + tc.constructor}
+			}
+			if len(tc.existing) > 0 && tc.existing[0].Key == "Key" {
+				// The alias is owned by another selected package; its nested argument
+				// still requires the forbidden feature import in the service owner.
+				put(t, filepath.Join(dir, "keys", "input.go"), "package keys\nimport \"example.test/consumer/feature\"\ntype Box[T any] struct{}\ntype Key = Box[[]*feature.Bar]\n")
+				cfg.Existing[0].Key = "example.test/consumer/keys.Key"
+				config.Patterns = append(config.Patterns, "./keys")
+			}
+			config.Patterns = append(config.Patterns, "./"+tc.foreign)
+			config.BindingsConfigFile = bindingsConfig(t, dir, cfg)
+			before := outputInventory(t, dir)
+			if err := Generate(t.Context(), config); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("invalid generated import accepted: %v; want %s", err, tc.want)
+			}
+			assertOutputInventory(t, dir, before)
+		})
+	}
+}
+
 func runServiceCLI(t *testing.T, dir, config, pattern string) []byte {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
@@ -132,6 +220,39 @@ func runServiceCLI(t *testing.T, dir, config, pattern string) []byte {
 		t.Fatalf("production service CLI: %v\n%s", err, output)
 	}
 	return output
+}
+
+func TestProductionCLIServiceBindingsValidForeignConstructor(t *testing.T) {
+	dir := consumer(t)
+	fixture := filepath.Join("testdata", "servicebindings")
+	put(t, filepath.Join(dir, "input.go"), "package consumer\n")
+	put(t, filepath.Join(dir, "external", "input.go"), string(get(t, filepath.Join(fixture, "external.go.txt"))))
+	cfg := serviceBindingsConfig{
+		Constructors: []string{"example.test/consumer/external.NewFoo"},
+		Existing:     []serviceExistingConfig{{Key: "example.test/consumer/external.Key", Lifetime: "singleton"}},
+	}
+	// An exact exported alias attests the nested generic dependency key.
+	put(t, filepath.Join(dir, "external", "key.go"), "package external\ntype Key = Box[[]*Dependency]\n")
+	config := bindingsConfig(t, dir, cfg)
+	output := runServiceCLI(t, dir, config, "./...")
+	if !bytes.Contains(output, []byte("1 service bindings published")) {
+		t.Fatal(string(output))
+	}
+	first := get(t, filepath.Join(dir, Filename))
+	runServiceCLI(t, dir, config, "./...")
+	if !bytes.Equal(first, get(t, filepath.Join(dir, Filename))) {
+		t.Fatal("foreign constructor bytes changed")
+	}
+	generate(t, Config{Dir: dir, Patterns: []string{"./..."}, BindingsConfigFile: config, Check: true})
+	put(t, filepath.Join(dir, "external_test.go"), string(get(t, filepath.Join(fixture, "external_test.go.txt"))))
+	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, "go", "test", "-mod=mod", "-count=1", "-timeout=30s", "./...")
+	command.Dir = dir
+	command.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=local")
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("valid foreign constructor compiled witness: %v\n%s", err, output)
+	}
 }
 
 func TestProductionCLIServiceBindingsForeignGeneratorOwnership(t *testing.T) {

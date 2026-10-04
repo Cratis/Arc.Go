@@ -161,6 +161,9 @@ func Generate(ctx context.Context, config Config) error {
 	if err != nil {
 		return err
 	}
+	if err := validateServiceImports(load, patterns, services); err != nil {
+		return err
+	}
 	graph, err := buildGraph(analyses, profile, typescript)
 	if err != nil {
 		return err

@@ -7,9 +7,13 @@ import (
 	"fmt"
 	"go/types"
 	"io"
+	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 
 	bt "github.com/cratis/fundamentals.go/dependencyinjection/bindingtypes"
+	"golang.org/x/tools/go/packages"
 )
 
 // Keep the shared plan intact; Existing is also needed when no generated key
@@ -41,8 +45,10 @@ func planServiceBindings(analyses []*analysis, cfg *serviceBindingsConfig, repor
 		return nil, fmt.Errorf("bindings owner %q must be an explicitly selected main-module package", cfg.Package)
 	}
 	refs.owner = owner.pkg.Types
-	if refs.owner.Scope().Lookup("RegisterServices") != nil {
-		return nil, diagnostic(owner.pkg, refs.owner.Scope().Lookup("RegisterServices").Pos(), "generated symbol RegisterServices conflicts with a handwritten declaration")
+	for _, name := range []string{"ArcBindings", "RegisterArtifacts", "RegisterServices"} {
+		if object := refs.owner.Scope().Lookup(name); object != nil {
+			return nil, diagnostic(owner.pkg, object.Pos(), "generated symbol %s conflicts with a handwritten declaration", name)
+		}
 	}
 	config := bt.Config{EmitPackage: refs.owner, MatchIFoo: cfg.MatchIFoo, RequireAllDependencies: cfg.RequireAllDependencies}
 	if cfg.Duplicates == "keepExisting" {
@@ -112,6 +118,64 @@ func planServiceBindings(analyses []*analysis, cfg *serviceBindingsConfig, repor
 		}
 	}
 	return &serviceBindingsPlan{owner: owner, plan: plan, existing: config.Existing}, nil
+}
+
+// validateServiceImports checks the renderer's exact service import set against
+// the Go loader/compiler's package universe before any publication. Reuse the
+// renderer so aliases, nested generic arguments, Existing keys and forwarding
+// keys cannot diverge from this check. The import-only analysis overlay lets Go
+// enforce main/internal accessibility and direct/transitive cycles itself; it
+// neither executes application code nor adds services to the wire type graph.
+func validateServiceImports(load *packages.Config, patterns []string, plan *serviceBindingsPlan) error {
+	if plan == nil {
+		return nil
+	}
+	e := &emitter{analysis: plan.owner, imports: map[string]string{}, names: map[string]bool{}}
+	e.emitServices(plan)
+	paths := make([]string, 0, len(e.imports))
+	for path := range e.imports {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	var source strings.Builder
+	fmt.Fprintf(&source, "package %s\n", plan.owner.pkg.Name)
+	for _, path := range paths {
+		fmt.Fprintf(&source, "import _ %s\n", strconv.Quote(path))
+	}
+	dir, err := packageDirectory(plan.owner.pkg)
+	if err != nil {
+		return err
+	}
+	check := *load
+	check.Overlay = make(map[string][]byte, len(load.Overlay)+1)
+	for path, content := range load.Overlay {
+		check.Overlay[path] = content
+	}
+	check.Overlay[filepath.Join(dir, Filename)] = []byte(source.String())
+	check.Mode = packages.NeedName | packages.NeedFiles | packages.NeedImports | packages.NeedDeps | packages.NeedTypes | packages.NeedTypesSizes
+	loaded, err := packages.Load(&check, patterns...)
+	if err != nil {
+		return fmt.Errorf("validate generated service imports: %w", err)
+	}
+	if len(loaded) == 0 {
+		return fmt.Errorf("validate generated service imports: no packages matched")
+	}
+	messages := map[string]bool{}
+	packages.Visit(loaded, func(pkg *packages.Package) bool {
+		for _, err := range pkg.Errors {
+			messages[err.Error()] = true
+		}
+		return true
+	}, nil)
+	if len(messages) > 0 {
+		lines := make([]string, 0, len(messages))
+		for message := range messages {
+			lines = append(lines, message)
+		}
+		sort.Strings(lines)
+		return fmt.Errorf("validate generated service imports: %s", strings.Join(lines, "\n"))
+	}
+	return nil
 }
 
 func reportBindingDiagnostics(analyses []*analysis, diagnostics []bt.Diagnostic, report io.Writer) error {

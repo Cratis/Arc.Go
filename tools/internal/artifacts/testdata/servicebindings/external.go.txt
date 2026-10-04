@@ -1,0 +1,22 @@
+// Copyright (c) Cratis. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+
+package external
+
+import "os"
+
+type Box[T any] struct { Value T }
+type Dependency struct { Value string }
+type Foo struct { Value string }
+var Calls int
+
+func init() {
+	if os.Getenv("ARC_BINDINGS_GENERATION") == "trap" {
+		panic("generation executed the foreign package")
+	}
+}
+
+func NewFoo(dependency Box[[]*Dependency]) *Foo {
+	Calls++
+	return &Foo{Value: dependency.Value[0].Value}
+}
