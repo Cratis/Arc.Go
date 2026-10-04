@@ -121,13 +121,10 @@ func TestServicesPreserveMixedOutputOwnershipCollisions(t *testing.T) {
 }
 
 func TestServiceOnlySymbolCollisionsLeaveAllOutputsUnchanged(t *testing.T) {
+	newConsumer := servicePublicationConsumer(t)
 	for _, declaration := range []string{"type ArcBindings struct{}", "func RegisterArtifacts() {}", "func RegisterServices() {}"} {
 		t.Run(declaration, func(t *testing.T) {
-			dir := consumer(t)
-			put(t, filepath.Join(dir, "input.go"), "package consumer\ntype Foo struct{}\nfunc NewFoo() Foo{return Foo{}}\n")
-			put(t, filepath.Join(dir, "other", "input.go"), "package other\n//arc:command\ntype Add struct{}\nfunc (Add) Handle() error{return nil}\n")
-			config := Config{Dir: dir, Patterns: []string{".", "./other"}, BindingsConfigFile: bindingsConfig(t, dir, serviceBindingsConfig{})}
-			generate(t, config)
+			dir, config := newConsumer(t)
 			put(t, filepath.Join(dir, "collision.go"), "package consumer\n"+declaration+"\n")
 			// Both existing owned outputs and a fresh publication must be preflighted.
 			for _, fresh := range []bool{false, true} {
@@ -147,6 +144,7 @@ func TestServiceOnlySymbolCollisionsLeaveAllOutputsUnchanged(t *testing.T) {
 }
 
 func TestInvalidServiceImportsLeaveAllOutputsUnchanged(t *testing.T) {
+	newConsumer := servicePublicationConsumer(t)
 	cases := []struct {
 		name, foreign, constructor string
 		files                      map[string]string
@@ -178,11 +176,7 @@ func TestInvalidServiceImportsLeaveAllOutputsUnchanged(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			dir := consumer(t)
-			put(t, filepath.Join(dir, "input.go"), "package consumer\ntype Foo struct{}\nfunc NewFoo() Foo{return Foo{}}\n")
-			put(t, filepath.Join(dir, "other", "input.go"), "package other\n//arc:command\ntype Add struct{}\nfunc (Add) Handle() error{return nil}\n")
-			config := Config{Dir: dir, Patterns: []string{".", "./other"}, BindingsConfigFile: bindingsConfig(t, dir, serviceBindingsConfig{})}
-			generate(t, config)
+			dir, config := newConsumer(t)
 			for path, source := range tc.files {
 				put(t, filepath.Join(dir, path), source)
 			}
