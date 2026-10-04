@@ -39,7 +39,7 @@ type tsQuery struct {
 // family. It delegates transport and hooks to the locked Arc runtime, and never
 // publishes outputs or infers a provider's paging/sorting contract.
 func renderTypeScriptQueries(graph *Graph) ([]typescriptOutput, error) {
-	if graph == nil || graph.FormatVersion != GraphVersion {
+	if graph == nil || graph.FormatVersion != GraphVersion && graph.FormatVersion != ContractGraphVersion {
 		return nil, fmt.Errorf("unsupported query graph format")
 	}
 	if err := validateProfile(graph.Profile); err != nil {
@@ -55,6 +55,9 @@ func renderTypeScriptQueries(graph *Graph) ([]typescriptOutput, error) {
 		inputs[command.TypeKey] = true
 	}
 	for _, node := range graph.Types {
+		if node.TSIncluded != nil && !*node.TSIncluded {
+			continue
+		}
 		if inputs[node.Key] {
 			continue
 		}

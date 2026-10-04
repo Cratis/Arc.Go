@@ -57,7 +57,10 @@ invocations; they do not retrofit a manifest onto legacy adapter-only output.
 
 Profile fields:
 
-- `formatVersion`: exactly `1`; `name`: stable nonempty ownership identity.
+- `formatVersion`: `1` retains the existing adapter/TS projection and fingerprints;
+  `2` explicitly selects the richer [shared contract projection](../../internal/artifacts/contract.md).
+  OpenAPI profile requests remain diagnostic: document generation/publication is
+  not enabled. `name`: stable nonempty ownership identity.
 - `defaultNamespace` and `packageNamespaces`: logical names; source namespaces
   remain available. Reachable dependency models need a declared namespace or
   explicit package mapping; dependencies never receive generated Go adapters.

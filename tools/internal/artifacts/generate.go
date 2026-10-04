@@ -65,6 +65,9 @@ func Generate(ctx context.Context, config Config) error {
 	if err := validateProfile(profile); err != nil {
 		return err
 	}
+	if profile.OpenAPI != nil {
+		return fmt.Errorf("OpenAPI profile contract analysis is internal only; document generation/publication is not enabled")
+	}
 	typescript := profile.TypeScript.Out != ""
 	if !typescript && profile.TypeScript.EmitGo != nil && !*profile.TypeScript.EmitGo {
 		return fmt.Errorf("emit-go=false requires TypeScript output")
