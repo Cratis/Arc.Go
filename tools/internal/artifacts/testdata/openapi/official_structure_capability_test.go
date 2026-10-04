@@ -576,6 +576,11 @@ func officialCompiler(calls *int, assertFormats bool) *jsonschema.Compiler {
 	compiler := jsonschema.NewCompiler()
 	compiler.DefaultDraft(jsonschema.Draft2020)
 	compiler.UseLoader(refusingLoader{calls})
+	// v6.0.3 delegates these formats to net/url, whose accepted syntax is
+	// broader than RFC 3986. Register grammar assertions before compilation;
+	// the official schema bytes and the caller's instance remain unchanged.
+	compiler.RegisterFormat(&jsonschema.Format{Name: "uri", Validate: officialURIFormat(false)})
+	compiler.RegisterFormat(&jsonschema.Format{Name: "uri-reference", Validate: officialURIFormat(true)})
 	if assertFormats {
 		compiler.AssertFormat()
 	}
@@ -753,6 +758,9 @@ func TestOfficialCapabilityPinnedResources(t *testing.T) {
 	}{
 		{"schema", officialSchemaBytes, "59f106413cb48c31299f96f024c938d3628aed6cd02cd14bcfb2fcaae7a130b6", 33483},
 		{"Apache-2.0 LICENSE", officialLicenseBytes, "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4", 11357},
+		{"URI tests", officialURITests, "47954ee6aef87c20a045ad2182fecd9c7eec53b6c8151ee88cba50381b2850a4", 8893},
+		{"URI-reference tests", officialURIReferenceTests, "3a9913d43edd31650d3c4f8cc75b2b701bd6670c514cc759f4586245f72c59cb", 7771},
+		{"URI tests MIT LICENSE", officialURITestsLicense, "837402bd25fad9b704265801ca3f92566a98157c1f9a7acd6f446299ba1c305a", 1057},
 	} {
 		if len(fixture.data) != fixture.size || fmt.Sprintf("%x", sha256.Sum256(fixture.data)) != fixture.hash {
 			t.Fatalf("raw pinned %s changed", fixture.name)
@@ -763,7 +771,7 @@ func TestOfficialCapabilityPinnedResources(t *testing.T) {
 		t.Fatal("original official $id changed")
 	}
 	officialHarness(t)
-	t.Log("checked 2 raw pinned resources, trusted official dynamic-reference infrastructure compiled offline")
+	t.Log("checked 5 raw pinned resources, trusted official dynamic-reference infrastructure compiled offline")
 }
 
 func TestOfficialCapabilityExactNumbersAndInventory(t *testing.T) {

@@ -1,19 +1,18 @@
 <!-- Copyright (c) Cratis. All rights reserved. -->
 <!-- Licensed under the MIT license. See LICENSE file in the project root for full license information. -->
 
-# Official-structure Stage 1 capability: blocked on URI format
+# Official-structure Stage 1 capability: URI repair
 
-This is an unfinished, test-only experiment for issue #24, not a production
-renderer, an exported validator, or a general OpenAPI conformance claim. The
-normative [OpenAPI 3.1.1 specification](https://spec.openapis.org/oas/v3.1.1.html)
+This test-only experiment for issue #24 is not a production renderer, an
+exported validator, or a general OpenAPI conformance claim. The normative
+[OpenAPI 3.1.1 specification](https://spec.openapis.org/oas/v3.1.1.html)
 wins over the informative structural schema and the engine.
 
-The new route fixes the historical response-key false acceptance: both native
-and actual QUERY operations reject `responses: {"wrong": ...}`. The full new
-matrix nevertheless fails. `externalDocs.url: "not a uri with spaces"` is
-accepted for both operation kinds despite format assertions being enabled.
-Those two rejection assertions remain failing. Do not implement the renderer
-until the full capability gate passes and its scope is reviewed.
+Both native and actual QUERY operations reject `responses: {"wrong": ...}`
+and `externalDocs.url: "not a uri with spaces"`. The original 326 leaf subjects
+now pass, including both unchanged URI rejection assertions. Another 218
+checks exercise pinned upstream URI cases. Renderer work still requires review
+of this capability and its bounded scope; passing this proof is not #24 acceptance.
 
 ## Pinned upstream resources
 
@@ -36,6 +35,19 @@ schema is registered offline under its original `$id`,
 application document declares `https://json-schema.org/draft/2020-12/schema`.
 Trusted official `$dynamicRef` infrastructure is unchanged; application dynamic
 references and anchors remain outside the admitted capability.
+
+The URI controls come unchanged from
+[JSON-Schema-Test-Suite commit ab079cc2bace029fdbb483be28a6ade526bcfbc2](https://github.com/json-schema-org/JSON-Schema-Test-Suite/tree/ab079cc2bace029fdbb483be28a6ade526bcfbc2).
+They are format test inputs, not Cratis wire fixtures or a C# capture:
+
+| Local resource | Upstream path | Bytes | SHA-256 |
+| --- | --- | ---: | --- |
+| `uri-tests.json` | `tests/draft2020-12/optional/format/uri.json` | 8,893 | `47954ee6aef87c20a045ad2182fecd9c7eec53b6c8151ee88cba50381b2850a4` |
+| `uri-reference-tests.json` | `tests/draft2020-12/optional/format/uri-reference.json` | 7,771 | `3a9913d43edd31650d3c4f8cc75b2b701bd6670c514cc759f4586245f72c59cb` |
+| `uri-tests-LICENSE` | `LICENSE` (MIT) | 1,057 | `837402bd25fad9b704265801ca3f92566a98157c1f9a7acd6f446299ba1c305a` |
+
+All five raw resources have embedded hash and length assertions. The complete
+URI groups also assert their schema/dialect and exact counts (47 and 31).
 
 ## Validation route
 
@@ -72,11 +84,37 @@ The official Responses definition admits `default`,
 malformed values, and extensions-only Responses Objects. Empty response
 `description` is valid. OpenAPI 3.1 operations need not always have `responses`.
 
-## Matrix and stop result
+## URI format semantics
 
-The compiled Go 1.26.8 run exercised **326 leaf subjects** across 11 top-level
-checks: **324 passed, 2 failed**. This is a failed gate, not a partial pass that
-permits renderer work.
+The pinned engine's built-in `uri` and `uri-reference` checks use `net/url`,
+which accepts syntax outside RFC 3986, including spaces and non-ASCII paths.
+The proof compiler registers replacements for those two formats through
+`Compiler.RegisterFormat`, before compiling the unchanged official schema.
+This is an explicit engine integration, not an assertion post-filter or a
+change to the official dialect. No dependency version is changed.
+
+`official_uri_capability_test.go` translates
+[RFC 3986 Appendix A](https://www.rfc-editor.org/rfc/rfc3986#appendix-A)
+productions into anchored grammar expressions, using `net/netip` for IPv6
+address syntax. It preserves percent-encoded text, relative and empty
+references, non-HTTP schemes, reg-name hosts, and the URI/IRI distinction.
+It does not normalize, trim, resolve, fetch, or require a reachable host.
+[OpenAPI 3.1.1 relative-reference rules](https://spec.openapis.org/oas/v3.1.1.html#relative-references-in-api-description-uris)
+allow relative references even in URI fields historically named `url`;
+requiring HTTPS or an absolute URL here would incorrectly narrow the contract.
+
+Structural validation always opts into format assertions. Application schema
+formats retain the explicit annotation/assertion choice for Draft 2020-12.
+All 78 upstream cases run in both modes; all 31 URI-reference cases also run
+through native and QUERY `externalDocs.url`. Non-string values remain valid
+for a format-only schema but fail the official URL property's string type.
+
+## Matrix result
+
+The compiled Go 1.26.8 run exercised **544 leaf subjects** across 13 top-level
+checks: **544 passed, 0 failed, 0 skipped**. All **326** original subjects are
+retained; the **218** additional subjects use the pinned upstream URI groups.
+This is a bounded capability result, not a CI or release-readiness claim.
 
 - Complete pointer sets match **16** numeric-fixture and **31** contextual-fixture
   Schema Objects, not merely a nonzero count. The contextual fixture includes
@@ -104,13 +142,14 @@ permits renderer work.
   are refused without loader calls; four compiler/metaschema probes hit only the
   rejecting loader. No HTTP/file reader is installed. The compiler has only
   preloaded resources, engine-built-in metaschemas, and local fragments.
-- Original six numeric failures and original kin QUERY failure remain unchanged
-  in separate nonzero runs. Their exact numeric/ownership subset still passes.
-- **Blocker:** v6.0.3's `validateURIReference` delegates to Go `net/url.Parse`,
-  which permits spaces in a relative path. The pinned official schema's
-  `external-documentation.url` uses this format, so both the native and QUERY
-  invalid URI controls are accepted. No assertion inversion, skip, alternate
-  validator, engine upgrade, or hand-written format workaround was added.
+- Historical kin numeric and QUERY failure witnesses, including their original
+  assertions, remain byte-identical to `e5dc6bc`. This repair does not rerun or
+  claim to fix them; the exact engine and official structural schema replace
+  their rejected validation routes, not their fixtures.
+- The two original native/QUERY space-containing URI negatives now pass without
+  changed assertions. All upstream syntax expectations pass, including percent
+  encoding, relative references, reg-name fallback and non-ASCII rejection.
+  No assertions are inverted, skipped or replaced with the validator's output.
 
 Inventory budgets are 128 levels and 10,000 typed objects. This finite profile
 is not a universal Schema Object/OpenAPI validator. No HTTP consumer, renderer,
@@ -139,12 +178,20 @@ go test -mod=readonly -modfile="$CAPABILITY_MOD" -count=1 -timeout=90s -v \
   ./internal/artifacts/testdata/openapi \
   -run '^TestExactDocumentCapability(Numbers|Ownership)$'
 
-# Must pass before Stage 1 can advance; currently nonzero on two URI controls.
+# Passing bounded official-schema proof, including the URI regression controls.
 go test -mod=readonly -modfile="$CAPABILITY_MOD" -count=1 -timeout=90s -v \
   ./internal/artifacts/testdata/openapi -run '^TestOfficialCapability'
 ```
 
-Only the explicit capability package was run. Broad root/tools/provider/kernel/
-frontend or Tier 1/2 CI-equivalent gates were not run; this failed proof is not
-release-ready. The package resides under `testdata` and is intentionally not
-selected by ordinary `./...` runs.
+The proof commands explicitly address this `testdata` package; ordinary `./...`
+discovery does not select it. Broad root/tools/provider/kernel/frontend or
+Tier 1/2 CI-equivalent gates are not established by this proof. The known
+unchanged whole-tools timeout is not rerun as reassurance.
+
+## Remaining #24 scope
+
+Review must establish whether this bounded validator is sufficient for the
+agreed renderer profile before any renderer or CLI publication work proceeds.
+Graph-to-document generation, pinned-C# witnesses, standard-consumer handling,
+CLI check mode, exposure policy and evidence-backed product parity remain
+unimplemented or unverified. `Generate` continues to refuse OpenAPI requests.
