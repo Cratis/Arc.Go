@@ -402,6 +402,12 @@ func (e *emitter) emitQuery(q query) {
 	if q.args != nil {
 		args = e.typ(q.args)
 	}
+	validator := ""
+	if e.analysis.graph != nil && e.analysis.graph.verifyEndpoints && q.descriptor.PortableRules {
+		validator = e.unique("arcValidator")
+		e.line("%s, %s := %s.NewPortable[%s]()", validator, e.err, e.imp(runtimePath+"/validation"), args)
+		e.line("if %s != nil { return %s }", e.err, e.err)
+	}
 	keys := e.manifest(q.call)
 	register := "Register[" + e.typ(q.model.typ) + "]"
 	var out string
@@ -429,6 +435,9 @@ func (e *emitter) emitQuery(q query) {
 	}
 	if q.d.hasPath {
 		e.line("%s.WithPath[%s](%q),", queries, args, q.d.path)
+	}
+	if validator != "" {
+		e.line("%s.WithValidator[%s](%s),", queries, args, validator)
 	}
 	if keys != "" {
 		e.line("%s.WithDependencies[%s](%s...),", queries, args, keys)
