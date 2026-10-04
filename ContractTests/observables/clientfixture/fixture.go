@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"strconv"
 	"strings"
@@ -59,7 +60,9 @@ type Fixture struct {
 func New() (*Fixture, error) { return NewMode(false) }
 
 // NewMode preserves manual registration and optionally uses production-generated adapters.
-func NewMode(generated bool) (*Fixture, error) {
+func NewMode(generated bool) (*Fixture, error) { return newFixture(generated, nil) }
+
+func newFixture(generated bool, browserAssets fs.FS) (*Fixture, error) {
 	f := &Fixture{Names: map[string]string{}, states: map[string]*observable.State[[]Item]{}, active: map[string]int{}, changed: make(chan struct{}), shutdown: make(chan struct{})}
 	for _, group := range []string{"alpha", "beta", "pending", "nil", "guarded"} {
 		var state *observable.State[[]Item]
@@ -85,8 +88,12 @@ func NewMode(generated bool) (*Fixture, error) {
 		}
 		f.states[group] = state
 	}
-	// Explicit host-owned anonymous fixture session, not browser cookie evidence.
-	builder, err := arc.NewBuilder(arc.Options{OpenResources: func(context.Context) (execution.Resources, error) { return &feedResources{fixture: f}, nil }, HTTP: arc.HTTPOptions{ShutdownTimeout: 5 * time.Second}, Observable: arc.ObservableOptions{AnonymousOwner: func(context.Context, *http.Request) (string, error) { return "loopback-client-fixture", nil }}})
+	transport := arc.ObservableOptions{}
+	if browserAssets == nil {
+		// Preserve the explicit Node session. Browser mode must use Arc cookies.
+		transport.AnonymousOwner = func(context.Context, *http.Request) (string, error) { return "loopback-client-fixture", nil }
+	}
+	builder, err := arc.NewBuilder(arc.Options{OpenResources: func(context.Context) (execution.Resources, error) { return &feedResources{fixture: f}, nil }, HTTP: arc.HTTPOptions{ShutdownTimeout: 5 * time.Second}, Observable: transport})
 	if err != nil {
 		return nil, err
 	}
@@ -128,6 +135,12 @@ func NewMode(generated bool) (*Fixture, error) {
 		},
 	} {
 		if err := builder.Handle(pattern, handler); err != nil {
+			return nil, err
+		}
+	}
+	if browserAssets != nil {
+		handler := http.StripPrefix("/fixture/browser/", http.FileServerFS(browserAssets))
+		if err := builder.Handle("GET /fixture/browser/", handler); err != nil {
 			return nil, err
 		}
 	}
