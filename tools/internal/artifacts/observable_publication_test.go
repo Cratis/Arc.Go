@@ -137,6 +137,13 @@ func TestProductionCLIRealClientFixtureIndependentConsumption(t *testing.T) {
 }
 
 func TestCompetingObservableIdentitiesRejectAllProductionPublication(t *testing.T) {
+	const input = "//arc:namespace Shop\npackage consumer\nimport \"github.com/cratis/arc.go/observable\"\ntype Embedded struct { Id string `json:\"-\"` }\n//arc:readmodel\ntype Task struct { ID string `json:\"id\"`; Title string `json:\"title\"` }\nfunc (Task) Watch() (observable.Source[[]Task],error) { return nil,nil }\nfunc (Task) All() ([]Task,error) { return nil,nil }\n"
+	bootstrap := consumer(t)
+	put(t, filepath.Join(bootstrap, "input.go"), input)
+	if err := Generate(t.Context(), Config{Dir: bootstrap, TypeScriptOut: "web"}); err != nil {
+		t.Fatal(err)
+	}
+	copyFiles := copyFixtureFiles(t, bootstrap)
 	for _, fields := range []string{
 		"ID string `json:\"-\"`; Id string `json:\"id\"`",
 		"Id string `json:\"-\"`; ID string `json:\"id\"`",
@@ -146,16 +153,14 @@ func TestCompetingObservableIdentitiesRejectAllProductionPublication(t *testing.
 	} {
 		t.Run(fields, func(t *testing.T) {
 			dir := consumer(t)
-			input := "//arc:namespace Shop\npackage consumer\nimport \"github.com/cratis/arc.go/observable\"\ntype Embedded struct { Id string `json:\"-\"` }\n//arc:readmodel\ntype Task struct { ID string `json:\"id\"`; Title string `json:\"title\"` }\nfunc (Task) Watch() (observable.Source[[]Task],error) { return nil,nil }\nfunc (Task) All() ([]Task,error) { return nil,nil }\n"
-			put(t, filepath.Join(dir, "input.go"), input)
+			// Only the identical successful output is reused. Generate below
+			// loads each changed source with full production dependency metadata.
+			copyFiles(t, dir)
 			config := Config{Dir: dir, TypeScriptOut: "web"}
-			if err := Generate(t.Context(), config); err != nil {
-				t.Fatal(err)
-			}
 			// A valid snapshot family also changes. No adapter, proxy, barrel,
 			// manifest or journal may change after analyzer identity preflight.
-			input = strings.Replace(input, "ID string `json:\"id\"`; Title string `json:\"title\"`", fields+"; Title string `json:\"title\"`; Extra string `json:\"extra\"`", 1)
-			put(t, filepath.Join(dir, "input.go"), input)
+			changed := strings.Replace(input, "ID string `json:\"id\"`; Title string `json:\"title\"`", fields+"; Title string `json:\"title\"`; Extra string `json:\"extra\"`", 1)
+			put(t, filepath.Join(dir, "input.go"), changed)
 			before := outputInventory(t, dir)
 			if err := Generate(t.Context(), config); err == nil || !strings.Contains(err.Error(), "unambiguous conventional identity") {
 				t.Fatalf("competing runtime identity published: %v", err)

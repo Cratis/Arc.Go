@@ -113,12 +113,10 @@ func TestOwnedPublicationRejectsByteIdenticalUnmanifestedDestinations(t *testing
 }
 
 func TestOwnedPublicationRejectsEditedAndUnownedFilesBeforeWrites(t *testing.T) {
+	seeded := publishedFixture(t)
 	for _, stale := range []bool{false, true} {
 		t.Run(map[bool]string{false: "active", true: "stale"}[stale], func(t *testing.T) {
-			module, root, profile, graph, outputs := publication(t)
-			if err := publishOwned(t.Context(), module, root, profile, graph, "", outputs, false, nil); err != nil {
-				t.Fatal(err)
-			}
+			module, root, profile, graph, outputs := seeded(t)
 			original := get(t, outputs[0].Path)
 			put(t, outputs[1].Path, Header+"// user edit\n")
 			outputs[0].Content = []byte(Header + "package changed\n")
@@ -135,12 +133,10 @@ func TestOwnedPublicationRejectsEditedAndUnownedFilesBeforeWrites(t *testing.T) 
 	}
 }
 func TestOwnedPublicationFailureJournalAndRecovery(t *testing.T) {
+	seeded := publishedFixture(t)
 	for _, operation := range []string{"write", "rename", "delete", "manifest"} {
 		t.Run(operation, func(t *testing.T) {
-			module, root, profile, graph, outputs := publication(t)
-			if err := publishOwned(t.Context(), module, root, profile, graph, "", outputs, false, nil); err != nil {
-				t.Fatal(err)
-			}
+			module, root, profile, graph, outputs := seeded(t)
 			put(t, filepath.Join(root, "keep.ts"), "// handwritten\n")
 			outputs[0].Content = []byte(Header + "package newer\n")
 			outputs[1].Content = []byte(Header + "export class A { value = 1; }\n")
@@ -178,14 +174,14 @@ func TestOwnedPublicationFailureJournalAndRecovery(t *testing.T) {
 	}
 }
 func TestOwnedPublicationRejectsEscapesAndUnsafeInventory(t *testing.T) {
+	seeded := publishedFixture(t)
 	for _, kind := range []string{"root-link", "parent-link", "stale-link", "stale-parent-link", "traversal", "case", "orphan", "scope", "unsafe-parent"} {
 		t.Run(kind, func(t *testing.T) {
-			module, root, profile, graph, outputs := publication(t)
+			newFixture := publication
 			if kind == "stale-link" || kind == "stale-parent-link" || kind == "scope" {
-				if err := publishOwned(t.Context(), module, root, profile, graph, "", outputs, false, nil); err != nil {
-					t.Fatal(err)
-				}
+				newFixture = seeded
 			}
+			module, root, profile, graph, outputs := newFixture(t)
 			outside := t.TempDir()
 			sentinel := filepath.Join(outside, "keep")
 			put(t, sentinel, "untouched")
@@ -236,13 +232,15 @@ func TestOwnedPublicationRejectsEscapesAndUnsafeInventory(t *testing.T) {
 	}
 }
 func TestOwnedPublicationRejectsPhysicalFileDirectoryCollisions(t *testing.T) {
+	seeded := publishedFixture(t)
 	for _, kind := range []string{"adapter-root", "adapter-root-ancestor", "active-ancestor", "case-ancestor", "case-directory", "stale-ancestor", "stale-case", "manifest-ancestor", "journal-ancestor"} {
 		t.Run(kind, func(t *testing.T) {
-			module, root, profile, graph, outputs := publication(t)
+			newFixture := publication
 			if strings.HasPrefix(kind, "stale-") {
-				if err := publishOwned(t.Context(), module, root, profile, graph, "", outputs, false, nil); err != nil {
-					t.Fatal(err)
-				}
+				newFixture = seeded
+			}
+			module, root, profile, graph, outputs := newFixture(t)
+			if strings.HasPrefix(kind, "stale-") {
 				// Missing stale files remain in the physical ownership graph.
 				if err := os.Remove(outputs[1].Path); err != nil {
 					t.Fatal(err)
