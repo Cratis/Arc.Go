@@ -22,11 +22,14 @@ type DiagnosticSource interface {
 // Attempt owns exactly one logical invocation across first-party dispatch layers.
 // It holds only bounded labels and a private monotonic timer, not request data.
 type Attempt struct {
-	recorder  *observability.Recorder
-	event     observability.Observation
-	start     time.Time
-	parent    *Attempt
-	cancelled atomic.Bool
+	recorder          *observability.Recorder
+	event             observability.Observation
+	start             time.Time
+	parent            *Attempt
+	cancelled         atomic.Bool
+	forwarded         atomic.Uint32
+	finished          atomic.Bool
+	completeOnForward bool
 }
 
 // Begin forwards an existing logical attempt or starts an independent one.
@@ -52,6 +55,31 @@ func Begin(ctx context.Context, source any, operation observability.Operation, n
 	return ctx, attempt
 }
 
+// ForwardDiagnostics passes an ingress-owned attempt only to framework dispatch.
+// The finalized backend result completes it before transport consumption/publication.
+func ForwardDiagnostics(ctx context.Context, attempt *Attempt) context.Context {
+	if ctx == nil || attempt == nil {
+		return ctx
+	}
+	attempt.completeOnForward = true
+	return context.WithValue(ctx, diagnosticsKey{}, attempt)
+}
+
+// FinishForwarded prefers the finalized backend outcome when dispatch occurred.
+func (a *Attempt) FinishForwarded(fallback observability.Outcome) {
+	if a == nil {
+		return
+	}
+	owner := a
+	if a.parent != nil {
+		owner = a.parent
+	}
+	if outcome := owner.forwarded.Load(); outcome != 0 {
+		fallback = observability.Outcome(outcome - 1)
+	}
+	a.Finish(fallback)
+}
+
 // ClearDiagnostics prevents application callbacks from inheriting dispatch tokens.
 func ClearDiagnostics(ctx context.Context) context.Context {
 	if ctx == nil || ctx.Value(diagnosticsKey{}) == nil {
@@ -65,9 +93,16 @@ func (a *Attempt) Finish(outcome observability.Outcome) {
 	if a == nil {
 		return
 	}
+	if a.finished.Swap(true) {
+		return
+	}
 	if a.parent != nil {
+		a.parent.forwarded.Store(uint32(outcome) + 1)
 		if outcome == observability.Cancelled {
 			a.parent.cancelled.Store(true)
+		}
+		if a.parent.completeOnForward {
+			a.parent.Finish(outcome)
 		}
 		return
 	}

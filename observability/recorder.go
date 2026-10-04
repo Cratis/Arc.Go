@@ -4,9 +4,8 @@
 // Package observability records bounded, payload-free backend diagnostics.
 // Recording never calls application code or starts workers. Applications own
 // synchronous export through Drain; a blocked exporter blocks only its caller.
-// Arc currently records command Execute/Validate and query Perform attempts.
-// Streaming Open/Run/acknowledgment/join and HTTP failures before backend dispatch
-// are not yet instrumented. This package does not expose a query-health endpoint.
+// Attempts, stream consumption, acknowledged data and actual cleanup joins are
+// separate phases. Delivered updates cumulative metrics only, not the event ring.
 package observability
 
 import (
@@ -47,8 +46,22 @@ const (
 // Phase identifies the measured lifecycle boundary.
 type Phase uint8
 
-// Completed records a finalized logical invocation.
-const Completed Phase = 0
+const (
+	// Completed records a finalized snapshot or command invocation.
+	Completed Phase = iota
+	// Opening records observable admission and source activation.
+	Opening
+	// Consumption records a single consumer's terminal outcome before Close cancels.
+	Consumption
+	// FirstDelivery records the first successfully acknowledged data result.
+	FirstDelivery
+	// Delivered counts every acknowledged data result, without queuing events.
+	Delivered
+	// Joined records lifetime through actual release of source and resource ownership.
+	Joined
+	// Cleanup records elapsed time from the first Close until actual ownership release.
+	Cleanup
+)
 
 // Outcome is a fixed, payload-free final classification.
 type Outcome uint8
@@ -235,7 +248,7 @@ func (r *Recorder) Record(event Observation) {
 	if event.Transport > ObservableTransport {
 		event.Transport = Unknown
 	}
-	if event.Phase != Completed {
+	if event.Phase > Cleanup {
 		event.Phase = Completed
 	}
 	if event.Outcome > Error {
@@ -254,6 +267,9 @@ func (r *Recorder) Record(event Observation) {
 	metric.Seconds = seconds
 	metric.Count++
 	r.metrics[k] = metric
+	if event.Phase == Delivered {
+		return
+	}
 	if r.count == len(r.events) {
 		r.dropped++
 		return

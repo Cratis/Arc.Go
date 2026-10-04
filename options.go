@@ -27,7 +27,9 @@ import (
 // concurrent calls. Configuration slices and pointed-to values are copied.
 type Options struct {
 	// Diagnostics is borrowed, bounded backend recording; nil disables it.
-	Diagnostics            *observability.Recorder
+	Diagnostics *observability.Recorder
+	// QueryHealth enables protected aggregate health; nil leaves it absent in every environment.
+	QueryHealth            *QueryHealthOptions
 	Namespace              string
 	Environment            string
 	Routes                 *metadata.Options
@@ -55,7 +57,8 @@ type Options struct {
 // Limits include opening and retired-but-unjoined operations, not just active streams.
 // Hub limits cover retained framework state, not allocations in application callbacks.
 type ObservableOptions struct {
-	// MaxObservations is the application-wide operation ceiling; default 1024.
+	// MaxObservations bounds application query owners and hub subscriptions; default 1024.
+	// Opt-in QueryHealth has a separate private-pipeline ceiling of the same size.
 	MaxObservations int
 	// MaximumWait is the maximum first-result wait budget; default five minutes.
 	MaximumWait time.Duration
@@ -126,6 +129,11 @@ type IntrospectionOptions struct {
 type IdentityOptions struct{ DetailsProvider string }
 
 func normalizeOptions(o Options) (Options, error) {
+	var healthErr error
+	o.QueryHealth, healthErr = copyQueryHealthOptions(o.QueryHealth)
+	if healthErr != nil {
+		return Options{}, healthErr
+	}
 	if o.Environment == "" {
 		o.Environment = "Production"
 	}

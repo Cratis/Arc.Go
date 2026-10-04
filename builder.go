@@ -142,7 +142,7 @@ func (b *Builder) build() (*Application, error) {
 	if err != nil {
 		return nil, err
 	}
-	qp, err := b.queries.Build(queries.PipelineOptions{Diagnostics: o.Diagnostics, MaximumWait: o.Observable.MaximumWait, MaxObservations: o.Observable.MaxObservations, ObservationCleanupTimeout: o.Observable.CloseGrace, ScopeFactory: o.ScopeFactory, OpenResources: pipelineOpener, DependencyCatalog: o.DependencyCatalog, Authorization: evaluator, Validation: graph, Membership: o.Membership, RequireTenant: o.RequireTenant, Clock: o.Clock, CleanupTimeout: o.CleanupTimeout, ExposeExceptionDetails: o.ExposeExceptionDetails, Logger: o.Logger})
+	qp, err := b.queries.Build(queries.PipelineOptions{Diagnostics: o.Diagnostics, EnableQueryHealth: o.QueryHealth != nil, MaximumWait: o.Observable.MaximumWait, MaxObservations: o.Observable.MaxObservations, ObservationCleanupTimeout: o.Observable.CloseGrace, ScopeFactory: o.ScopeFactory, OpenResources: pipelineOpener, DependencyCatalog: o.DependencyCatalog, Authorization: evaluator, Validation: graph, Membership: o.Membership, RequireTenant: o.RequireTenant, Clock: o.Clock, CleanupTimeout: o.CleanupTimeout, ExposeExceptionDetails: o.ExposeExceptionDetails, Logger: o.Logger})
 	if err != nil {
 		return nil, err
 	}
@@ -158,6 +158,9 @@ func (b *Builder) build() (*Application, error) {
 	}
 	a := &Application{schemas: b.schemas, users: slices.Clone(b.users), tenants: slices.Clone(b.tenants), details: details, options: o, catalog: cloneCatalog(catalog), endpoints: slices.Clone(endpoints), commands: cp, queries: qp}
 	if err := a.initHubs(); err != nil {
+		return nil, err
+	}
+	if err := a.initQueryHealth(); err != nil {
 		return nil, err
 	}
 	if err := a.compileReaders(); err != nil {

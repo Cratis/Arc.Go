@@ -100,6 +100,9 @@ func (p *pipeline) ExecuteScoped(ctx context.Context, scope *execution.Scope, co
 	if scope == nil {
 		return FromError[any](contextID(ctx), execution.ErrInvalidScope), execution.ErrInvalidScope
 	}
+	if ctx == nil {
+		attempt = nil // The rejecting run boundary owns a nil-context attempt.
+	}
 	return p.run(ctx, scope, command, false, nil, options)
 }
 func (p *pipeline) ValidateScoped(ctx context.Context, scope *execution.Scope, command any, options ...ExecuteOptions) (result Result[NoResponse], err error) {
@@ -114,6 +117,9 @@ func (p *pipeline) ValidateScoped(ctx context.Context, scope *execution.Scope, c
 	}
 	if scope == nil {
 		return FromError[NoResponse](contextID(ctx), execution.ErrInvalidScope), execution.ErrInvalidScope
+	}
+	if ctx == nil {
+		attempt = nil
 	}
 	untyped, err := p.run(ctx, scope, command, true, nil, options)
 	return NewResult(untyped.Details(), serialization.Optional[NoResponse]{}), err
@@ -147,6 +153,9 @@ func Execute[R any](ctx context.Context, p Pipeline, command any, options ...Exe
 			bound.record(FromError[any](contextID(ctx), err), err)
 		}
 		return FromError[R](contextID(ctx), err), err
+	}
+	if ctx == nil {
+		attempt = nil // No context token can cross dispatch; the callee owns rejection.
 	}
 	result, err := p.Execute(ctx, command, options...)
 	var response serialization.Optional[R]

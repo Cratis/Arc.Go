@@ -32,7 +32,9 @@ import (
 // Resources must open cheaply/lazily; direct shared extensions must be concurrent-safe.
 type PipelineOptions struct {
 	// Diagnostics is borrowed, bounded backend recording; nil disables it.
-	Diagnostics       *observability.Recorder
+	Diagnostics *observability.Recorder
+	// EnableQueryHealth enables aggregate native-owner snapshots; disabled by default.
+	EnableQueryHealth bool
 	OpenResources     execution.OpenResources
 	ScopeFactory      di.ScopeFactory
 	DependencyCatalog di.Catalog
@@ -70,6 +72,7 @@ type queryPipeline struct {
 	observationMu        sync.Mutex
 	observations         map[*Observation]struct{}
 	observationsStopping bool
+	healthLabels         *observability.Recorder
 }
 
 // Build freezes complete registrations and validates declarations, output ownership,
@@ -200,6 +203,14 @@ func (r *Registry) Build(o PipelineOptions) (Pipeline, error) {
 		}
 		o.Diagnostics.Register(names)
 	}
+	if o.EnableQueryHealth {
+		p.healthLabels, _ = observability.NewRecorder(observability.Options{})
+		names := make([]string, 0, len(p.queries))
+		for name := range p.queries {
+			names = append(names, string(name))
+		}
+		p.healthLabels.Register(names)
+	}
 	r.frozen = true
 	return p, nil
 }
@@ -235,6 +246,9 @@ func Perform[R any](ctx context.Context, p Pipeline, name FullyQualifiedQueryNam
 	target := reflect.TypeFor[R]()
 	if q.DataType() == nil || !q.DataType().AssignableTo(target) {
 		return failure(ErrResponseType)
+	}
+	if ctx == nil {
+		attempt = nil // Preserve callee rejection; nil cannot forward a dispatch token.
 	}
 	result, err := p.Perform(ctx, name, request)
 	d := result.Details()

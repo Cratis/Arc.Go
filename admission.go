@@ -107,7 +107,17 @@ func (p admittedQueries) run(ctx context.Context, s *execution.Scope, name queri
 	}
 	return p.a.queries.Perform(work, name, r)
 }
-func (p admittedQueries) Open(ctx context.Context, name queries.FullyQualifiedQueryName, r queries.Request) (*queries.Observation, queries.Result[any], error) {
+func (p admittedQueries) Open(ctx context.Context, name queries.FullyQualifiedQueryName, r queries.Request) (observation *queries.Observation, result queries.Result[any], resultErr error) {
+	ctx, attempt := beginQueryDiagnostics(ctx, p, name, observability.ObservableTransport, observability.Opening)
+	var releaseUnused func()
+	defer func() {
+		if attempt != nil {
+			attempt.FinishForwarded(boundary.Outcome(result.IsAuthorized(), result.HasExceptions(), resultErr != nil, ctx != nil && ctx.Err() != nil, result.Details().ValidationResults))
+		}
+		if releaseUnused != nil {
+			releaseUnused()
+		}
+	}()
 	// A transport may forward a cleanup-join notification. Compose it with the
 	// application lease rather than replacing it; failed opening cleanup can
 	// remain retained even when Open returns a nil observation.
@@ -125,11 +135,12 @@ func (p admittedQueries) Open(ctx context.Context, name queries.FullyQualifiedQu
 			notify()
 		}
 	})
-	defer lease.ReleaseUnused()
+	releaseUnused = lease.ReleaseUnused
 	capability, ok := p.a.queries.(queries.ObservablePipeline)
 	if !ok {
 		return nil, queries.FromError[any](contextID(ctx), queries.ErrObservableCapability), queries.ErrObservableCapability
 	}
+	ctx = work
 	return capability.Open(work, name, r)
 }
 func (p admittedQueries) CloseObservations(ctx context.Context) error {
