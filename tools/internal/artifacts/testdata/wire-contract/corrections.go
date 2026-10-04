@@ -34,3 +34,31 @@ type NullableCodec struct{}
 
 func (NullableCodec) MarshalJSON() ([]byte, error) { return []byte("null"), nil }
 func (*NullableCodec) UnmarshalJSON([]byte) error  { return nil }
+
+// NilableCodecs separates immediate nil omission from a codec-produced null.
+type NilableCodecs struct {
+	Value      NullableSlice
+	Map        NullableMap
+	Interface  NullableCodecInterface
+	Slice      []int
+	Dictionary map[string]int
+	NamedSlice PlainSlice
+	NamedMap   PlainMap
+}
+
+type NullableSlice []int
+
+func (NullableSlice) MarshalJSON() ([]byte, error) { return []byte("null"), nil }
+func (*NullableSlice) UnmarshalJSON([]byte) error  { return nil }
+
+type NullableMap map[string]int
+
+func (NullableMap) MarshalJSON() ([]byte, error) { return []byte("null"), nil }
+func (*NullableMap) UnmarshalJSON([]byte) error  { return nil }
+
+type NullableCodecInterface interface {
+	MarshalJSON() ([]byte, error)
+}
+
+type PlainSlice []int
+type PlainMap map[string]int

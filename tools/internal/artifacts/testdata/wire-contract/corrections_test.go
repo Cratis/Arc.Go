@@ -90,6 +90,34 @@ func TestPointerPresenceWire(t *testing.T) {
 	}
 }
 
+func TestNilableCodecPropertyWire(t *testing.T) {
+	var nilSlice NullableSlice
+	var nilMap NullableMap
+	for _, tc := range []struct {
+		name  string
+		value NilableCodecs
+		wire  string
+	}{
+		{"nil codecs", NilableCodecs{}, `{}`},
+		{"nonnil slice codec", NilableCodecs{Value: NullableSlice{}}, `{"value":null}`},
+		{"populated slice codec", NilableCodecs{Value: NullableSlice{1}}, `{"value":null}`},
+		{"nonnil map codec", NilableCodecs{Map: NullableMap{}}, `{"map":null}`},
+		{"populated map codec", NilableCodecs{Map: NullableMap{"one": 1}}, `{"map":null}`},
+		{"interface codec", NilableCodecs{Interface: NullableCodec{}}, `{"interface":null}`},
+		{"interface nil slice", NilableCodecs{Interface: nilSlice}, `{}`},
+		{"interface nil map", NilableCodecs{Interface: nilMap}, `{}`},
+		{"empty collections", NilableCodecs{Slice: []int{}, Dictionary: map[string]int{}, NamedSlice: PlainSlice{}, NamedMap: PlainMap{}}, `{"dictionary":{},"namedMap":{},"namedSlice":[],"slice":[]}`},
+		{"populated collections", NilableCodecs{Slice: []int{1}, Dictionary: map[string]int{"one": 1}, NamedSlice: PlainSlice{1}, NamedMap: PlainMap{"one": 1}}, `{"dictionary":{"one":1},"namedMap":{"one":1},"namedSlice":[1],"slice":[1]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := serialization.Marshal(tc.value)
+			if err != nil || string(data) != tc.wire {
+				t.Fatalf("got %s, %v; want %s", data, err, tc.wire)
+			}
+		})
+	}
+}
+
 func TestValidationStateWire(t *testing.T) {
 	zero := State(0)
 	for _, tc := range []struct {

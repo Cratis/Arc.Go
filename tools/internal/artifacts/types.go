@@ -672,9 +672,9 @@ func (w *wireAnalyzer) fields(t types.Type, arguments bool) ([]FieldDescriptor, 
 			}
 			presence.OutputRequired = !presence.OmitNil && !presence.OmitMissing && !presence.OmitEmpty && !presence.OmitZero && !parentNullable
 			if presence.OmitNil {
-				// Only the immediate nil value is omitted. A nonnil pointer can
-				// encode an inner nil pointer or an explicit Optional null.
-				presence.OutputNull = false
+				// Only immediate nil is omitted, not a declared codec's encoded
+				// null. Nonnil pointers can also encode inner nil or Optional null.
+				presence.OutputNull = wire.Contract.Schemas != nil && schemaAcceptsNull(wire.Contract.Schemas.Output)
 				if pointer, ok := types.Unalias(member.Type).Underlying().(*types.Pointer); ok {
 					element, err := w.describe(pointer.Elem())
 					if err != nil {

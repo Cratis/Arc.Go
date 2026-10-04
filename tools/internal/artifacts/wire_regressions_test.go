@@ -71,6 +71,50 @@ func TestContractPropertyOmissionPreservesInnerNull(t *testing.T) {
 	}
 }
 
+func TestContractPropertyOmissionPreservesDeclaredCodecNull(t *testing.T) {
+	profile := contractProfile()
+	profile.TypeRoots = []string{"example.test/consumer.NilableCodecs"}
+	profile.WireSchemas = map[string]WireSchemas{}
+	for _, name := range []string{"NullableSlice", "NullableMap", "NullableCodecInterface"} {
+		profile.WireSchemas["example.test/consumer."+name] = WireSchemas{Input: json.RawMessage(`{"type":["object","null"]}`), Output: json.RawMessage(`{"type":"null"}`)}
+	}
+	graph := correctionsGraph(t, profile)
+	// The serialized graph is the compiler-free contract consumed downstream.
+	data, err := json.Marshal(graph)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var projection Graph
+	if err := json.Unmarshal(data, &projection); err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]FieldDescriptor
+	for _, node := range projection.Types {
+		if node.Key == "example.test/consumer.NilableCodecs" {
+			fields = fieldsByName(node.Fields)
+		}
+	}
+	if len(fields) != 7 {
+		t.Fatal("missing nilable codec fields", fields)
+	}
+	for _, tc := range []struct {
+		field      string
+		outputNull bool
+	}{
+		{"value", true}, {"map", true}, {"interface", true},
+		{"slice", false}, {"dictionary", false}, {"namedSlice", false}, {"namedMap", false},
+	} {
+		field := fields[tc.field]
+		presence := field.Presence
+		if presence == nil || !presence.OmitNil || presence.OutputNull != tc.outputNull || presence.OmitNull || presence.OutputRequired || presence.OmitMissing || presence.OmitEmpty || presence.OmitZero {
+			t.Errorf("%s property: %+v", tc.field, presence)
+		}
+		if field.Type.Contract == nil || !field.Type.Contract.OutputNull {
+			t.Errorf("%s value lost nil/codec null: %+v", tc.field, field.Type.Contract)
+		}
+	}
+}
+
 func TestContractFrameworkStateRetainsResolvedWire(t *testing.T) {
 	for _, tc := range []struct {
 		name, kind, declared, minimum, maximum string
