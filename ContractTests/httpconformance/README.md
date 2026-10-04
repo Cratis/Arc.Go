@@ -2,9 +2,10 @@
 
 This is a **Partial**, fail-closed checkpoint for
 [Arc.Go#38](https://github.com/Cratis/Arc.Go/issues/38), not a parity approval.
-It does not change runtime behavior or historical captures. The C# fixture's
-query activation must still be established: a listening Kestrel process is not
-proof that Arc registered its queries. An empty 404 fails the gate.
+It does not change runtime behavior or historical captures. A listening Kestrel
+process is not proof that Arc registered its queries: readiness now requires the
+four fixture performers and all eight GET/QUERY route mappings. An empty 404
+still fails the paired gate.
 
 ## Reference and fixture
 
@@ -24,6 +25,22 @@ package/content hash in every project/target framework, fixture inputs, built
 assemblies and actual runtime versions. Its task-owned output is rechecked before
 the paired test starts either host. Source preparation alone does not prove HTTP
 parity.
+
+The fixture directly references `Arc.Core.Generators` as a private analyzer,
+matching generated model-bound authoring in the pinned ASP.NET Core sample.
+Arc.Core's private analyzer reference is not transitive; without the fixture's
+own generated metadata, framework query metadata can suppress reflection
+fallback and leave all four fixture queries unregistered.
+
+Before advertising readiness, the C# host checks public
+`IQueryPerformerProviders.Performers` for exactly four **Row** performers (not
+the framework's global query count): Plain, Renderable, Filter and Failing at
+`/api/plain`, `/api/renderable`, `/api/filter` and `/api/failing`. It checks
+`IEndpointRouteBuilder.DataSources` for eight `RouteEndpoint` mappings, including
+HTTP method and endpoint-name metadata: `ExecuteHttpConformance.Row.Method`
+for GET and `QueryHttpConformance.Row.Method` for QUERY. Missing, duplicate or
+wrong mappings fail startup before the readiness line, without HTTP polling.
+The paired harness independently validates the advertised inventory.
 
 The real C# host calls `AddCratisArc` and `UseCratisArc`, disables controllers,
 enables QUERY, and explicitly redacts exception details. The real Go host uses
@@ -57,7 +74,9 @@ clients disable proxies and redirects. Readiness has 10 seconds, each request
 3 seconds, graceful EOF shutdown 5 seconds, and kill/join 3 seconds. Forced
 cleanup, missing prerequisites, partial inventory, partial execution and timeouts
 fail, never skip. The Go host relaunches the compiled test runner, preserving
-race instrumentation. The C# host launches its already-built DLL.
+race instrumentation. The C# host launches its already-built DLL. Host logs and
+joined process exit codes are retained alongside exchanges when an output path
+is configured.
 
 ## Running
 
@@ -74,13 +93,18 @@ Release build, and verification steps in
 Run heavy commands through the local bounded phase runner when using pi. Never
 run restore/build inside the sibling Arc checkout.
 
-After successful preparation, set absolute paths and run the complete paired
-checkpoint (not a subtest selection):
+After successful preparation, set absolute paths, prove activation, then run the
+complete paired checkpoint (not a subtest selection). The activation regression
+starts the actual generated host and plants missing-performer and missing-QUERY
+observations in the same readiness verifier. Both must exit nonzero before any
+readiness advertisement; no runtime handler is replaced.
 
 ```bash
 export ARC_HTTP_CONFORMANCE_DLL="$PWD/.ai-work/httpconformance/output/artifacts/bin/Reference/release/Arc.Go.HttpConformance.dll"
 export ARC_HTTP_CONFORMANCE_PROVENANCE="$PWD/.ai-work/httpconformance/keep/provenance.json"
 export ARC_HTTP_CONFORMANCE_OUTPUT="$PWD/.ai-work/httpconformance/keep/exchanges"
+go test -race -tags=httpconformance -count=1 -timeout=90s \
+  -run '^TestReferenceActivation$' ./ContractTests/httpconformance
 go test -race -tags=httpconformance -count=1 -timeout=110s \
   -run '^TestPairedSnapshotHTTP$' ./ContractTests/httpconformance
 ```

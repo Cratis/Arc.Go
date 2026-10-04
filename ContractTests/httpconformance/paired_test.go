@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -41,7 +42,7 @@ func TestPairedSnapshotHTTP(t *testing.T) {
 	if err := os.MkdirAll(output, 0700); err != nil {
 		t.Fatal(err)
 	}
-	csharp := start(t, "dotnet", []string{dll}, nil)
+	csharp := startWithActivation(t, "dotnet", []string{dll}, nil, true)
 	command, args, env := child(t, "go")
 	goHost := start(t, command, args, env)
 	transport := &http.Transport{Proxy: nil, DisableKeepAlives: true, ResponseHeaderTimeout: 3 * time.Second}
@@ -89,6 +90,56 @@ func TestPairedSnapshotHTTP(t *testing.T) {
 	}
 	if executed != caseCount {
 		t.Fatalf("partial execution: ran %d of %d required cases", executed, caseCount)
+	}
+}
+
+// TestReferenceActivation proves the actual generated host inventory before any HTTP exchange.
+// Negative witnesses use the same host and readiness verifier, not replacement handlers.
+func TestReferenceActivation(t *testing.T) {
+	dll := os.Getenv("ARC_HTTP_CONFORMANCE_DLL")
+	if !filepath.IsAbs(dll) {
+		t.Fatal("ARC_HTTP_CONFORMANCE_DLL must identify the built exact-source reference DLL")
+	}
+	if err := verifyProvenance(os.Getenv("ARC_HTTP_CONFORMANCE_PROVENANCE"), dll); err != nil {
+		t.Fatal(err)
+	}
+	t.Run("complete", func(t *testing.T) {
+		startWithActivation(t, "dotnet", []string{dll}, nil, true)
+	})
+	for _, witness := range []struct{ name, diagnostic string }{
+		{"missing-performer", "expected 4 Row performers; got 3"},
+		{"missing-query", "expected 8 Row endpoints; got 7"},
+	} {
+		t.Run(witness.name, func(t *testing.T) {
+			h, err := launch(context.WithoutCancel(t.Context()), "dotnet", []string{dll, "--readiness-negative", witness.name}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				cleanup := h.stop(5 * time.Second)
+				retainHost(t, h, cleanup)
+				var exit *exec.ExitError
+				if !errors.As(cleanup, &exit) || exit.ExitCode() != 1 {
+					t.Errorf("negative fixture must exit 1 and join: %v", cleanup)
+				}
+				select {
+				case <-h.done:
+				default:
+					t.Error("negative fixture not joined")
+				}
+				if cleanup != nil && strings.Contains(cleanup.Error(), "forced cleanup") {
+					t.Error(cleanup)
+				}
+				// Inspect the complete joined output, not just the first diagnostic line.
+				log := h.output.String()
+				if strings.Contains(log, "httpconformance-ready") || !strings.Contains(log, witness.diagnostic) {
+					t.Errorf("negative witness did not fail before advertisement with expected diagnostic:\n%s", log)
+				}
+			})
+			if _, err := h.originWithActivation(t.Context(), true); err == nil {
+				t.Fatal("incomplete activation advertised readiness")
+			}
+		})
 	}
 }
 

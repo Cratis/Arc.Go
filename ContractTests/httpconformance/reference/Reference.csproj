@@ -10,6 +10,10 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="$(ArcSourceRoot)/Source/DotNET/Arc/Arc.csproj" />
+    <ProjectReference Include="$(ArcSourceRoot)/Source/DotNET/Arc.Core.Generators/Arc.Core.Generators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
   </ItemGroup>
   <Target Name="RequireExactSourceSnapshot" BeforeTargets="Restore;PrepareForBuild">
     <Error Condition="'$(ArcSourceRoot)' == ''" Text="ArcSourceRoot must identify the task-owned exact-source snapshot." />

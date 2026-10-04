@@ -72,6 +72,9 @@ jobs:
           --output .ai-work/httpconformance/keep/provenance.json
       - name: Native inventory, comparator and lifecycle contracts
         run: go test -race -count=1 -timeout=90s ./ContractTests/httpconformance
+      - name: Prove generated activation and reject incomplete readiness
+        timeout-minutes: 2
+        run: go test -race -tags=httpconformance -count=1 -timeout=90s -run '^TestReferenceActivation$' ./ContractTests/httpconformance
       - name: Execute all fixed GET and QUERY requests against both real hosts
         timeout-minutes: 2
         run: go test -race -tags=httpconformance -count=1 -timeout=110s -run '^TestPairedSnapshotHTTP$' ./ContractTests/httpconformance

@@ -14,7 +14,9 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -74,13 +76,17 @@ func launch(ctx context.Context, command string, args, env []string) (*processHo
 	return h, nil
 }
 func (h *processHost) origin(ctx context.Context) (string, error) {
+	return h.originWithActivation(ctx, false)
+}
+func (h *processHost) originWithActivation(ctx context.Context, requireActivation bool) (string, error) {
 	timer := time.NewTimer(10 * time.Second)
 	defer timer.Stop()
 	select {
 	case line := <-h.output.ready:
 		var ready struct {
-			Kind    string `json:"kind"`
-			BaseURL string `json:"baseUrl"`
+			Kind       string             `json:"kind"`
+			BaseURL    string             `json:"baseUrl"`
+			Activation *fixtureActivation `json:"activation,omitempty"`
 		}
 		d := json.NewDecoder(bytes.NewBufferString(line))
 		d.DisallowUnknownFields()
@@ -92,6 +98,11 @@ func (h *processHost) origin(ctx context.Context) (string, error) {
 		}
 		if ready.Kind != "httpconformance-ready" {
 			return "", fmt.Errorf("unexpected readiness %q", ready.Kind)
+		}
+		if requireActivation || ready.Activation != nil {
+			if err := validateActivation(ready.Activation); err != nil {
+				return "", err
+			}
 		}
 		if err := validateOrigin(ready.BaseURL); err != nil {
 			return "", err
@@ -127,20 +138,68 @@ func (h *processHost) stop(grace time.Duration) error {
 }
 func start(t *testing.T, command string, args, env []string) string {
 	t.Helper()
+	return startWithActivation(t, command, args, env, false)
+}
+func startWithActivation(t *testing.T, command string, args, env []string, requireActivation bool) string {
+	t.Helper()
 	h, err := launch(context.WithoutCancel(t.Context()), command, args, env)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if err := h.stop(5 * time.Second); err != nil {
+		err := h.stop(5 * time.Second)
+		retainHost(t, h, err)
+		if err != nil {
 			t.Errorf("host cleanup: %v\n%s", err, h.output.String())
 		}
 	})
-	origin, err := h.origin(t.Context())
+	origin, err := h.originWithActivation(t.Context(), requireActivation)
 	if err != nil {
 		t.Fatalf("host startup: %v\n%s", err, h.output.String())
 	}
 	return origin
+}
+func retainHost(t *testing.T, h *processHost, cleanup error) {
+	t.Helper()
+	joined := false
+	select {
+	case <-h.done:
+		joined = true
+	default:
+	}
+	exitCode := -1
+	if joined && h.cmd.ProcessState != nil {
+		exitCode = h.cmd.ProcessState.ExitCode()
+	}
+	t.Logf("host %s pid=%d joined=%t exit=%d cleanup=%v", filepath.Base(h.cmd.Path), h.cmd.Process.Pid, joined, exitCode, cleanup)
+	output := os.Getenv("ARC_HTTP_CONFORMANCE_OUTPUT")
+	if output == "" {
+		return
+	}
+	if !filepath.IsAbs(output) {
+		t.Error("host evidence path must be absolute")
+		return
+	}
+	if err := os.MkdirAll(output, 0700); err != nil {
+		t.Error(err)
+		return
+	}
+	name := strings.ReplaceAll(t.Name(), "/", "-") + "-" + filepath.Base(h.cmd.Path)
+	data, err := json.MarshalIndent(struct {
+		PID     int
+		Joined  bool
+		Exit    int
+		Cleanup string
+	}{h.cmd.Process.Pid, joined, exitCode, fmt.Sprint(cleanup)}, "", "  ")
+	if err == nil {
+		err = os.WriteFile(filepath.Join(output, name+"-join.json"), append(data, '\n'), 0600)
+	}
+	if err != nil {
+		t.Error(err)
+	}
+	if err := os.WriteFile(filepath.Join(output, name+".log"), []byte(h.output.String()), 0600); err != nil {
+		t.Error(err)
+	}
 }
 func validateOrigin(origin string) error {
 	u, err := url.Parse(origin)
