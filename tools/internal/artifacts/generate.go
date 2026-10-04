@@ -24,14 +24,16 @@ import (
 // Check verifies output without writing. Only the selected build configuration
 // is generated; use separate packages for incompatible artifact sets.
 type Config struct {
-	Dir           string
-	Patterns      []string
-	Tags          string
-	Check         bool
-	ConfigFile    string
-	Profile       *ApplicationProfile
-	TypeScriptOut string
-	EmitGo        *bool
+	Dir        string
+	Patterns   []string
+	Tags       string
+	Check      bool
+	ConfigFile string
+	// BindingsConfigFile opts into a separate versioned constructor-service plan.
+	BindingsConfigFile string
+	Profile            *ApplicationProfile
+	TypeScriptOut      string
+	EmitGo             *bool
 	// Report receives the successful supported-family inventory, if nonnil.
 	Report io.Writer
 }
@@ -42,6 +44,14 @@ type Config struct {
 // Existing owned output is overlaid during analysis, so stale adapters cannot
 // prevent regeneration. Handwritten files and dependency modules are never edited.
 func Generate(ctx context.Context, config Config) error {
+	var servicesConfig *serviceBindingsConfig
+	if config.BindingsConfigFile != "" {
+		loaded, err := readServiceBindingsConfig(config.BindingsConfigFile)
+		if err != nil {
+			return err
+		}
+		servicesConfig = loaded
+	}
 	profile := ApplicationProfile{FormatVersion: GraphVersion, Name: "adapter-only"}
 	if config.ConfigFile != "" {
 		loaded, err := readProfile(config.ConfigFile)
@@ -144,6 +154,10 @@ func Generate(ctx context.Context, config Config) error {
 		}
 		analyses = append(analyses, a)
 	}
+	services, err := planServiceBindings(analyses, servicesConfig, config.Report)
+	if err != nil {
+		return err
+	}
 	graph, err := buildGraph(analyses, profile, typescript)
 	if err != nil {
 		return err
@@ -161,8 +175,12 @@ func Generate(ctx context.Context, config Config) error {
 			return err
 		}
 		var data []byte
-		if len(a.commands)+len(a.models) > 0 || hasDerivedModels(a) {
-			data, err = emit(a)
+		var packageServices *serviceBindingsPlan
+		if services != nil && services.owner == a {
+			packageServices = services
+		}
+		if len(a.commands)+len(a.models) > 0 || hasDerivedModels(a) || packageServices != nil {
+			data, err = emit(a, packageServices)
 			if err != nil {
 				return err
 			}
@@ -192,9 +210,11 @@ func Generate(ctx context.Context, config Config) error {
 				}
 			}
 			_, err := fmt.Fprintf(config.Report, "arc-gen: %d Go adapters and %d TypeScript model/command/query/barrel files %s (profile %s, fingerprint %s)\n", adapters, len(proxies), map[bool]string{true: "verified", false: "published"}[config.Check], profile.Name, graph.Fingerprint)
-			return err
+			if err != nil {
+				return err
+			}
 		}
-		return nil
+		return reportServices(config.Report, services, config.Check)
 	}
 	// Preflight every output before the first write, including newly appeared files.
 	for _, out := range outputs {
@@ -210,7 +230,7 @@ func Generate(ctx context.Context, config Config) error {
 		}
 	}
 	if config.Check {
-		return nil
+		return reportServices(config.Report, services, true)
 	}
 	for _, out := range outputs {
 		if err := ctx.Err(); err != nil {
@@ -236,7 +256,7 @@ func Generate(ctx context.Context, config Config) error {
 			return err
 		}
 	}
-	return nil
+	return reportServices(config.Report, services, false)
 }
 
 func packageDirectory(pkg *packages.Package) (string, error) {

@@ -1,0 +1,12 @@
+package consumer
+
+import (
+	"context"
+	di "github.com/cratis/fundamentals.go/dependencyinjection"
+)
+
+// RegisterForeign witnesses another generator's registration ownership, not
+// actual Chronicle generator output. Arc is told its exact key and lifetime.
+func RegisterForeign(r di.Registrar) error {
+	return di.Bind(r, di.Singleton, func(context.Context, di.Resolver) (*Foo, error) { return NewFoo(), nil })
+}

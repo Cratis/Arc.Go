@@ -36,7 +36,7 @@ type emitter struct {
 	ctx, inv, value, args, prepared, bindings, supplied, builder, err, zero, scope string
 }
 
-func emit(a *analysis) ([]byte, error) {
+func emit(a *analysis, services ...*serviceBindingsPlan) ([]byte, error) {
 	e := &emitter{analysis: a, imports: map[string]string{}, names: map[string]bool{}}
 	for _, name := range a.pkg.Types.Scope().Names() {
 		e.names[name] = true
@@ -138,6 +138,9 @@ func emit(a *analysis) ([]byte, error) {
 		}
 	}
 	e.line("return nil\n}")
+	if len(services) > 0 {
+		e.emitServices(services[0])
+	}
 	var out bytes.Buffer
 	out.WriteString(Header)
 	out.WriteString("// Copyright (c) Cratis. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\n")
