@@ -1,0 +1,37 @@
+// Arc.Go partial metadata export; Screenplay 4.48.1. Not an executable application model.
+// SPG001: partial metadata only; Graph has no event inventory (identity, generation, classification), command event production, projection/reducer mappings, reactions, constraints, specifications or screens; absence is unknown, not proof that these capabilities are absent
+// SPG002: Application/Metadata and per-artifact slices are presentation grouping only; Graph has no domain module, feature or slice descriptors
+// SPG003: handler implementations, decision reads, concurrency, validation and effective authorization policies are not modeled; this document is not an executable or security contract
+// SPG004: HTTP routes, binding, codecs, numeric bounds and missing/null/zero distinctions are not a Screenplay wire contract; property names are the Graph wire names
+
+domain Tasks
+
+type Listing
+    @name String
+
+type Other
+    @id Uuid
+
+type Register
+    @name String
+
+module Application
+    feature Metadata
+
+        slice StateChange CommandRegister
+            command Register
+                @name String
+
+        slice StateView ReadModelListing
+            readmodel Listing
+                @name String
+
+            query A => Listing
+
+            query Z => Listing
+
+        slice StateView ReadModelOther
+            readmodel Other
+                @id Uuid
+
+            query All => Other

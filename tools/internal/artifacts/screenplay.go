@@ -58,6 +58,11 @@ func exportScreenplayMetadata(graph *Graph) (screenplayMetadata, error) {
 	nodes := slices.Clone(graph.Types)
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i].Name.Name < nodes[j].Name.Name })
 	for _, node := range nodes {
+		// Screenplay 4.48.1 rejects bare type declarations (TypeWithoutProperties).
+		// Do not invent a property for an empty model or a no-input command.
+		if len(node.Fields) == 0 {
+			return screenplayMetadata{}, fmt.Errorf("screenplay: %s: model requires at least one property in Screenplay 4.48.1", node.Key)
+		}
 		fmt.Fprintf(&body, "\ntype %s\n", node.Name.Name)
 		if err := state.fields(&body, node.Fields, "    ", node.Key, false); err != nil {
 			return screenplayMetadata{}, err
@@ -91,7 +96,19 @@ func exportScreenplayMetadata(graph *Graph) (screenplayMetadata, error) {
 	}
 
 	queries := slices.Clone(graph.Queries)
-	sort.Slice(queries, func(i, j int) bool { return queries[i].Declaration.Identity() < queries[j].Declaration.Identity() })
+	// A query identity includes its name after the read-model namespace. Sorting
+	// that whole string can interleave A.Listing.A, A.Listing.Other.All and
+	// A.Listing.Z. Order model groups first, then queries within each group.
+	sort.Slice(queries, func(i, j int) bool {
+		left, right := queries[i], queries[j]
+		if left.Declaration.ReadModel != right.Declaration.ReadModel {
+			return left.Declaration.ReadModel.Identity() < right.Declaration.ReadModel.Identity()
+		}
+		if left.TypeKey != right.TypeKey {
+			return left.TypeKey < right.TypeKey
+		}
+		return left.Declaration.Identity() < right.Declaration.Identity()
+	})
 	lastModel := ""
 	for _, query := range queries {
 		identity := query.Declaration.Identity()
