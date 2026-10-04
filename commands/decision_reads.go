@@ -139,7 +139,13 @@ func readDecision(ctx context.Context, inv *Invocation, target decisionTarget, s
 		// Call converts a panic to an error too, so all waiters are released and
 		// a failed/panicking acquisition never leaves a permanently pending entry.
 		pending.err = boundary.Call(ctx, func(ctx context.Context) error {
+			if err := inv.Execution().Check(ctx); err != nil {
+				return err
+			}
 			if err := source.admit(ctx); err != nil {
+				return err
+			}
+			if err := inv.Execution().Check(ctx); err != nil {
 				return err
 			}
 			value, err := source.acquire(ctx)
@@ -148,6 +154,9 @@ func readDecision(ctx context.Context, inv *Invocation, target decisionTarget, s
 			}
 			if nilValue(value) {
 				return errDecisionRead
+			}
+			if err := inv.Execution().Check(ctx); err != nil {
+				return err
 			}
 			if err := source.check(ctx, value); err != nil {
 				return err
@@ -177,6 +186,11 @@ func readDecision(ctx context.Context, inv *Invocation, target decisionTarget, s
 	read = pending.read
 	err = boundary.Call(ctx, func(ctx context.Context) error {
 		if err := read.check(ctx, read.value); err != nil {
+			return err
+		}
+		// Provider checks may outlive the callback or change security continuity.
+		// Refuse the next effect even when checking itself reports success.
+		if err := inv.Execution().Check(ctx); err != nil {
 			return err
 		}
 		if state.mode == decisionProtected {
