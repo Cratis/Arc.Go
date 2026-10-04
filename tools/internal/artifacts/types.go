@@ -735,6 +735,9 @@ func (w *wireAnalyzer) fields(t types.Type, arguments bool) ([]FieldDescriptor, 
 			return nil, w.fail(t, "field %s mixes required annotation with explicit rules; declare the presence rule explicitly", member.Name)
 		}
 		if arguments {
+			if len(field.Rules) > 0 {
+				field.QueryRules = queryRuleRepresentation(member.Type)
+			}
 			key := strings.ToLower(member.Name)
 			if seenArgs[key] {
 				return nil, w.fail(t, "ambiguous query arguments %s", member.Name)

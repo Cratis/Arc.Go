@@ -407,7 +407,9 @@ func planQuery(query QueryDescriptor, file string, nodes map[string]TypeDescript
 }
 
 // queryRule admits only the snapshot string family with paired server/client
-// evidence. Missing optional non-nullable Go strings become empty strings, while
+// evidence. Compiler representation facts must survive either graph format:
+// NewPortable inspects the Go value, not ConceptValue or a custom wire codec.
+// Missing optional non-nullable Go strings become empty strings, while
 // the client sees undefined; defaults are also applied only on the server. Refuse
 // those shapes rather than silently changing the rules or the query arguments.
 // The generated validator copies nullable optional arguments and maps empty
@@ -415,6 +417,9 @@ func planQuery(query QueryDescriptor, file string, nodes map[string]TypeDescript
 func queryRule(field FieldDescriptor, rule validation.RuleDescriptor) (string, error) {
 	if field.Type.Kind != "string" {
 		return "", fmt.Errorf("query parameter %q: rules require paired client semantics for scalar strings", field.Name)
+	}
+	if field.QueryRules == nil || field.QueryRules.GoKind != "string" || field.QueryRules.CustomCodec || field.QueryRules.PointerDepth > 1 {
+		return "", fmt.Errorf("query parameter %q: portable rules require proven Go string representation without custom codecs", field.Name)
 	}
 	if field.Binding != nil && (field.Binding.Reader != "builtin" || field.Binding.PreservePresence || !field.Binding.EmptyAsMissing || !field.Binding.NullAsMissing) {
 		return "", fmt.Errorf("query parameter %q: portable rules require builtin empty/null-as-missing binding", field.Name)

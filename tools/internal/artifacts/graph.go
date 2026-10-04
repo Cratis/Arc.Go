@@ -71,6 +71,7 @@ type FieldDescriptor struct {
 	Rules      []validation.RuleDescriptor `json:"rules,omitempty"`
 	Presence   *FieldPresence              `json:"presence,omitempty"`
 	Binding    *QueryBinding               `json:"binding,omitempty"`
+	QueryRules *QueryRuleRepresentation    `json:"queryRules,omitempty"`
 }
 
 type EnumMember struct {

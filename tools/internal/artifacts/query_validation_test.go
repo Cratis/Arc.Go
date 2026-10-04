@@ -108,7 +108,7 @@ func queryValidationGraph(t *testing.T) *Graph {
 	t.Helper()
 	graph := queryGraph(t)
 	graph.Queries[0].PortableRules = true
-	graph.Queries[0].Parameters = []FieldDescriptor{{Name: "text", Type: WireType{Kind: "string", Nullable: true}, Rules: []validation.RuleDescriptor{{Property: "text", Name: "minLength", Arguments: []json.RawMessage{json.RawMessage("3")}, Message: "Three units"}}}}
+	graph.Queries[0].Parameters = []FieldDescriptor{{Name: "text", Type: WireType{Kind: "string", Nullable: true}, QueryRules: &QueryRuleRepresentation{GoKind: "string", PointerDepth: 1}, Rules: []validation.RuleDescriptor{{Property: "text", Name: "minLength", Arguments: []json.RawMessage{json.RawMessage("3")}, Message: "Three units"}}}}
 	return graph
 }
 
@@ -128,6 +128,10 @@ func TestQueryValidationRefusesUnprovedContractsWithoutMutation(t *testing.T) {
 			}
 		}},
 		{"number", "scalar strings", func(g *Graph) { g.Queries[0].Parameters[0].Type.Kind = "number" }},
+		{"missing representation", "proven Go string representation", func(g *Graph) { g.Queries[0].Parameters[0].QueryRules = nil }},
+		{"struct representation", "proven Go string representation", func(g *Graph) { g.Queries[0].Parameters[0].QueryRules.GoKind = "struct" }},
+		{"custom codec", "proven Go string representation", func(g *Graph) { g.Queries[0].Parameters[0].QueryRules.CustomCodec = true }},
+		{"nested pointers", "proven Go string representation", func(g *Graph) { g.Queries[0].Parameters[0].QueryRules.PointerDepth = 2 }},
 		{"format", "unsupported client portable rule", func(g *Graph) { g.Queries[0].Parameters[0].Rules[0].Name = "emailAddress" }},
 		{"optional rule", "optional/concept", func(g *Graph) { g.Queries[0].Parameters[0].Rules[0].Optional = true }},
 		{"concept rule", "optional/concept", func(g *Graph) { g.Queries[0].Parameters[0].Rules[0].Concept = true }},

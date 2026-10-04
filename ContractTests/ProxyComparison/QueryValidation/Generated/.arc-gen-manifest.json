@@ -2,12 +2,12 @@
   "format": 1,
   "owner": "query-validation",
   "scope": "237b3b481f147a352ff1922e36c748a581ff4ff9d9d53948efc50c864571c0a8",
-  "fingerprint": "7f252a2783c0894ead430b7b1b01650ce1b279aa9e25e6217dc2b8701747169e",
+  "fingerprint": "0487d0ec5152e18a137868641882f1fd911007c42baed1d66c4a62e88a03cf15",
   "files": [
     {
       "root": "go",
       "path": "zz_arc_generated.go",
-      "hash": "508f9fe3a4e53a16119ae9f0c4704b147048413a8a3d6d5e1be71f50927f0afd"
+      "hash": "fb7c73ce20057e6b3e7eec17d2257ba509789ab502b289bfd9530c4498e5a113"
     },
     {
       "root": "ts",
