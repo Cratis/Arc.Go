@@ -1,7 +1,7 @@
 <!-- Copyright (c) Cratis. All rights reserved. -->
 <!-- Licensed under the MIT license. See LICENSE file in the project root for full license information. -->
 
-# Official-structure Stage 1 capability: URI repair
+# Official-structure Stage 1 capability: URI and map traversal corrections
 
 This test-only experiment for issue #24 is not a production renderer, an
 exported validator, or a general OpenAPI conformance claim. The normative
@@ -11,8 +11,10 @@ wins over the informative structural schema and the engine.
 Both native and actual QUERY operations reject `responses: {"wrong": ...}`
 and `externalDocs.url: "not a uri with spaces"`. The original 326 leaf subjects
 now pass, including both unchanged URI rejection assertions. Another 218
-checks exercise pinned upstream URI cases. Renderer work still requires review
-of this capability and its bounded scope; passing this proof is not #24 acceptance.
+checks exercise pinned upstream URI cases. All 544 subjects remain unchanged;
+332 new controls cover `x-`-named map entries and genuine extension data.
+Renderer work still requires review of this capability and its bounded scope;
+passing this proof is not #24 acceptance.
 
 ## Pinned upstream resources
 
@@ -109,18 +111,51 @@ All 78 upstream cases run in both modes; all 31 URI-reference cases also run
 through native and QUERY `externalDocs.url`. Non-string values remain valid
 for a format-only schema but fail the official URL property's string type.
 
+## Context-specific extension handling
+
+An `x-` prefix identifies extension fields only on Objects that permit
+Specification Extensions. It does not turn a named map entry into opaque data.
+In particular, `responses.200.headers.x-test` is a Header Object or Reference
+Object, not an extension. The previous generic map skip could hide its schema
+or external reference from admission.
+
+The traversal now distinguishes the contracts in the pinned official schema:
+
+- Paths and Responses Objects retain their extension skip, as does traversal
+  of a Callback Object's expression fields.
+- Response and encoding `headers`, response `links`, operation `callbacks`,
+  parameter/header/media `examples`, media `encoding`, and `content` maps visit
+  every entry. An `x-` content key must satisfy the same finite content-key
+  admission as any other key; it is not an extension escape hatch.
+- Top-level `webhooks` visits every named Path Item, including `x-` names.
+  Component maps and schema-valued maps already visit all entries and retain
+  that behavior. Unknown schema keywords still fail the bounded admission list.
+
+`official_extensions_capability_test.go` adds native/QUERY fixtures with
+`x-`-named headers, schemas, components, callbacks, examples, links, encoding
+fields and webhooks. It checks original compiled pointers and paired instances,
+malformed schemas, unsupported keywords, invalid defaults, local typed targets,
+missing/wrong-kind targets, and HTTPS/file/relative external-reference refusal
+with zero loader calls. Genuine extension payloads and unused Example values
+remain opaque. The informative schema also applies its Path Item shape to
+Callback extension values; that positive control uses this shape rather than
+changing the pinned schema or claiming arbitrary callback payload acceptance.
+
 ## Matrix result
 
-The compiled Go 1.26.8 run exercised **544 leaf subjects** across 13 top-level
-checks: **544 passed, 0 failed, 0 skipped**. All **326** original subjects are
-retained; the **218** additional subjects use the pinned upstream URI groups.
+The compiled Go 1.26.8 ordinary and race runs each exercised **876 leaf subjects**
+across 15 top-level checks: **876 passed, 0 failed, 0 skipped**. All **544** prior
+subjects remain (326 original and 218 pinned URI controls); **332** map/extension
+controls are additional. Targeted vet and golangci-lint v2.14.0 also pass.
 This is a bounded capability result, not a CI or release-readiness claim.
 
-- Complete pointer sets match **16** numeric-fixture and **31** contextual-fixture
-  Schema Objects, not merely a nonzero count. The contextual fixture includes
-  all admitted nested schema positions, component parameters/headers/bodies/
-  responses, callback, webhook, unused Path Item, native, QUERY, and encoding
-  header schemas. Every compiled location retains the original decoded pointer.
+- Exact expected pointer sets match the **16** numeric-fixture and **31**
+  contextual-fixture Schema Objects. These are fixed-fixture expectations, not
+  general discovery completeness. The contextual fixture includes nested schema
+  positions, component parameters/headers/bodies/responses, callback, webhook,
+  unused Path Item, native, QUERY, and encoding header schemas. Every compiled
+  location retains the original decoded pointer. The new `x-` fixtures test a
+  separate naming dimension without enlarging either historical pointer set.
 - Signed/unsigned extrema are accepted exactly; all three adjacent out-of-range
   integers, negative unsigned values, and fractions are rejected. Small-width,
   exclusive bounds, exact multiples, constants, enumerations, nullable schemas,
@@ -158,7 +193,8 @@ CLI integration, precision codec, or generic media-range acceptance is proved.
 ## Reproduction
 
 From `tools/`, use the actual Go 1.26.8 binary in `PATH`, `GOWORK=off`,
-`GOTOOLCHAIN=local`, and the ignored tools-module `capability.mod` retaining
+`GOTOOLCHAIN=local`, `GOPROXY=off`, `GOSUMDB=off`, and the ignored tools-module
+`capability.mod` retaining
 jsonschema v6.0.3, kin v0.149.0, minimum Go 1.26.0, and Arc runtime `78ebbf8`.
 Run each command separately through `pi-phase` with a 120-second execution and
 120-second queue budget:
@@ -178,9 +214,19 @@ go test -mod=readonly -modfile="$CAPABILITY_MOD" -count=1 -timeout=90s -v \
   ./internal/artifacts/testdata/openapi \
   -run '^TestExactDocumentCapability(Numbers|Ownership)$'
 
-# Passing bounded official-schema proof, including the URI regression controls.
+# Passing bounded official-schema proof, including URI and x-named-map controls.
 go test -mod=readonly -modfile="$CAPABILITY_MOD" -count=1 -timeout=90s -v \
   ./internal/artifacts/testdata/openapi -run '^TestOfficialCapability'
+
+# Same proof with the race detector; run as a separate phase.
+go test -race -mod=readonly -modfile="$CAPABILITY_MOD" -count=1 -timeout=90s -v \
+  ./internal/artifacts/testdata/openapi -run '^TestOfficialCapability'
+
+go vet -mod=readonly -modfile="$CAPABILITY_MOD" \
+  ./internal/artifacts/testdata/openapi
+
+GOFLAGS="-mod=readonly -modfile=$CAPABILITY_MOD" golangci-lint run \
+  --timeout=90s --config=../.golangci.yml ./internal/artifacts/testdata/openapi
 ```
 
 The proof commands explicitly address this `testdata` package; ordinary `./...`

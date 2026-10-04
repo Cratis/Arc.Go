@@ -229,7 +229,9 @@ func officialDiscover(document map[string]any) (*officialInventory, error) {
 					return fmt.Errorf("%s map at %s", key, pointer)
 				}
 				for _, name := range officialKeys(children) {
-					if strings.HasPrefix(name, "x-") {
+					// Responses is an extensible Object. The other fields here are
+					// name-to-object maps: x- names are entries, not extensions.
+					if kind == "operation" && key == "responses" && strings.HasPrefix(name, "x-") {
 						continue
 					}
 					if err := walk(children[name], officialPointer(officialPointer(pointer, key), name), childKind, pathItem, path, depth+1); err != nil {
@@ -357,7 +359,8 @@ func officialDiscover(document map[string]any) (*officialInventory, error) {
 				return nil, fmt.Errorf("%s map", group)
 			}
 			for _, path := range officialKeys(object) {
-				if strings.HasPrefix(path, "x-") {
+				// Paths is extensible; webhooks is a name-to-Path-Item map.
+				if group == "paths" && strings.HasPrefix(path, "x-") {
 					continue
 				}
 				if err := walk(object[path], officialPointer("/"+group, path), "path-item", "", path, 0); err != nil {
