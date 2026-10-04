@@ -28,5 +28,5 @@ func Call(ctx context.Context, callback func(context.Context) error) (err error)
 		}
 		err = errors.Join(err, ctx.Err())
 	}()
-	return callback(ctx)
+	return callback(ClearDiagnostics(ctx))
 }

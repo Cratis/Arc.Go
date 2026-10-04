@@ -96,7 +96,7 @@ func (a *Application) hubOwner(r *http.Request, id string, opening bool) (stream
 		if resolver := a.options.Observable.AnonymousOwner; resolver != nil {
 			err := boundary.Call(r.Context(), func(ctx context.Context) error {
 				var err error
-				evidence, err = resolver(ctx, r)
+				evidence, err = resolver(ctx, r.WithContext(ctx))
 				return err
 			})
 			if err != nil || evidence == "" {

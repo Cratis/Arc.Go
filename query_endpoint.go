@@ -51,11 +51,27 @@ func (a *Application) queryEndpoint(w http.ResponseWriter, r *http.Request, e me
 		method = "GET"
 	}
 	reader := a.readers[method]
+	health := e.Path == queryHealthPath && a.options.QueryHealth != nil
+	if health {
+		privateCache(w)
+		if !healthAllowed(r.Context(), a.options.QueryHealth.Roles) {
+			a.publish(w, r, http.StatusForbidden, healthDenied(r.Context()))
+			return
+		}
+		// Framework health never activates application request readers.
+		reader = compiledReader{reader: queries.QueryStringRequestReader{}}
+		if method == "QUERY" {
+			reader = compiledReader{reader: queries.BodyRequestReader{}}
+		}
+	}
 	if cache := reader.cache; cache != "" {
 		w.Header().Set("Cache-Control", cache)
 	}
 	if method == "QUERY" {
 		w.Header().Set("Cache-Control", "no-store")
+	}
+	if health {
+		privateCache(w)
 	}
 	id := correlation.FromContext(r.Context())
 	var input queries.ReaderInput

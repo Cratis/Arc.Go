@@ -61,17 +61,22 @@ func (p *queryPipeline) observableSnapshot(ctx context.Context, name FullyQualif
 	} else {
 		result, err = o.snapshot(ctx, request.wait)
 	}
+	o.openingFailed(ctx, result, err) // Preserve the terminal verdict before cleanup cancellation.
 	if cleanupErr := o.cleanup(); cleanupErr != nil {
 		err = errors.Join(err, cleanupErr)
 		result = p.observableResult(ctx, name, result, cleanupErr)
 	}
 	return result, err
 }
-func (o *Observation) snapshot(ctx context.Context, wait WaitOptions) (Result[any], error) {
+func (o *Observation) snapshot(ctx context.Context, wait WaitOptions) (output Result[any], outputErr error) {
 	if err := o.begin(ctx); err != nil {
 		return o.pipeline.observableResult(ctx, o.metadata.name, o.admission, err), err
 	}
 	defer o.end()
+	defer func() {
+		outcome := boundary.Outcome(output.IsAuthorized(), output.HasExceptions(), outputErr != nil, ctx.Err() != nil || o.ctx.Err() != nil, output.details.ValidationResults)
+		o.consumptionFinished(ctx, outcome, outputErr)
+	}()
 	result := NotReady[any](o.metadata.correlationID)
 	work, cancel := context.WithCancel(o.ctx)
 	stop := context.AfterFunc(ctx, cancel)
