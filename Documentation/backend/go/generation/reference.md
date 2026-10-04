@@ -17,7 +17,8 @@ Start with [generating model-bound adapters](index.md) for the authoring workflo
 | `-dir` | Current directory | Directory for Go package loading |
 | `-tags` | Empty | Comma-separated build tags, passed to the Go loader |
 | `-check` | False | Return an error for missing, changed, or obsolete output without writing or recovery |
-| `-config` | None | Strict format-version 1 JSON application profile |
+| `-config` | None | Strict versioned JSON application profile; internal wire-contract analysis does not enable OpenAPI publication |
+| `-bindings-config` | Disabled | Separate strict version-1 JSON [constructor-service configuration](constructor-services.md#configuration-reference) |
 | `-typescript-out` | Disabled | Override profile `typescript.out` with an output root relative to the selected module |
 | `-emit-go` | True | Explicitly supplied value overrides profile `typescript.emitGo`; false is unsupported for mixed generation |
 
@@ -164,13 +165,16 @@ artifact packages. Handwritten inputs must type-check without generated symbols.
 The generator validates all selected packages before writing. Each file replacement
 is atomic, but a multi-package write is not a filesystem transaction. Any write
 failure returns an error. After repairing the cause, rerun generation and `-check`.
-An owned output is removed when its selected package no longer contains artifacts.
+An owned output is removed when its selected package no longer needs generated
+artifact or opted-in service output.
 Files without the generator's ownership header, symlink outputs, and unselected
 packages are never overwritten or cleaned up.
 
 Variadics, unresolved generics, arbitrary multiple returns, channels, opaque
-provider-specific source emissions, service constructor discovery, standalone
+provider-specific source emissions, implicit service discovery, standalone
 validator/policy discovery, operations, and proxy-only output are unsupported.
+Explicitly opted-in [constructor service generation](constructor-services.md)
+uses the shared Fundamentals planner and a separate `RegisterServices` entry point.
 Custom opaque MongoDB `Source[Find]` remains a manual-runtime surface until explicit
 emission metadata exists; no provider renderer or broader C# nullable-layout
 support is inferred. Supported TypeScript models, commands, snapshot queries, and
