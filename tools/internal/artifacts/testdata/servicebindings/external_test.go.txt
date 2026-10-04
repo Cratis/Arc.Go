@@ -1,0 +1,31 @@
+// Copyright (c) Cratis. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+
+package consumer_test
+
+import (
+	"context"
+	"testing"
+
+	consumer "example.test/consumer"
+	"example.test/consumer/external"
+	di "github.com/cratis/fundamentals.go/dependencyinjection"
+	"github.com/cratis/fundamentals.go/dependencyinjection/container"
+)
+
+func TestForeignConstructorIsDeferredAndResolvesExactGenericKey(t *testing.T) {
+	var registry container.Registry
+	builder := &registry
+	key := external.Box[[]*external.Dependency]{Value: []*external.Dependency{{Value: "foreign"}}}
+	if err := di.BindValue(builder, key); err != nil { t.Fatal(err) }
+	if err := consumer.RegisterServices(builder); err != nil { t.Fatal(err) }
+	container, err := builder.Build()
+	if err != nil { t.Fatal(err) }
+	if external.Calls != 0 { t.Fatal("registration/build activated the constructor") }
+	ctx := context.Background()
+	defer func() { if err := container.Close(ctx); err != nil { t.Error(err) } }()
+	scope, err := container.NewScope(ctx)
+	if err != nil { t.Fatal(err) }
+	value, err := di.Resolve[*external.Foo](ctx, scope)
+	if err != nil || value == nil || value.Value != "foreign" || external.Calls != 1 { t.Fatalf("%+v, %v, calls %d", value, err, external.Calls) }
+}

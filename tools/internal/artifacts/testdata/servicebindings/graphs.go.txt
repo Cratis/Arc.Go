@@ -1,0 +1,26 @@
+package graphs
+
+var Calls int
+
+type A struct{}
+
+func NewA(*B) *A { Calls++; return &A{} }
+
+type B struct{}
+
+func NewB(*A) *B { Calls++; return &B{} }
+
+//cratis:singleton
+type Captive struct{}
+
+func NewCaptive(*Scoped) *Captive { Calls++; return &Captive{} }
+
+//cratis:scoped
+type Scoped struct{}
+
+func NewScoped() *Scoped { Calls++; return &Scoped{} }
+
+type Missing struct{}
+type Consumer struct{}
+
+func NewConsumer(*Missing) *Consumer { Calls++; return &Consumer{} }

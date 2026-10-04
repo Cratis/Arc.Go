@@ -1,0 +1,67 @@
+package consumer
+
+import (
+	"errors"
+	di "github.com/cratis/fundamentals.go/dependencyinjection"
+	"github.com/cratis/fundamentals.go/dependencyinjection/container"
+	"testing"
+)
+
+func TestForeignOwnerRetainedWithAttestedLifetime(t *testing.T) {
+	Calls = 0
+	var r container.Registry
+	if err := di.BindValue(&r, &Dependency{}); err != nil {
+		t.Fatal(err)
+	}
+	external := &External{}
+	if err := di.BindValue(&r, external); err != nil {
+		t.Fatal(err)
+	}
+	if err := RegisterForeign(&r); err != nil {
+		t.Fatal(err)
+	}
+	if err := RegisterServices(&r); err != nil {
+		t.Fatal(err)
+	}
+	if Calls != 0 {
+		t.Fatal("dual-generator registration activated constructor")
+	}
+	if err := RegisterServices(&r); !errors.Is(err, di.ErrDuplicate) {
+		t.Fatal("unlisted duplicate skipped", err)
+	}
+	p, err := r.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := p.NewScope(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := p.NewScope(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := di.Resolve[IFoo](t.Context(), a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := di.Resolve[*Foo](t.Context(), b)
+	if err != nil || first != second {
+		t.Fatal("forwarder ignored attested existing lifetime", err)
+	}
+	if err := a.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if second.Closes != 0 {
+		t.Fatal("existing singleton disposed with scope")
+	}
+	if err := p.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if second.Closes != 1 || external.Closes != 0 {
+		t.Fatal("borrowed forwarding or external ownership differs")
+	}
+}
