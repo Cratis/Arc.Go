@@ -151,7 +151,17 @@ func NewActionHandler[T any](action func(context.Context, T) (ActionResult, erro
 		})
 		result := commands.NewResult(commands.Details{CorrelationID: id, Authorized: true, ValidationResults: findings}, serialization.Some(output.Response))
 		if err != nil {
-			result = commands.Merge(result, commands.FromError[commands.NoResponse](id, err))
+			failure := commands.FromError[commands.NoResponse](id, err)
+			// An error with no classified findings is still a failure. Never
+			// publish its response or invoke Raw merely because classification
+			// produced a successful-looking fragment.
+			if failure.IsSuccess() {
+				failure = commands.NewResult(commands.Details{
+					CorrelationID: id, Authorized: true,
+					ExceptionMessages: []string{boundary.InternalErrorMessage},
+				}, serialization.Optional[commands.NoResponse]{})
+			}
+			result = commands.Merge(result, failure)
 		}
 		if result.IsSuccess() && !nilValue(output.Raw) {
 			output.Raw.ServeHTTP(w, r)

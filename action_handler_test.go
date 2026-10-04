@@ -140,6 +140,96 @@ func TestActionHandlerSuppressesFailedResponsesAndRedacts(t *testing.T) {
 	}
 }
 
+type actionEmptyValidationFailure struct {
+	results []validation.Result
+}
+
+func (e actionEmptyValidationFailure) Error() string { return "secret-empty-failure" }
+func (e actionEmptyValidationFailure) ValidationResults() []validation.Result {
+	return e.results
+}
+
+func TestActionHandlerEmptyValidationFailureFailsClosed(t *testing.T) {
+	for _, empty := range []struct {
+		name string
+		err  error
+	}{
+		{"nil-findings", actionEmptyValidationFailure{}},
+		{"empty-findings", actionEmptyValidationFailure{results: []validation.Result{}}},
+		{"wrapped-nil-findings", fmt.Errorf("secret-wrapper: %w", actionEmptyValidationFailure{})},
+	} {
+		for _, mode := range []string{"response", "raw", "validate-only"} {
+			t.Run(empty.name+"/"+mode, func(t *testing.T) {
+				actions, rawCalls := 0, 0
+				options := arc.ActionOptions[actionInput]{}
+				path := "/action"
+				if mode == "validate-only" {
+					path += "/validate"
+					options.Validate = func(context.Context, actionInput) ([]validation.Result, error) {
+						return nil, empty.err
+					}
+				}
+				handler, err := arc.NewActionHandler(func(context.Context, actionInput) (arc.ActionResult, error) {
+					actions++
+					output := arc.ActionResult{Response: "secret-response"}
+					if mode == "raw" {
+						output.Response = nil
+						output.Raw = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+							rawCalls++
+							if _, err := w.Write([]byte("secret-raw")); err != nil {
+								t.Error(err)
+							}
+						})
+					}
+					return output, empty.err
+				}, options)
+				if err != nil {
+					t.Fatal(err)
+				}
+				w, result := actionHTTP(t, handler, path, `{}`)
+				wantActions := 1
+				if mode == "validate-only" {
+					wantActions = 0
+				}
+				if actions != wantActions || rawCalls != 0 || w.Code != http.StatusInternalServerError || result.IsSuccess || !result.IsAuthorized || !result.IsValid || !result.HasExceptions || len(result.ExceptionMessages) != 1 || len(result.Response) != 0 || strings.Contains(w.Body.String(), "secret") {
+					t.Fatalf("actions=%d raw=%d code=%d body=%s", actions, rawCalls, w.Code, w.Body)
+				}
+			})
+		}
+	}
+}
+
+func TestActionHandlerErrorClassificationPreservesFindingsAndPrecedence(t *testing.T) {
+	finding := validation.Result{Severity: validation.Error, Message: "rejected"}
+	for _, tc := range []struct {
+		name       string
+		err        error
+		findings   []validation.Result
+		status     int
+		authorized bool
+		exceptions bool
+	}{
+		{"validation", validation.Reject(finding), nil, 400, true, false},
+		{"validation-before-exception", errors.Join(validation.Reject(finding), errors.New("secret-error")), nil, 400, true, true},
+		{"authorization-before-validation", errors.Join(authorization.ErrDenied, validation.Reject(finding)), nil, 403, false, false},
+		{"authorization-before-exception", errors.Join(authorization.ErrDenied, errors.New("secret-error")), []validation.Result{finding}, 403, false, true},
+		{"action-findings-before-empty-failure", actionEmptyValidationFailure{}, []validation.Result{finding}, 400, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			handler, err := arc.NewActionHandler(func(context.Context, actionInput) (arc.ActionResult, error) {
+				return arc.ActionResult{Response: "secret-response", ValidationResults: tc.findings}, tc.err
+			}, arc.ActionOptions[actionInput]{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			w, result := actionHTTP(t, handler, "/action", `{}`)
+			if w.Code != tc.status || result.IsSuccess || result.IsValid || result.IsAuthorized != tc.authorized || result.HasExceptions != tc.exceptions || len(result.ValidationResults) != 1 || result.ValidationResults[0].Message != finding.Message || len(result.Response) != 0 || strings.Contains(w.Body.String(), "secret") {
+				t.Fatalf("code=%d body=%s", w.Code, w.Body)
+			}
+		})
+	}
+}
+
 func TestActionHandlerRetainsZeroFalseAndNullResponseContract(t *testing.T) {
 	for _, response := range []any{0, false, nil} {
 		handler, err := arc.NewActionHandler(func(context.Context, actionInput) (arc.ActionResult, error) {
