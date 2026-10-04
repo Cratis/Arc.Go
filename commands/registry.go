@@ -230,6 +230,13 @@ func (r *Registry) Build(options PipelineOptions) (Pipeline, error) {
 		}
 		p.byType[entry.commandType], p.byName[entry.descriptor.Type.Identity()] = entry, entry
 	}
+	if options.Diagnostics != nil {
+		names := make([]string, 0, len(p.byName))
+		for name := range p.byName {
+			names = append(names, name)
+		}
+		options.Diagnostics.Register(names)
+	}
 	r.frozen = true
 	return p, nil
 }

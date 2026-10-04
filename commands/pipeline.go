@@ -15,6 +15,7 @@ import (
 	"github.com/cratis/arc.go/execution"
 	"github.com/cratis/arc.go/identity"
 	boundary "github.com/cratis/arc.go/internal/pipeline"
+	"github.com/cratis/arc.go/observability"
 	"github.com/cratis/arc.go/serialization"
 	"github.com/cratis/arc.go/tenancy"
 	"github.com/cratis/arc.go/validation"
@@ -25,6 +26,8 @@ import (
 // compiles declarations (never bypasses them); nil validation enables model/tag rules.
 // OpenResources and ScopeFactory are mutually exclusive. Cleanup is cooperative.
 type PipelineOptions struct {
+	// Diagnostics is borrowed, bounded backend recording; nil disables it.
+	Diagnostics            *observability.Recorder
 	OpenResources          execution.OpenResources
 	ScopeFactory           di.ScopeFactory
 	DependencyCatalog      di.Catalog
@@ -85,7 +88,9 @@ func (p *pipeline) Validate(ctx context.Context, command any, options ...Execute
 	result, err := p.run(ctx, nil, command, true, nil, options)
 	return NewResult(result.Details(), serialization.Optional[NoResponse]{}), err
 }
-func (p *pipeline) ExecuteScoped(ctx context.Context, scope *execution.Scope, command any, options ...ExecuteOptions) (Result[any], error) {
+func (p *pipeline) ExecuteScoped(ctx context.Context, scope *execution.Scope, command any, options ...ExecuteOptions) (result Result[any], err error) {
+	ctx, attempt := beginDiagnostics(ctx, p, command, false)
+	defer func() { finishDiagnostics(attempt, ctx, result, err) }()
 	if bound := operationBoundaryFor(ctx, p); bound != nil {
 		child, _ := p.LookupCommand(command)
 		if bound.frame.registration.operations || child.operations {
@@ -97,7 +102,9 @@ func (p *pipeline) ExecuteScoped(ctx context.Context, scope *execution.Scope, co
 	}
 	return p.run(ctx, scope, command, false, nil, options)
 }
-func (p *pipeline) ValidateScoped(ctx context.Context, scope *execution.Scope, command any, options ...ExecuteOptions) (Result[NoResponse], error) {
+func (p *pipeline) ValidateScoped(ctx context.Context, scope *execution.Scope, command any, options ...ExecuteOptions) (result Result[NoResponse], err error) {
+	ctx, attempt := beginDiagnostics(ctx, p, command, true)
+	defer func() { finishDiagnostics(attempt, ctx, result, err) }()
 	if bound := operationBoundaryFor(ctx, p); bound != nil {
 		child, _ := p.LookupCommand(command)
 		if bound.frame.registration.operations || child.operations {
@@ -108,17 +115,19 @@ func (p *pipeline) ValidateScoped(ctx context.Context, scope *execution.Scope, c
 	if scope == nil {
 		return FromError[NoResponse](contextID(ctx), execution.ErrInvalidScope), execution.ErrInvalidScope
 	}
-	result, err := p.run(ctx, scope, command, true, nil, options)
-	return NewResult(result.Details(), serialization.Optional[NoResponse]{}), err
+	untyped, err := p.run(ctx, scope, command, true, nil, options)
+	return NewResult(untyped.Details(), serialization.Optional[NoResponse]{}), err
 }
 
 // Execute checks a known response contract before application code. Unknown
 // contracts are checked against the actual response after execution; a mismatch
 // returns ErrResponseType and a failed envelope with no response.
-func Execute[R any](ctx context.Context, p Pipeline, command any, options ...ExecuteOptions) (Result[R], error) {
+func Execute[R any](ctx context.Context, p Pipeline, command any, options ...ExecuteOptions) (output Result[R], outputErr error) {
 	if nilValue(p) {
 		return FromError[R](contextID(ctx), ErrInvalidRegistration), ErrInvalidRegistration
 	}
+	ctx, attempt := beginDiagnostics(ctx, p, command, false)
+	defer func() { finishDiagnostics(attempt, ctx, output, outputErr) }()
 	if bound := operationBoundaryFor(ctx, p); bound != nil {
 		child, _ := bound.pipeline.LookupCommand(command)
 		if bound.frame.registration.operations || child.operations {
@@ -183,12 +192,15 @@ type frame struct {
 }
 
 func (p *pipeline) run(ctx context.Context, borrowed *execution.Scope, command any, validationOnly bool, parent *frame, options []ExecuteOptions) (result Result[any], err error) {
+	ctx, attempt := beginDiagnostics(ctx, p, command, validationOnly)
+	defer func() { finishDiagnostics(attempt, ctx, result, err) }()
 	registration, err := p.LookupCommand(command)
 	if parent == nil && ctx != nil {
 		if bound, ok := ctx.Value(callbackBoundaryKey{}).(*boundPipeline); ok && bound.pipeline == p && (bound.frame.registration.operations || registration.operations) {
 			return bound.run(ctx, bound.scope, command, validationOnly, options)
 		}
 	}
+	ctx = boundary.ClearDiagnostics(ctx)
 	if err == nil && (ctx == nil || len(options) > 1) {
 		err = ErrInvalidRegistration
 	}
