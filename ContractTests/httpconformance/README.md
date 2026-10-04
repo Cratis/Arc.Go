@@ -2,8 +2,9 @@
 
 This is a **Partial**, fail-closed checkpoint for
 [Arc.Go#38](https://github.com/Cratis/Arc.Go/issues/38), not a parity approval.
-It does not change runtime behavior or historical captures. A listening Kestrel
-process is not proof that Arc registered its queries: readiness now requires the
+It includes bounded query-reader corrections; historical captures remain
+unchanged. A listening Kestrel process is not proof that Arc registered its
+queries: readiness requires the
 four fixture performers and all eight GET/QUERY route mappings. An empty 404
 still fails the paired gate.
 

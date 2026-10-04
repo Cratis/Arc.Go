@@ -27,6 +27,11 @@ watches, and OpenAPI remain unsupported.
 Constructing metadata or a result alone does not execute business code; the
 application builder compiles the HTTP endpoints.
 
+The [paired snapshot HTTP checkpoint](parity.md#paired-snapshot-http-checkpoint)
+compares 36 GET/QUERY requests against pinned C# Arc: 34 strict matches and two
+exact ordinary-list paging-metadata allowances. This remains Partial; commands,
+authentication, HEAD, providers, streams and browsers are outside that pair.
+
 ## Inspect a command route and result
 
 This is the body of the [compiled Example](../example_test.go). It uses packages

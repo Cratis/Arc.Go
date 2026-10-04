@@ -16,7 +16,7 @@ Work is tracked in [foundation issue 3](https://github.com/Cratis/Arc.Go/issues/
 
 | Profile | Reference | Coverage |
 | --- | --- | --- |
-| Current C# authority | Arc commit `7c1e78075b737df64f69fddfaae83374f75e3612` | Source-derived foundation fixtures and behavioral tests below |
+| Current C# authority | Arc commit `7c1e78075b737df64f69fddfaae83374f75e3612` | Source-derived foundation fixtures, behavioral tests and the bounded paired snapshot HTTP checkpoint below |
 | Historical Kotlin comparison | C# Arc 22.14.0; Kotlin commit `23c93a3f70008f20d99c28868010b08e3123ea97` | Task-board assertions consulted; paired HTTP suite not run |
 | Historical TypeScript comparison | C# Arc 22.45.0; TypeScript commit `cbb421aa1fb6e5f65deec746911ee3046dfb1af6` | Full-envelope expectations consulted; paired HTTP suite not run |
 
@@ -24,7 +24,45 @@ C# paths in the ledger are relative to `Source/DotNET/Arc.Core/` at the authorit
 revision above. Scalar naming/converter sources additionally pin Fundamentals
 `d2accc4a79b6bcf2708213c97093ab5ba6c06381`.
 [Fixture provenance](../ContractTests/fixtures/v1/README.md) identifies exact files,
-versions and normalization. Fixtures are not live .NET captures.
+versions and normalization. Those foundation fixtures are not live .NET captures;
+the separate HTTP checkpoint below executes both hosts.
+
+## Paired snapshot HTTP checkpoint
+
+[Issue 38](https://github.com/Cratis/Arc.Go/issues/38) remains **Partial**.
+`ContractTests/httpconformance` compares real Go and generated C# GET/QUERY
+endpoints at the authority revision above, using SDK `10.0.401`, runtime
+`10.0.12`, seven locked projects and exact Git-derived source membership.
+`TestReferenceActivation` requires all four fixture performers and eight routes;
+`TestPairedSnapshotHTTP` executes 36 requests across 14 fixed groups.
+
+The recorded pair has **34 strict matches and two exact allowances**. Coverage
+includes scalar/default binding, missing/empty/null inputs, count-before-window
+sorting and paging, empty/out-of-range selections, malformed controls and failed
+performers. Status, relevant headers, correlation, full envelopes, array order
+and missing-versus-null values are compared. Only object order and JSON whitespace
+are normalized; raw exchanges and differences remain separate from allowances.
+
+Both allowances are limited to successful `plain-paging-control/page/GET` and
+`plain-paging-control/page/QUERY`: only `$.paging.page` (C# 1, Go 0) and
+`$.paging.size` (C# 2, Go 0) differ. Totals remain zero and all four rows remain
+in the same order. Ordinary Go lists stay unpaged; use an explicit renderer for
+paging rather than relying on request metadata being echoed. These allowances
+never apply to failures or other requests.
+
+The checkpoint corrects query failure envelopes: malformed QUERY integer input
+retains its actual decoder cause without adding synthetic diagnostic causes;
+invalid direction text reports the reference message; paging findings use
+`Page`/`Size` members. `TestQueryReaderParityFailureEnvelopes` separately verifies
+Go-side rejection before performer, renderer and business-factory activation,
+including denial. That native denial test is not paired authentication evidence.
+
+See the [corpus, exact allowances and run instructions](../ContractTests/httpconformance/README.md).
+Preparation and native tests reject changed or incomplete provenance; the dedicated
+workflow retains bounded captures and source/provenance manifests, not source
+caches or binaries. Commands, authentication, HEAD, CSV, renderer failures,
+provider databases, streams and browser clients remain outside this paired profile.
+It does not establish the full CI matrix or whole-product parity.
 
 ## TypeScript proxy implementation boundaries
 
@@ -93,8 +131,8 @@ The frontend authority is `Source/DotNET/Tools/ProxyGenerator` and
   characterization tests. Captures remain untouched reference evidence. Separate
   Go-generated Models/Commands/Queries fixtures and the actual CLI Publication
   fixture provide emitted-proxy evidence. Mounted generated observable hooks have
-  their separate bounded lane below; command/snapshot hooks and paired .NET hosts
-  remain unverified.
+  their separate bounded lane below; command/snapshot hooks and paired .NET
+  execution of these generated proxies remain unverified.
 - **Adapter defaults**: narrow command/model name and namespace options preserve
   the actual composition namespace without the removed `Builder.CommandNamespace`
   accessor. `TestGeneratedRegistrationOptionsPreserveNamespaceDefaults` covers
@@ -267,7 +305,7 @@ The frontend authority is `Source/DotNET/Tools/ProxyGenerator` and
 | Namespace queries and directed functions | `Queries/ModelBound/ReadModelExtensions.cs`, `ModelBoundQueryPerformer.cs` | `queries.Register`, `Function`, `Invoke` | Go-specific | Namespace/function Examples and `ContractTests/TestModelBoundPipelinesMatchExistingGoldens`; unnamed value-receiver namespace methods and explicit functions use direct composition; build-time discovery is recorded in the generation ledger below |
 | Model/query metadata inheritance | `Queries/ModelBound/QueryPerformerProvider.cs`, `Queries/QueryEndpointMapper.cs` | Read-model registration and query options | Go-specific | `queries/registration_test.go`; method replacement, pinned identity, logical namespaces, exact types and deterministic conflicts; no package-path identity inference |
 | GET/QUERY argument binding | `Queries/QueryStringQueryRequestReader.cs`, `BodyQueryRequestReader.cs`, `ModelBound/ModelBoundQueryPerformer.cs` | Typed argument models, request readers and custom bindings | Partial | `queries/binding_test.go`, `request_test.go` and three fuzz targets; explicit requiredness, bounded scalar grammar, transport omission and custom JSON-node bindings; direct empty nonstring input uses missing/default rules, and boolean text accepts only trimmed case-insensitive true/false. HTTP mapping/no-store is covered by `TestGETHEADQUERYReadersAndSnapshotNegotiation` |
-| Paging, sorting and ordinary lists | `Queries/Paging.cs`, `QueryableQueryRenderer.cs` | Parameters, `Page`, `SliceRenderer` | Implemented | `queries/request_test.go`, `renderer_test.go`; active paging validation, safe wire-field sort columns, count-before-page and no double paging; plain lists remain unpaged |
+| Paging, sorting and ordinary lists | `Queries/Paging.cs`, `QueryableQueryRenderer.cs` | Parameters, `Page`, `SliceRenderer` | Partial | `queries/request_test.go`, `renderer_test.go`; active paging validation with `Page`/`Size` findings, safe wire-field sort columns, count-before-page and no double paging. The paired snapshot checkpoint covers bounded GET/QUERY cases; plain lists remain unpaged with zero page/size metadata, unlike C# request-metadata echo in the two exact allowances above |
 | Exact rendering and interception | `Queries/QueryRenderers.cs`, `ReadModelInterceptors.cs` | Typed renderers and read-model interceptors | Go-specific | `queries/renderer_test.go`, `interceptors_test.go`; exact renderer keys, ordered sequential items and explicit pointer/value interceptor types; register supported wire-field comparers instead of reflected property guessing |
 | Authorized snapshot execution | `Queries/QueryPipeline.cs`, `QueryFilters.cs` | `Perform`, `PerformScoped` | Implemented | `queries/pipeline_test.go`, `concurrency_test.go`, cross-lane contracts; dependency construction delayed through validation; declaration recheck before invocation; no hosting or streaming claim |
 | Safe failures and ready-null | `Queries/QueryResult.cs`, `QueryPipeline.cs` | Query finalizer and snapshot results | Implemented | `queries/TestNilProviderOutputSkipsRendererAndInterceptors`, `TestTypedPerformFailuresAreReadyCorrelatedAndFailed`, ready-null/panic/cancellation/cleanup tests and cross-lane contracts; successful null is ready, never pending; nil provider outputs skip rendering/interception; typed failures retain correlation and suppress data/change sets |
@@ -338,7 +376,8 @@ or SDK contract boundaries, not silent substitutes for undelivered hooks.
 
 All C# paths below use Arc `7c1e78075b737df64f69fddfaae83374f75e3612` and are
 relative to `Source/DotNET/Arc.Core/`. [Hosting issue 17](https://github.com/Cratis/Arc.Go/issues/17)
-tracks this slice. Evidence is Go-owned, not paired .NET or browser execution.
+tracks this slice. Evidence is Go-owned unless the bounded paired snapshot
+checkpoint is named explicitly; none establishes browser execution.
 
 | Feature | C# source | Go surface | Status | Evidence and caller implications |
 | --- | --- | --- | --- | --- |
@@ -346,6 +385,7 @@ tracks this slice. Evidence is Go-owned, not paired .NET or browser execution.
 | Build without activation | `ArcApplicationBuilder.cs` | Single-attempt Build | Implemented | `TestBuilderFailedAttemptIsTerminal`, `TestOpaqueSchemaRequiresOverrideWithoutActivation`; failure is terminal at root, use a new builder to retry |
 | POST Execute/Validate | `Commands/CommandEndpointMapper.cs` | Application command routes | Implemented | `TestCommandsExecuteValidateAndTransportFailures`, `TestNineTaskBoardConformanceCases`; validate invokes no business handler and emits no response |
 | GET/QUERY snapshots | `Queries/QueryEndpointMapper.cs` | Application snapshot routes | Implemented | `TestGETHEADQUERYReadersAndSnapshotNegotiation`, task-board nine cases; no SSE negotiation or synthetic wait |
+| Paired snapshot HTTP | `Queries/QueryEndpointMapper.cs`, `QueryableQueryRenderer.cs`, `BodyQueryRequestReader.cs`, `QueryStringQueryRequestReader.cs` (`7c1e780`) | `ContractTests/httpconformance`, real Application GET/QUERY endpoints | Partial | `TestPairedSnapshotHTTP`: 36 requests / 14 groups, 34 strict matches plus two exact ordinary-list page/size allowances described above. `TestReferenceActivation`, comparator, provenance and joined-lifecycle regressions fail closed. No command, authentication, HEAD, provider, streaming or browser parity claim |
 | Task-board HTTP conformance | Kotlin nine-case suite, Arc 22.14.0 / Arc.Kotlin `23c93a3` | `ContractTests/TestTaskBoardHTTPConformance` (in-process and child process) | Implemented | Nine cases covered; no live .NET comparison |
 | HEAD, routing and canonical paths | `Http/EndpointRouteHelper.cs`, endpoint mappers | Explicit HEAD and private ServeMux | Go-specific | `TestExactRoutingMethodsAndCanonicalPaths`, `TestRealListenerHEADAndGracefulShutdown`, `FuzzCanonicalRouting`; empty 404/405, lexical Allow, no path redirects, literal trailing slash; `TestRawCatchAllCannotStealFrameworkRoutes`, `TestRawExactOwnershipConflictsStillFailBuild`, `TestReservedUnknownRoutesBypassRawAuthentication` pin SPA/subtree fallbacks with Arc-table priority and reserved-prefix 404; reference `Http/HttpListenerEndpointMapper.cs` MapFallbackToFile |
 | Static files and SPA fallback | `StaticFileExtensions.cs`, `Http/StaticFileOptions.cs`, `Http/StaticFilesMiddleware.cs`, `Http/FallbackMiddleware.cs`, `Http/HttpListenerEndpointMapper.cs`; `Arc.Core.Specs/Http/for_StaticFilesMiddleware` and `for_FallbackMiddleware` under `Source/DotNET` | Public `Builder.Handle`, standard `fs.Sub` and `http.ServeContent`; example-local unexported `newStaticSite`, not an importable Arc API | Partial — embedded static-site composition | `ExampleBuilder_Handle_staticFiles` in [compiled example](../static_files_example_test.go) and `TestStaticSite...` in [HTTP tests](../static_files_test.go) cover a public, nonpersonalized site using immutable embedded assets or trusted read-only regular, seekable files with prompt filesystem operations. GET/HEAD serves `/assets/<file>`; `/`, `/app` and extensionless `/app/...` select only the fixed `index.html`. Tests cover actual bytes/media/length and empty HEAD, missing asset/index, redacted filesystem errors, rejected methods, traversal/ambiguous paths, directories, known API success/error/denial/405, unknown API exclusion, mapped/unmapped/disabled/mixed-case reserved paths, terminal authentication rejection, no implicit raw-handler authorization, site-only header isolation, file closure, concurrent requests and joined host/application shutdown. Later read/close failures cannot retract publication and never append a shell. Deliberate Go differences are HEAD support, narrow fallback eligibility, reserved-route protection and site-only `no-store`, versus C# GET-only configurable roots/default files and broad first-root fallback. C# authority above is source/spec inspection, not new execution. See [hosting profile](backend/go/core/hosting.md#serve-an-embedded-public-site): `fs.Sub`/`os.DirFS` are not symlink sandboxes; no writable/symlink filesystem confinement, browser, paired C#, broad-host or gap-free parity claim. The broader [issue 36](https://github.com/Cratis/Arc.Go/issues/36) profile remains Partial, not complete |
