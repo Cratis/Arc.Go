@@ -103,9 +103,17 @@ expectations verify routes, **not authorization or schema truth**. Server locati
 are deployment assertions and never feed route resolution. HTTP schemes are not
 inferred from roles/policies, and roles are not OAuth scopes.
 
-Opaque custom codecs, including application concepts, need explicit directional
-schemas; nominal scalar identity alone does not prove codec acceptance. An unknown
-command response needs an existing response override or explicit `responseFields`
+Opaque custom codecs, including application concepts and `MarshalJSONWith`
+traversal hooks, need explicit directional schemas; nominal scalar identity alone
+does not prove codec acceptance. Traversal hooks own runtime output before
+structural inference, even when exported fields or a concept marker suggest a
+scalar or object. Analysis inventories value, pointer, alias and promoted codec
+methods without executing them. Declared schemas remain profile assertions, not
+inferred codec behavior. This admission applies to newly analyzed graphs; regenerate
+older graphs that discarded codec facts, since their provenance cannot be
+retroactively authenticated.
+
+An unknown command response needs an existing response override or explicit `responseFields`
 declaration. Known no-response and typed responses reject contradictory overrides.
 Validation `state` requires an explicit shared declaration, even when absent.
 Its framework field retains the analyzed `WireType`, including named scalar

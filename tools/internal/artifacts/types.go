@@ -11,6 +11,7 @@ import (
 	"go/types"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 
@@ -468,13 +469,18 @@ func (w *wireAnalyzer) reference(pkg *types.Package, reference string) (types.Ty
 }
 
 func (w *wireAnalyzer) describeValue(t types.Type) (WireType, error) {
-	if wire, recognized, err := conceptWire(t); err != nil {
-		return WireType{}, fmt.Errorf("wire type %s: %w", typeKey(t), err)
-	} else if recognized {
-		if w.typescript && wire.Kind == "number" {
-			w.graph.Diagnostics = append(w.graph.Diagnostics, "number precision: concept "+typeKey(t)+" uses JavaScript number; enforce safe range in domain validation")
+	// The traversal hook owns runtime output before scalar/struct inference,
+	// including application concepts. Keep declared schemas and import mappings
+	// on the existing named-type path instead of treating a marker as evidence.
+	if !slices.Contains(codecMethodNames(t), "MarshalJSONWith") {
+		if wire, recognized, err := conceptWire(t); err != nil {
+			return WireType{}, fmt.Errorf("wire type %s: %w", typeKey(t), err)
+		} else if recognized {
+			if w.typescript && wire.Kind == "number" {
+				w.graph.Diagnostics = append(w.graph.Diagnostics, "number precision: concept "+typeKey(t)+" uses JavaScript number; enforce safe range in domain validation")
+			}
+			return wire, nil
 		}
-		return wire, nil
 	}
 	t = types.Unalias(t)
 	if pointer, ok := t.Underlying().(*types.Pointer); ok {
@@ -519,12 +525,11 @@ func (w *wireAnalyzer) describeValue(t types.Type) (WireType, error) {
 		if model := w.interfaceModels[key]; model != nil {
 			return w.describe(model.typ)
 		}
-		for _, set := range []*types.MethodSet{types.NewMethodSet(named), types.NewMethodSet(types.NewPointer(named))} {
-			for _, name := range []string{"MarshalJSON", "UnmarshalJSON", "MarshalText", "UnmarshalText"} {
-				if set.Lookup(nil, name) != nil {
-					return WireType{}, w.fail(t, "opaque custom codec requires an explicit wire import mapping")
-				}
+		if methods := codecMethodNames(named); len(methods) > 0 {
+			if slices.Contains(methods, "MarshalJSONWith") {
+				return WireType{}, w.fail(t, "opaque custom codec requires an explicit wire import mapping: %s implements MarshalJSONWith (or declare explicit input/output schemas with contract-v2 wireSchemas)", key)
 			}
+			return WireType{}, w.fail(t, "opaque custom codec requires an explicit wire import mapping")
 		}
 		declaration := w.declarations[key]
 		if declaration != nil && declaration.d.kind == "enum" {

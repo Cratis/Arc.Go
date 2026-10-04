@@ -18,10 +18,8 @@ func queryRuleRepresentation(t types.Type) *QueryRuleRepresentation {
 	representation := &QueryRuleRepresentation{}
 	for {
 		t = types.Unalias(t)
-		for _, method := range []string{"ConceptValue", "MarshalJSON", "UnmarshalJSON", "MarshalText", "UnmarshalText"} {
-			if hasMethod(t, method) {
-				representation.CustomCodec = true
-			}
+		if hasMethod(t, "ConceptValue") || len(codecMethodNames(t)) > 0 {
+			representation.CustomCodec = true
 		}
 		pointer, ok := t.Underlying().(*types.Pointer)
 		if !ok {
