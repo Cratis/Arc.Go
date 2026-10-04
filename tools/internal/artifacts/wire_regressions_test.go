@@ -13,11 +13,16 @@ import (
 	"time"
 )
 
-func correctionsGraph(t *testing.T, profile ApplicationProfile) *Graph {
+func correctionsPackages(t *testing.T) []*analysis {
 	t.Helper()
 	dir := consumer(t)
 	put(t, filepath.Join(dir, "input.go"), string(get(t, "testdata/wire-contract/corrections.go")))
-	graph, err := buildGraph(graphPackages(t, dir, "."), profile, false)
+	return graphPackages(t, dir, ".")
+}
+
+func correctionsGraph(t *testing.T, profile ApplicationProfile) *Graph {
+	t.Helper()
+	graph, err := buildGraph(correctionsPackages(t), profile, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,6 +121,7 @@ func TestContractPropertyOmissionPreservesDeclaredCodecNull(t *testing.T) {
 }
 
 func TestContractFrameworkStateRetainsResolvedWire(t *testing.T) {
+	analyses := correctionsPackages(t)
 	for _, tc := range []struct {
 		name, kind, declared, minimum, maximum string
 		bits                                   int
@@ -132,7 +138,10 @@ func TestContractFrameworkStateRetainsResolvedWire(t *testing.T) {
 			if tc.kind == "declared" {
 				profile.WireSchemas = map[string]WireSchemas{"example.test/consumer.NullableCodec": {Input: json.RawMessage(`{"type":["object","null"]}`), Output: json.RawMessage(`{"type":"null"}`)}}
 			}
-			graph := correctionsGraph(t, profile)
+			graph, err := freshContractGraph(t, analyses, profile, false)
+			if err != nil {
+				t.Fatal(err)
+			}
 			// Round-trip the compiler-free projection; target strings alone are
 			// insufficient for named scalars with no Graph.Types node.
 			data, err := json.Marshal(graph)

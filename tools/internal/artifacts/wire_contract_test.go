@@ -22,11 +22,31 @@ func contractProfile() ApplicationProfile {
 	return ApplicationProfile{FormatVersion: ContractGraphVersion, Name: "contract", OpenAPI: &OpenAPIProfile{Title: "Fixture", Version: "1"}, Server: &ServerProfile{Runtime: "arc-go"}, ResponseFields: map[string]map[string]ResponseField{"Cratis.ValidationResult": {"state": {Absent: true}}}}
 }
 
-func contractGraph(t *testing.T, source string, profile ApplicationProfile, ts bool) (*Graph, error) {
+func contractPackages(t *testing.T, source string) []*analysis {
 	t.Helper()
 	dir := consumer(t)
 	put(t, filepath.Join(dir, "input.go"), "//arc:namespace Shop\npackage consumer\n"+source)
-	return buildGraph(graphPackages(t, dir, "."), profile, ts)
+	return graphPackages(t, dir, ".")
+}
+
+func contractGraph(t *testing.T, source string, profile ApplicationProfile, ts bool) (*Graph, error) {
+	t.Helper()
+	return buildGraph(contractPackages(t, source), profile, ts)
+}
+
+func freshContractGraph(t *testing.T, loaded []*analysis, profile ApplicationProfile, ts bool) (*Graph, error) {
+	t.Helper()
+	// Graph construction mutates analyses. Re-analyze the loaded compiler
+	// packages so each graph has isolated attachments and declarations.
+	analyses := make([]*analysis, 0, len(loaded))
+	for _, previous := range loaded {
+		current, err := analyze(previous.pkg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		analyses = append(analyses, current)
+	}
+	return buildGraph(analyses, profile, ts)
 }
 
 func fieldsByName(fields []FieldDescriptor) map[string]FieldDescriptor {
@@ -232,10 +252,11 @@ type Wide uint64; const Large Wide = 18446744073709551615
 type Save struct { Value Wide }; func (Save) Handle() error { return nil }`, "safe number/bitwise"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := contractGraph(t, tc.source, contractProfile(), false); err != nil {
+			analyses := contractPackages(t, tc.source)
+			if _, err := freshContractGraph(t, analyses, contractProfile(), false); err != nil {
 				t.Fatal("OpenAPI analysis:", err)
 			}
-			if _, err := contractGraph(t, tc.source, contractProfile(), true); err == nil || !strings.Contains(err.Error(), tc.message) {
+			if _, err := freshContractGraph(t, analyses, contractProfile(), true); err == nil || !strings.Contains(err.Error(), tc.message) {
 				t.Fatalf("TS admission: %v, want %s", err, tc.message)
 			}
 		})
