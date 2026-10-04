@@ -126,6 +126,8 @@ func (b *boundPipeline) ValidateScoped(ctx context.Context, scope *execution.Sco
 	return NewResult(result.Details(), serialization.Optional[NoResponse]{}), err
 }
 func (b *boundPipeline) run(ctx context.Context, scope *execution.Scope, command any, validate bool, options []ExecuteOptions) (result Result[any], err error) {
+	ctx, attempt := beginDiagnostics(ctx, b, command, validate)
+	defer func() { finishDiagnostics(attempt, ctx, result, err) }()
 	b.mu.Lock()
 	if b.stopped {
 		b.mu.Unlock()

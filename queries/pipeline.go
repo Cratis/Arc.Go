@@ -19,6 +19,7 @@ import (
 	"github.com/cratis/arc.go/identity"
 	boundary "github.com/cratis/arc.go/internal/pipeline"
 	"github.com/cratis/arc.go/metadata"
+	"github.com/cratis/arc.go/observability"
 	"github.com/cratis/arc.go/serialization"
 	"github.com/cratis/arc.go/tenancy"
 	"github.com/cratis/arc.go/validation"
@@ -30,6 +31,8 @@ import (
 // policy registry, never bypassing security. CleanupTimeout zero means 30 seconds.
 // Resources must open cheaply/lazily; direct shared extensions must be concurrent-safe.
 type PipelineOptions struct {
+	// Diagnostics is borrowed, bounded backend recording; nil disables it.
+	Diagnostics       *observability.Recorder
 	OpenResources     execution.OpenResources
 	ScopeFactory      di.ScopeFactory
 	DependencyCatalog di.Catalog
@@ -190,6 +193,13 @@ func (r *Registry) Build(o PipelineOptions) (Pipeline, error) {
 	if err := p.options.Authorization.CheckDependencies(catalog, o.DependencyCatalog); err != nil {
 		return nil, err
 	}
+	if o.Diagnostics != nil {
+		names := make([]string, 0, len(p.queries))
+		for name := range p.queries {
+			names = append(names, string(name))
+		}
+		o.Diagnostics.Register(names)
+	}
 	r.frozen = true
 	return p, nil
 }
@@ -201,7 +211,7 @@ func (p *queryPipeline) Lookup(name FullyQualifiedQueryName) (Registration, bool
 
 // Perform checks typed result compatibility before invoking application callbacks.
 // Absence remains valid; incompatible known data contracts fail before admission.
-func Perform[R any](ctx context.Context, p Pipeline, name FullyQualifiedQueryName, request Request) (Result[R], error) {
+func Perform[R any](ctx context.Context, p Pipeline, name FullyQualifiedQueryName, request Request) (output Result[R], outputErr error) {
 	var id correlation.ID
 	if ctx != nil {
 		id = correlation.FromContext(ctx)
@@ -216,6 +226,8 @@ func Perform[R any](ctx context.Context, p Pipeline, name FullyQualifiedQueryNam
 	if nilValue(p) {
 		return failure(ErrInvalidRegistration)
 	}
+	ctx, attempt := beginDiagnostics(ctx, p, name, observability.SnapshotTransport, observability.Completed)
+	defer func() { finishDiagnostics(attempt, ctx, output, outputErr) }()
 	q, ok := p.Lookup(name)
 	if !ok {
 		return failure(ErrUnknownQuery)
@@ -239,13 +251,19 @@ func Perform[R any](ctx context.Context, p Pipeline, name FullyQualifiedQueryNam
 	}
 	return NewResult(d, serialization.Some(value)), err
 }
-func (p *queryPipeline) Perform(ctx context.Context, name FullyQualifiedQueryName, r Request) (Result[any], error) {
+func (p *queryPipeline) Perform(ctx context.Context, name FullyQualifiedQueryName, r Request) (result Result[any], err error) {
+	ctx, attempt := beginDiagnostics(ctx, p, name, observability.SnapshotTransport, observability.Completed)
+	defer func() { finishDiagnostics(attempt, ctx, result, err) }()
+	ctx = boundary.ClearDiagnostics(ctx)
 	if q, ok := p.Lookup(name); ok && q.toSource != nil {
 		return p.observableSnapshot(ctx, name, r)
 	}
 	return p.perform(ctx, nil, name, r, false)
 }
-func (p *queryPipeline) PerformScoped(ctx context.Context, s *execution.Scope, name FullyQualifiedQueryName, r Request) (Result[any], error) {
+func (p *queryPipeline) PerformScoped(ctx context.Context, s *execution.Scope, name FullyQualifiedQueryName, r Request) (result Result[any], err error) {
+	ctx, attempt := beginDiagnostics(ctx, p, name, observability.SnapshotTransport, observability.Completed)
+	defer func() { finishDiagnostics(attempt, ctx, result, err) }()
+	ctx = boundary.ClearDiagnostics(ctx)
 	if q, ok := p.Lookup(name); ok && q.toSource != nil {
 		return finalize(FromError[any](correlation.FromContext(ctx), ErrUnsupportedObservable), p.options.ExposeExceptionDetails), ErrUnsupportedObservable
 	}

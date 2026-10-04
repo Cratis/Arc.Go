@@ -17,6 +17,7 @@ import (
 	"github.com/cratis/arc.go/correlation"
 	"github.com/cratis/arc.go/execution"
 	"github.com/cratis/arc.go/metadata"
+	"github.com/cratis/arc.go/observability"
 	"github.com/cratis/arc.go/queries"
 	"github.com/cratis/arc.go/tenancy"
 	di "github.com/cratis/fundamentals.go/dependencyinjection"
@@ -25,6 +26,8 @@ import (
 // Options configures composition. Collaborators are borrowed and must support
 // concurrent calls. Configuration slices and pointed-to values are copied.
 type Options struct {
+	// Diagnostics is borrowed, bounded backend recording; nil disables it.
+	Diagnostics            *observability.Recorder
 	Namespace              string
 	Environment            string
 	Routes                 *metadata.Options
