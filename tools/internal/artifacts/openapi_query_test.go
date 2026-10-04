@@ -88,6 +88,8 @@ func TestOpenAPIQueryReaderBoundary(t *testing.T) {
 		{`{"arguments":null,"paging":null,"sorting":null}`, true},
 		{`{"ARGUMENTS":{"unused":{"anything":true}}}`, true},
 		{`{"paging":{"page":-2147483648,"pageSize":2147483647}}`, true},
+		{`{"pagİng":{"pageSİze":1}}`, true},
+		{`{"pagİng":{"pageSİze":2147483648}}`, false},
 		{`null`, false},
 		{`{} {}`, false},
 		{`{"arguments":{},"ARGUMENTS":{}}`, false},

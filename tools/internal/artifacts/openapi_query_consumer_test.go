@@ -68,6 +68,8 @@ func TestOpenAPIQueryExactDocumentAndConsumer(t *testing.T) {
 		{`{"arguments":null,"paging":null,"sorting":null}`, true},
 		{`{"arguments":{"unused":{"nested":true}}}`, true},
 		{`{"PAGING":{"PAGE":-2147483648,"PAGESIZE":2147483647}}`, true},
+		{`{"pagİng":{"pageSİze":1}}`, true},
+		{`{"pagİng":{"pageSİze":2147483648}}`, false},
 		{`null`, false},
 		{`[]`, false},
 		{`{"arguments":[]}`, false},

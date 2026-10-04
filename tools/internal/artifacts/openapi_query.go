@@ -38,8 +38,9 @@ func openAPIQueryRequest() openAPIObject {
 }
 
 // Keep canonical spelling visible to ordinary schema consumers while applying
-// the same shape to each ASCII case variant accepted by the built-in reader.
-// This uses ordinary ECMA-compatible character classes, not Go-only (?i).
+// the same shape to case variants accepted by the built-in strings.ToLower
+// reader. Go also maps U+0130 to i (and U+212A to k); these are not unknown
+// members. Use ECMA-compatible character classes, not Go-only (?i).
 func openAPIQueryObject(properties openAPIObject) openAPIObject {
 	patterns := openAPIObject{}
 	for name, schema := range properties {
@@ -48,7 +49,14 @@ func openAPIQueryObject(properties openAPIObject) openAPIObject {
 		for _, c := range name {
 			lower := strings.ToLower(string(c))
 			upper := strings.ToUpper(string(c))
-			pattern.WriteString("[" + lower + upper + "]")
+			extra := ""
+			switch lower {
+			case "i":
+				extra = "İ"
+			case "k":
+				extra = "K"
+			}
+			pattern.WriteString("[" + lower + upper + extra + "]")
 		}
 		pattern.WriteByte('$')
 		patterns[pattern.String()] = schema
