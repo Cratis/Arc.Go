@@ -20,11 +20,19 @@ fixture. All seven dependency locks are committed; subsequent restores must use
 `--locked-mode`. A NuGet Arc package is not a substitute for this source.
 
 The fixture pins SDK `10.0.401` and both runtime patches to `10.0.12`, with
-roll-forward disabled. `verify.py` checks the unchanged source, every restored
-package/content hash in every project/target framework, fixture inputs, built
+roll-forward disabled. `verify.py --arc-repository <pinned Git repository>` checks
+exact source and manifest membership against the immutable Git object, allowing
+only the six installed source-project locks. Added compilation inputs, omitted
+manifest/provenance paths, duplicate paths, traversal and hash changes fail. The
+fixture's seventh lock is separate; generated `artifacts/obj` outputs are not
+source inputs. No minimum file count substitutes for membership.
+It checks every restored package/content hash in every project/target framework, fixture inputs, built
 assemblies and actual runtime versions. Its task-owned output is rechecked before
-the paired test starts either host. Source preparation alone does not prove HTTP
-parity.
+the paired test starts either host, including a fresh Git-derived membership check.
+Keep the pinned Git object available for that recheck. Source preparation alone
+does not prove HTTP parity. The always-uploaded workflow artifact retains only
+bounded raw exchanges, `provenance.json`, `source.sha256` and `projects.txt`, including
+available failure evidence; source caches and binaries are not uploaded.
 
 The fixture directly references `Arc.Core.Generators` as a private analyzer,
 matching generated model-bound authoring in the pinned ASP.NET Core sample.
@@ -90,7 +98,8 @@ is configured.
 
 ## Running
 
-Native inventory/comparator/lifecycle checks need no .NET installation:
+Native inventory/comparator/lifecycle and planted provenance checks require
+Python 3, but need no .NET installation:
 
 ```bash
 go test -race -count=1 -timeout=90s ./ContractTests/httpconformance

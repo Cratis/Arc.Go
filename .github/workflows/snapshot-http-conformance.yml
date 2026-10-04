@@ -67,6 +67,7 @@ jobs:
       - name: Verify exact source, complete graph and actual runtime patches
         run: >-
           python3 -B ContractTests/httpconformance/verify.py
+          --arc-repository .ai-work/httpconformance/arc-repository
           --source .ai-work/httpconformance/keep/source
           --artifacts .ai-work/httpconformance/output/artifacts
           --output .ai-work/httpconformance/keep/provenance.json
@@ -78,11 +79,15 @@ jobs:
       - name: Execute all fixed GET and QUERY requests against both real hosts
         timeout-minutes: 2
         run: go test -race -tags=httpconformance -count=1 -timeout=110s -run '^TestPairedSnapshotHTTP$' ./ContractTests/httpconformance
-      - name: Preserve bounded raw exchanges and case-specific differences
+      - name: Preserve bounded preparation proof and linked raw exchanges, including failures
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: snapshot-http-exchanges
-          path: .ai-work/httpconformance/keep/exchanges
+          path: |
+            .ai-work/httpconformance/keep/exchanges
+            .ai-work/httpconformance/keep/provenance.json
+            .ai-work/httpconformance/keep/source.sha256
+            .ai-work/httpconformance/keep/projects.txt
           if-no-files-found: warn
           retention-days: 7

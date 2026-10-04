@@ -88,6 +88,8 @@ def prepare(repository, destination):
         if not (locks / lock).is_file():
             raise ValueError(f"missing pinned restore lock: {lock}")
         shutil.copyfile(locks / lock, destination / lock)
+    from source_inventory import validate_source
+    validate_source(repository, destination)
     sdk = run(["dotnet", "--version"], Path(__file__).parent / "reference").decode().strip()
     if sdk != "10.0.401":
         raise ValueError(f"SDK {sdk}; expected 10.0.401 with roll-forward disabled")

@@ -4,30 +4,18 @@
 """Fail closed on changed source, fixture, complete restore graph or runtime pins."""
 
 import argparse
-import hashlib
 import json
 from pathlib import Path
 import subprocess
 
-REVISION = "7c1e78075b737df64f69fddfaae83374f75e3612"
+from prepare import REVISION
+from source_inventory import digest, required_hashes, unique_object, validate_proof, validate_source
 
 
-def digest(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def verify(source, artifacts, output):
+def verify(repository, source, artifacts, output):
     fixture = Path(__file__).parent / "reference"
-    hashes = {}
-    for line in (source.parent / "source.sha256").read_text().splitlines():
-        expected, relative = line.split("  ", 1)
-        path = source / relative
-        if digest(path) != expected:
-            raise ValueError(f"exact source changed: {relative}")
-        hashes[str(path.resolve())] = expected
-    projects = (source.parent / "projects.txt").read_text().splitlines()
-    if len(projects) != 6 or len(set(projects)) != 6:
-        raise ValueError("incomplete source project graph")
+    projects, _ = validate_source(repository, source)
+    hashes = required_hashes(repository, source, artifacts)
     for relative in projects + [str(fixture / "Reference.csproj")]:
         project = source / relative
         name = project.stem
@@ -76,15 +64,28 @@ def verify(source, artifacts, output):
                              capture_output=True, text=True, timeout=10).stdout.strip().splitlines()
     if sdk != "10.0.401" or len(runtime) != 2 or runtime[0] != "Microsoft.NETCore.App 10.0.12" or runtime[1].split("+")[0] != "Microsoft.AspNetCore.App 10.0.12":
         raise ValueError(f"wrong executable SDK/runtime: {sdk}; {runtime}")
-    output.write_text(json.dumps({"revision": REVISION, "sdk": sdk, "runtime": "10.0.12",
-                                  "dll": str(binary.resolve()), "hashes": hashes}, indent=2) + "\n")
+    proof = {"revision": REVISION, "sdk": sdk, "runtime": "10.0.12",
+             "repository": str(repository), "source": str(source), "artifacts": str(artifacts),
+             "dll": str(binary.resolve()), "hashes": hashes}
+    validate_proof(proof, binary.resolve())
+    output.write_text(json.dumps(proof, indent=2) + "\n")
     print(f"Verified {len(hashes)} source/fixture/lock/assets/binary files; all seven project restores; SDK {sdk}; both runtimes 10.0.12")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", type=Path, required=True)
-    parser.add_argument("--artifacts", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--arc-repository", type=Path)
+    parser.add_argument("--source", type=Path)
+    parser.add_argument("--artifacts", type=Path)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--check-provenance", type=Path)
+    parser.add_argument("--dll", type=Path)
     args = parser.parse_args()
-    verify(args.source.resolve(), args.artifacts.resolve(), args.output.resolve())
+    if args.check_provenance and args.dll:
+        proof = json.loads(args.check_provenance.read_bytes(), object_pairs_hook=unique_object)
+        count = validate_proof(proof, args.dll)
+        print(f"Rechecked exact membership and hashes of {count} prepared files")
+    elif all((args.arc_repository, args.source, args.artifacts, args.output)):
+        verify(args.arc_repository.resolve(), args.source.resolve(), args.artifacts.resolve(), args.output.resolve())
+    else:
+        parser.error("provide repository/source/artifacts/output or check-provenance/dll")

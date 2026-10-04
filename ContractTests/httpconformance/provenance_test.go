@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -41,8 +42,8 @@ func TestExecutableProvenanceRejectsMissingChangedAndWrongPins(t *testing.T) {
 		}
 	}
 	write()
-	if err := verifyProvenance(path, proof.DLL); err != nil {
-		t.Fatal(err)
+	if verifyProvenance(path, proof.DLL) == nil {
+		t.Fatal("arbitrary 624-file inventory admitted without required source membership")
 	}
 	proof.SDK = "10.0.400"
 	write()
@@ -60,6 +61,15 @@ func TestExecutableProvenanceRejectsMissingChangedAndWrongPins(t *testing.T) {
 	if verifyProvenance(filepath.Join(dir, "missing.json"), proof.DLL) == nil {
 		t.Fatal("missing proof admitted")
 	}
+}
+
+func TestSourceMembershipRegressions(t *testing.T) {
+	command := exec.CommandContext(t.Context(), "python3", "-B", "-m", "unittest", "-v", "test_source_inventory")
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("source membership regressions: %v\n%s", err, output)
+	}
+	t.Log(string(output))
 }
 
 func TestEnvelopeRequiresCorrelationAndCompleteMembers(t *testing.T) {
