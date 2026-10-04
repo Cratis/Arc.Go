@@ -73,6 +73,12 @@ func diagnostic(pkg *packages.Package, pos token.Pos, format string, args ...any
 }
 
 func analyze(pkg *packages.Package) (*analysis, error) {
+	return analyzeDeclarations(pkg, false)
+}
+
+// analyzeDeclarations can inspect handwritten declarations in an already generated
+// package. Generation still reserves its output names through analyze.
+func analyzeDeclarations(pkg *packages.Package, allowGeneratedNames bool) (*analysis, error) {
 	a := &analysis{pkg: pkg}
 	docs := map[*ast.CommentGroup]directives{}
 	for _, file := range pkg.Syntax {
@@ -276,7 +282,7 @@ func analyze(pkg *packages.Package) (*analysis, error) {
 			}
 		}
 	}
-	if len(a.commands)+len(a.models) > 0 {
+	if !allowGeneratedNames && len(a.commands)+len(a.models) > 0 {
 		for _, name := range []string{"RegisterArtifacts", "ArcBindings"} {
 			if obj := pkg.Types.Scope().Lookup(name); obj != nil {
 				return nil, diagnostic(pkg, obj.Pos(), "%s is reserved for generated adapters; keep composition in another package", name)
