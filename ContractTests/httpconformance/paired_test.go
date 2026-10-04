@@ -55,12 +55,15 @@ func TestPairedSnapshotHTTP(t *testing.T) {
 			left, leftErr := request(t.Context(), client, csharp, c)
 			right, rightErr := request(t.Context(), client, goHost, c) // Always attempt both, even if one fails.
 			differences := compare(left, right)
+			allowances, unaccepted := disposition(c, left, right)
 			record := struct {
-				Request              requestCase `json:"request"`
-				Csharp, Go           exchange
-				Differences          []string
-				CsharpError, GoError string
-			}{Request: c, Csharp: left, Go: right, Differences: differences}
+				Request               requestCase `json:"request"`
+				Csharp, Go            exchange
+				Differences           []string
+				Allowances            []allowance
+				UnacceptedDifferences []string
+				CsharpError, GoError  string
+			}{Request: c, Csharp: left, Go: right, Differences: differences, Allowances: allowances, UnacceptedDifferences: unaccepted}
 			if leftErr != nil {
 				record.CsharpError = leftErr.Error()
 			}
@@ -83,8 +86,8 @@ func TestPairedSnapshotHTTP(t *testing.T) {
 					t.Errorf("%s envelope: %v", name, err)
 				}
 			}
-			if len(differences) > 0 {
-				t.Errorf("unaccepted parity differences (no wildcard exemptions):\n%s", strings.Join(differences, "\n"))
+			if len(unaccepted) > 0 {
+				t.Errorf("unaccepted parity differences (no wildcard exemptions):\n%s", strings.Join(unaccepted, "\n"))
 			}
 		})
 	}

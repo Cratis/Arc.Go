@@ -62,13 +62,23 @@ GET's literal `null` is a string; JSON null belongs to QUERY.
 The comparator checks status, relevant headers, fixed correlation echo, the
 complete envelope, array order, paging, and missing versus null. It normalizes
 only JSON object ordering and whitespace. It rejects duplicate object members,
-trailing JSON, and lossy numeric comparisons. There are **no accepted deviations**.
-Ordinary-list requested paging metadata and GET/QUERY paging activation are
-known characterization targets, not approved exclusions. New differences need
-an explicit, case/path-specific disposition before acceptance.
+trailing JSON, and lossy numeric comparisons. One existing Go behavior is explicitly
+accepted: ordinary lists remain unpaged, including zero page/size metadata. The
+`ordinary-list-unpaged` allowance applies only to `plain-paging-control/page/GET`
+(`GET /api/plain?page=1&pageSize=2`, empty body) and
+`plain-paging-control/page/QUERY` (`QUERY /api/plain`, exact body
+`{"paging":{"page":1,"pageSize":2}}`). Only `$.paging.page` (C# 1, Go 0) and
+`$.paging.size` (C# 2, Go 0) may differ. Both statuses must be 200, both totals
+zero, and all four fixture rows must remain in order 3, 1, 4, 2. Headers and every
+other envelope field remain strictly compared; failures never receive this
+allowance. This preserves the documented ordinary-list behavior, not a new
+paging implementation. New differences require explicit case/path-specific
+approval.
 
 Raw exchanges include the exact request, status, all response headers, body bytes
-(base64 in JSON), and case-specific differences. Each body is bounded to 1 MiB,
+(base64 in JSON), and case-specific differences. Raw differences stay in each
+capture, separate from allowance IDs/paths and unaccepted differences; an allowance
+never rewrites a response or removes the raw diff. Each body is bounded to 1 MiB,
 and combined host logs to 64 KiB. The hosts use ephemeral IPv4 loopback ports;
 clients disable proxies and redirects. Readiness has 10 seconds, each request
 3 seconds, graceful EOF shutdown 5 seconds, and kill/join 3 seconds. Forced

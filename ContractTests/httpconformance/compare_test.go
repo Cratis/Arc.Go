@@ -4,8 +4,11 @@
 package httpconformance
 
 import (
+	"encoding/json"
 	"net/http"
+	"reflect"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -60,6 +63,139 @@ func TestComparisonDetectsContractChanges(t *testing.T) {
 		}
 	}
 }
+func plainControlPair(t *testing.T, c requestCase) (exchange, exchange) {
+	t.Helper()
+	body, err := json.Marshal(map[string]any{
+		"paging":        map[string]int{"page": 1, "size": 2, "totalItems": 0, "totalPages": 0},
+		"correlationId": correlationID, "data": rows(), "isSuccess": true,
+		"isReady": true, "isAuthorized": true, "isValid": true, "hasExceptions": false,
+		"validationResults": []any{}, "exceptionMessages": []string{}, "exceptionStackTrace": "",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := exchange{Status: 200, Header: http.Header{}, Body: body}
+	a.Header.Set("Content-Type", "application/json; charset=utf-8")
+	a.Header.Set("X-Correlation-ID", correlationID)
+	if c.Method == "QUERY" {
+		a.Header.Set("Cache-Control", "no-store")
+	}
+	b := a
+	b.Header = a.Header.Clone()
+	b.Body = []byte(strings.Replace(string(body), `"page":1,"size":2`, `"page":0,"size":0`, 1))
+	return a, b
+}
+
+func TestOrdinaryListAllowanceIsExactAndKeepsRawDifferences(t *testing.T) {
+	allowed := 0
+	for _, c := range corpus() {
+		if c.Group != "plain-paging-control" {
+			continue
+		}
+		allowed++
+		a, b := plainControlPair(t, c)
+		raw := compare(a, b)
+		accepted, unaccepted := disposition(c, a, b)
+		want := []allowance{{"ordinary-list-unpaged", "$.paging.page"}, {"ordinary-list-unpaged", "$.paging.size"}}
+		if len(raw) != 2 || len(unaccepted) != 0 || !reflect.DeepEqual(accepted, want) || !reflect.DeepEqual(compare(a, b), raw) {
+			t.Fatalf("%s: raw=%v accepted=%v unaccepted=%v", c.Name, raw, accepted, unaccepted)
+		}
+	}
+	if allowed != 2 {
+		t.Fatalf("allowance inventory = %d", allowed)
+	}
+}
+
+func TestOrdinaryListAllowanceRejectsChangedRequestAndOutcome(t *testing.T) {
+	for _, c := range corpus() {
+		if c.Group != "plain-paging-control" {
+			continue
+		}
+		t.Run(c.Name, func(t *testing.T) {
+			for _, field := range []string{"group", "name", "method", "path", "body"} {
+				t.Run(field, func(t *testing.T) {
+					a, b := plainControlPair(t, c)
+					changed := c
+					switch field {
+					case "group":
+						changed.Group = "Plain-paging-control"
+					case "name":
+						changed.Name = "Page/" + c.Method
+					case "method":
+						changed.Method = strings.ToLower(c.Method)
+					case "path":
+						changed.Path += "&extra=1"
+					case "body":
+						changed.Body += " "
+					}
+					assertNoAllowance(t, changed, a, b)
+				})
+			}
+			for name, change := range map[string]func(*exchange){
+				"status": func(e *exchange) { e.Status = 400 },
+				"page":   func(e *exchange) { e.Body = []byte(strings.ReplaceAll(string(e.Body), `"page":1`, `"page":3`)) },
+				"size":   func(e *exchange) { e.Body = []byte(strings.ReplaceAll(string(e.Body), `"size":2`, `"size":4`)) },
+				"total-items": func(e *exchange) {
+					e.Body = []byte(strings.ReplaceAll(string(e.Body), `"totalItems":0`, `"totalItems":4`))
+				},
+				"total-pages": func(e *exchange) {
+					e.Body = []byte(strings.ReplaceAll(string(e.Body), `"totalPages":0`, `"totalPages":2`))
+				},
+				"order": func(e *exchange) {
+					v, err := decode(e.Body)
+					if err != nil {
+						t.Fatal(err)
+					}
+					m := v.(map[string]any)
+					data := m["data"].([]any)
+					data[0], data[1] = data[1], data[0]
+					e.Body, err = json.Marshal(m)
+					if err != nil {
+						t.Fatal(err)
+					}
+				},
+				"extra-error": func(e *exchange) {
+					e.Body = []byte(strings.ReplaceAll(string(e.Body), `"exceptionMessages":[]`, `"exceptionMessages":["unexpected"]`))
+				},
+				"extra-field": func(e *exchange) {
+					e.Body = []byte(strings.ReplaceAll(string(e.Body), `"isReady":true`, `"isReady":true,"changeSet":{}`))
+				},
+				"success-flag": func(e *exchange) {
+					e.Body = []byte(strings.ReplaceAll(string(e.Body), `"isSuccess":true`, `"isSuccess":false`))
+				},
+			} {
+				t.Run(name, func(t *testing.T) {
+					a, b := plainControlPair(t, c)
+					change(&a)
+					assertNoAllowance(t, c, a, b)
+					// Shared wrong outcomes must not be accepted just because only
+					// the original two paging paths remain different.
+					if name != "page" && name != "size" {
+						change(&b)
+						assertNoAllowance(t, c, a, b)
+					}
+				})
+			}
+			for _, header := range relevantHeaders {
+				a, b := plainControlPair(t, c)
+				b.Header.Set(header, "changed")
+				assertNoAllowance(t, c, a, b)
+			}
+			a, b := plainControlPair(t, c)
+			b.Body = []byte(strings.ReplaceAll(string(b.Body), `"page":0`, `"page":1`))
+			assertNoAllowance(t, c, a, b)
+		})
+	}
+}
+
+func assertNoAllowance(t *testing.T, c requestCase, a, b exchange) {
+	t.Helper()
+	accepted, unaccepted := disposition(c, a, b)
+	if len(accepted) != 0 || len(unaccepted) == 0 || !reflect.DeepEqual(unaccepted, compare(a, b)) {
+		t.Fatalf("changed exchange admitted: %v / %v", accepted, unaccepted)
+	}
+}
+
 func TestMalformedBodiesFailComparison(t *testing.T) {
 	for _, body := range []string{`{"id":1,"id":2}`, `{} {}`, `[`, ``} {
 		if len(compare(exchange{Body: []byte(body)}, exchange{Body: []byte(body)})) == 0 {

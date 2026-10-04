@@ -45,6 +45,62 @@ func compare(a, b exchange) []string {
 	return differences
 }
 
+type allowance struct {
+	ID   string `json:"id"`
+	Path string `json:"path"`
+}
+
+// disposition never changes the raw comparison. The sole approved difference is
+// existing Go ordinary-list zero paging, for these two exact corpus requests.
+func disposition(c requestCase, a, b exchange) ([]allowance, []string) {
+	differences := compare(a, b)
+	get := requestCase{"plain-paging-control", "page/GET", "GET", "/api/plain?page=1&pageSize=2", ""}
+	query := requestCase{"plain-paging-control", "page/QUERY", "QUERY", "/api/plain", `{"paging":{"page":1,"pageSize":2}}`}
+	if c != get && c != query || len(differences) != 2 || a.Status != http.StatusOK || b.Status != http.StatusOK {
+		return nil, differences
+	}
+	// Headers and every other JSON path still use the unchanged strict comparator.
+	want := []string{`$.paging.page: C# "1"; Go "0"`, `$.paging.size: C# "2"; Go "0"`}
+	if !reflect.DeepEqual(differences, want) || !plainControlEnvelope(a, c.Method, "1", "2") || !plainControlEnvelope(b, c.Method, "0", "0") {
+		return nil, differences
+	}
+	return []allowance{{"ordinary-list-unpaged", "$.paging.page"}, {"ordinary-list-unpaged", "$.paging.size"}}, nil
+}
+
+func plainControlEnvelope(e exchange, method, page, size string) bool {
+	if checkEnvelope(e) != nil || e.Header.Get("Content-Type") != "application/json; charset=utf-8" {
+		return false
+	}
+	cache := ""
+	if method == "QUERY" {
+		cache = "no-store"
+	}
+	if e.Header.Get("Cache-Control") != cache {
+		return false
+	}
+	v, err := decode(e.Body)
+	if err != nil {
+		return false
+	}
+	m, ok := v.(map[string]any)
+	if !ok || len(m) != 11 || m["isSuccess"] != true || m["isReady"] != true || m["isAuthorized"] != true || m["isValid"] != true || m["hasExceptions"] != false || m["exceptionStackTrace"] != "" {
+		return false
+	}
+	for _, field := range []string{"validationResults", "exceptionMessages"} {
+		values, ok := m[field].([]any)
+		if !ok || len(values) != 0 {
+			return false
+		}
+	}
+	paging := map[string]any{"page": json.Number(page), "size": json.Number(size), "totalItems": json.Number("0"), "totalPages": json.Number("0")}
+	data, err := json.Marshal(rows())
+	if err != nil {
+		return false
+	}
+	membership, err := decode(data)
+	return err == nil && reflect.DeepEqual(m["paging"], paging) && reflect.DeepEqual(m["data"], membership)
+}
+
 func diffJSON(path string, a, b any) []string {
 	if reflect.DeepEqual(a, b) {
 		return nil

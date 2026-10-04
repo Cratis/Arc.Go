@@ -42,10 +42,10 @@ func (p Paging) Validate() []validation.Result {
 	}
 	var findings []validation.Result
 	if p.Page < 0 {
-		findings = append(findings, validation.Result{Severity: validation.Error, Message: "Page number must be greater than or equal to 0", Members: []string{"page"}})
+		findings = append(findings, validation.Result{Severity: validation.Error, Message: "Page number must be greater than or equal to 0", Members: []string{"Page"}})
 	}
 	if p.Size <= 0 {
-		findings = append(findings, validation.Result{Severity: validation.Error, Message: "Page size must be greater than 0", Members: []string{"size"}})
+		findings = append(findings, validation.Result{Severity: validation.Error, Message: "Page size must be greater than 0", Members: []string{"Size"}})
 	}
 	return findings
 }
