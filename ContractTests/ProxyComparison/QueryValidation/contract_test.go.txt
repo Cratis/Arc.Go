@@ -1,0 +1,68 @@
+// Copyright (c) Cratis. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+package consumer
+
+import (
+ "context"
+ "encoding/json"
+ "net/http/httptest"
+ "net/url"
+ "os"
+ "reflect"
+ "strings"
+ "testing"
+
+ arc "github.com/cratis/arc.go"
+)
+
+type finding struct { Severity int; Message string; Members []string }
+
+func TestGeneratedQueryRejectsBeforeBusinessExecution(t *testing.T) {
+ data, err := os.ReadFile("cases.json")
+ if err != nil { t.Fatal(err) }
+ var cases []struct { Name string; Input map[string]*string; Findings []finding }
+ if err := json.Unmarshal(data, &cases); err != nil { t.Fatal(err) }
+ if len(cases) != 22 { t.Fatal("incomplete corpus", len(cases)) }
+ builder, err := arc.NewBuilder(arc.Options{})
+ if err != nil { t.Fatal(err) }
+ if err := RegisterArtifacts(builder); err != nil { t.Fatal(err) }
+ app, err := builder.Build()
+ if err != nil { t.Fatal(err) }
+ if err := app.Start(t.Context()); err != nil { t.Fatal(err) }
+ t.Cleanup(func() { if err := app.Shutdown(context.Background()); err != nil { t.Error(err) } })
+ for _, tc := range cases {
+  for _, method := range []string{"GET", "QUERY"} {
+   t.Run(method+"/"+tc.Name, func(t *testing.T) {
+    path, body := "/api/shop/validation/search", ""
+    if method == "GET" {
+     values := url.Values{}
+     for key, value := range tc.Input { if value != nil { values.Set(key, *value) } }
+     path += "?"+values.Encode()
+    } else {
+     encoded, err := json.Marshal(map[string]any{"arguments": tc.Input})
+     if err != nil { t.Fatal(err) }
+     body = string(encoded)
+    }
+    request := httptest.NewRequest(method, path, strings.NewReader(body))
+    if method == "QUERY" { request.Header.Set("Content-Type", "application/json") }
+    response := httptest.NewRecorder()
+    before := Calls
+    app.ServeHTTP(response, request)
+    var result struct {
+     IsSuccess, IsValid, IsAuthorized, HasExceptions bool
+     ValidationResults []finding
+     Data []Match
+    }
+    if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil { t.Fatal(err, response.Body.String()) }
+    valid := len(tc.Findings)==0
+    status, calls := 400, 0
+    if valid { status, calls = 200, 1 }
+    if response.Code != status || result.IsSuccess != valid || result.IsValid != valid || !result.IsAuthorized || result.HasExceptions || Calls-before != calls {
+     t.Fatalf("status=%d calls=%d body=%s", response.Code, Calls-before, response.Body.String())
+    }
+    if !reflect.DeepEqual(result.ValidationResults, tc.Findings) { t.Fatalf("findings=%+v want=%+v", result.ValidationResults, tc.Findings) }
+    if valid && (len(result.Data)!=1 || result.Data[0].Text!=*tc.Input["EXACT-name"]) || !valid && len(result.Data)!=0 { t.Fatal("unexpected response", response.Body.String()) }
+   })
+  }
+ }
+}

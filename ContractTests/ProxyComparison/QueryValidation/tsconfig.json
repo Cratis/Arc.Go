@@ -1,0 +1,5 @@
+{
+  "extends": "../tsconfig.reference.json",
+  "compilerOptions": { "verbatimModuleSyntax": true, "experimentalDecorators": false },
+  "include": ["Generated/**/*.ts", "consumer.ts"]
+}
