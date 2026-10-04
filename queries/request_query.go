@@ -38,13 +38,19 @@ func ReadQUERY(body []byte) (Request, error) {
 		}
 		var page, size int32
 		if node, ok := fields["page"]; ok {
-			if err := json.Unmarshal(node, &page); err != nil || bytes.Equal(bytes.TrimSpace(node), []byte("null")) {
-				return fail(errors.Join(err, ErrMalformedRequest))
+			if err := json.Unmarshal(node, &page); err != nil {
+				return fail(err)
+			}
+			if bytes.Equal(bytes.TrimSpace(node), []byte("null")) {
+				return fail(ErrMalformedRequest)
 			}
 		}
 		if node, ok := fields["pagesize"]; ok {
-			if err := json.Unmarshal(node, &size); err != nil || bytes.Equal(bytes.TrimSpace(node), []byte("null")) {
-				return fail(errors.Join(err, ErrMalformedRequest))
+			if err := json.Unmarshal(node, &size); err != nil {
+				return fail(err)
+			}
+			if bytes.Equal(bytes.TrimSpace(node), []byte("null")) {
+				return fail(ErrMalformedRequest)
 			}
 		}
 		if size > 0 {

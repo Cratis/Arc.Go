@@ -5,9 +5,13 @@ package queries_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/url"
+	"reflect"
 	"testing"
+
+	"github.com/cratis/arc.go/validation"
 
 	"github.com/cratis/arc.go/queries"
 )
@@ -95,6 +99,53 @@ func TestQUERYEnvelopeIntegerGrammarAndDirectionDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+func TestMalformedQUERYIntegerRetainsOneActualDecoderCause(t *testing.T) {
+	for _, body := range []string{`{"paging":{"page":"no","pageSize":2}}`, `{"paging":{"page":1,"pageSize":"no"}}`} {
+		_, err := queries.ReadQUERY([]byte(body))
+		var read *queries.ReadError
+		var decoder *json.UnmarshalTypeError
+		if !errors.Is(err, queries.ErrMalformedRequest) || !errors.As(err, &read) || !read.Malformed || !errors.As(err, &decoder) || errors.Unwrap(read) != decoder {
+			t.Fatalf("decoder identity lost for %s: %#v", body, err)
+		}
+	}
+	first, second := errors.New("first cause"), errors.New("second cause")
+	joined := errors.Join(first, second)
+	read := &queries.ReadError{Malformed: true, Cause: joined}
+	if errors.Unwrap(read) != joined || !errors.Is(read, first) || !errors.Is(read, second) || !errors.Is(read, queries.ErrMalformedRequest) {
+		t.Fatal("genuine joined causes were changed")
+	}
+	if errors.Is(&queries.ReadError{Cause: first}, queries.ErrMalformedRequest) {
+		t.Fatal("semantic reader error acquired malformed category")
+	}
+}
+
+func TestReaderDirectionFindingsAndGenericSortingRejections(t *testing.T) {
+	for _, method := range []string{"GET", "QUERY"} {
+		var err error
+		member := "sortDirection"
+		if method == "GET" {
+			_, err = queries.ReadGET(url.Values{"sortby": {"name"}, "sortDirection": {"no"}})
+		} else {
+			member = "sorting.direction"
+			_, err = queries.ReadQUERY([]byte(`{"sorting":{"field":"name","direction":"no"}}`))
+		}
+		var sorting *queries.SortingError
+		var read *queries.ReadError
+		if !errors.Is(err, queries.ErrInvalidSorting) || !errors.As(err, &sorting) || !errors.As(err, &read) || read.Malformed {
+			t.Fatalf("%s sorting identities: %v", method, err)
+		}
+		want := []validation.Result{{Severity: validation.Error, Message: "The sort direction is not a recognized value.", Members: []string{member}, Reason: validation.MalformedRequest}}
+		if !reflect.DeepEqual(sorting.ValidationResults(), want) {
+			t.Fatalf("%s: %+v", method, sorting.ValidationResults())
+		}
+	}
+	for _, sorting := range []*queries.SortingError{{Field: "sortby"}, {Field: "sorting.field", Cause: queries.ErrInvalidSorting}, {Field: "sortDirection"}} {
+		if got := sorting.ValidationResults(); len(got) != 1 || got[0].Message != "The query sorting is invalid." {
+			t.Fatalf("generic provider rejection changed: %+v", got)
+		}
+	}
+}
+
 func FuzzGETControls(f *testing.F) {
 	f.Add("pageSize=10&page=0&sortby=name&sortDirection=desc")
 	f.Add("PAGE=1&page=2")

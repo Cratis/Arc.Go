@@ -20,7 +20,7 @@ query already did that work.
 | Direction grammar | `asc`, `ascending`, `desc`, `descending`, case-insensitive | Same; explicit empty fails |
 
 The pipeline validates active page ≥ 0 and size > 0, using C# concept messages
-and `page`/`size` members. This intentionally enforces rules that the older C#
+and `Page`/`Size` members. This intentionally enforces rules that the older C#
 request path did not always execute. `Paging.Skip()` uses int64 multiplication
 and clamps to `[0, MaxInt32]`.
 
