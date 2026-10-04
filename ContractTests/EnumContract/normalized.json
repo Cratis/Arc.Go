@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "status": "fixture contract; not emitted by the current Go generator",
+  "ordinaryGoEnumDomain": "open-underlying-integer",
+  "optInParser": "serialization.Int32Enum",
+  "numberInput": "declared-values-only",
+  "stringInput": "original-names-or-name-combinations-or-any-int32-decimal",
+  "outputSchema": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+  "frontend": { "constructor": "Number", "safeIntegerMinimum": "-9007199254740991", "safeIntegerMaximum": "9007199254740991", "flagsMinimum": "-2147483648", "flagsMaximum": "2147483647" },
+  "enums": [
+    {
+      "name": "State",
+      "flags": false,
+      "members": [
+        { "parseName": "Zero", "exportName": "zero", "value": "0" },
+        { "parseName": "Read", "exportName": "reader", "value": "1" },
+        { "parseName": "Write", "exportName": "writer", "value": "4" },
+        { "parseName": "Alias", "exportName": "alias", "value": "4" },
+        { "parseName": "High", "exportName": "high", "value": "1073741824" },
+        { "parseName": "Sign", "exportName": "sign", "value": "-2147483648" },
+        { "parseName": "Negative", "exportName": "negative", "value": "-2" }
+      ]
+    },
+    {
+      "name": "Access",
+      "flags": true,
+      "members": [
+        { "parseName": "None", "exportName": "none", "value": "0" },
+        { "parseName": "Read", "exportName": "reader", "value": "1" },
+        { "parseName": "Write", "exportName": "writer", "value": "4" },
+        { "parseName": "Alias", "exportName": "alias", "value": "4" },
+        { "parseName": "High", "exportName": "high", "value": "1073741824" },
+        { "parseName": "Sign", "exportName": "sign", "value": "-2147483648" }
+      ]
+    }
+  ]
+}
