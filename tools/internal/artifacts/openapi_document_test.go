@@ -230,7 +230,7 @@ func TestOpenAPIRendererRefusesWholeDocument(t *testing.T) {
 
 func TestOpenAPIRendererRefusesActualUnsupportedGraphs(t *testing.T) {
 	for _, tc := range []struct{ name, source, message string }{
-		{"QUERY", "//arc:readmodel\ntype Row struct { ID string }; func (Row) All() ([]Row, error) { return nil, nil }", "QUERY request-reader"},
+		{"query arguments", "//arc:readmodel\ntype Row struct { ID string }; type Args struct { Name string }; func (Row) All(Args) ([]Row, error) { return nil, nil }", "argument-free"},
 		{"float codec", "//arc:command\ntype Save struct { Number float64 }; func (Save) Handle() error { return nil }", "special-value codec"},
 		{"date codec", "import \"time\"\n//arc:command\ntype Save struct { Date time.Time }; func (Save) Handle() error { return nil }", "unsupported wire kind"},
 		{"rules", "//arc:command\ntype Save struct { Name string `validate:\"required\"` }; func (Save) Handle() error { return nil }", "validation rules"},

@@ -36,7 +36,7 @@ type openAPIRenderer struct {
 // renderOpenAPI borrows a finalized graph for this synchronous call. Errors
 // return no document, including when one later artifact is unsupported. This
 // deliberately small profile refuses opaque schemas, specialized codecs,
-// authorization, QUERY, query arguments/paging, framework routes and streams rather
+// authorization, query arguments/paging, framework routes and streams rather
 // than guessing at their contracts. Full validation/publication is a later seam.
 func renderOpenAPI(graph *Graph) (openAPIDocument, error) {
 	if err := admitOpenAPIGraph(graph); err != nil {
@@ -165,11 +165,6 @@ func admitOpenAPIGraph(graph *Graph) error {
 	sortEndpoints(actual)
 	if !reflect.DeepEqual(resolved, actual) {
 		return fmt.Errorf("openapi: endpoint inventory disagrees with shared route authority")
-	}
-	for _, endpoint := range resolved {
-		if endpoint.Method == "QUERY" {
-			return fmt.Errorf("openapi: %s: QUERY request-reader projection is outside this narrower checkpoint; no operation is omitted", endpoint.Identity)
-		}
 	}
 	return nil
 }
