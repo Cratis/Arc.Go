@@ -1,0 +1,166 @@
+package consumer
+
+import (
+	"context"
+	"errors"
+	"os"
+
+	"github.com/cratis/arc.go/commands"
+	"github.com/cratis/arc.go/queries"
+	"github.com/cratis/arc.go/validation"
+)
+
+// Loading and generation must never execute application initialization.
+func init() {
+	if os.Getenv("ARC_BINDINGS_GENERATION") == "trap" {
+		panic("application initialization executed during generation")
+	}
+}
+
+var Calls, ValueCalls, ValueCloses int
+var ConstructorError = errors.New("constructor failed")
+var LastFailure *Failure
+
+//cratis:scoped
+type Foo struct{ Closes int }
+
+func NewFoo() *Foo          { Calls++; return &Foo{} }
+func (f *Foo) Close() error { f.Closes++; return nil }
+func (*Foo) Name() string   { return "foo" }
+
+type IFoo interface {
+	Name() string
+	Close() error
+}
+type FooAlias = Foo
+
+//cratis:singleton
+type Singleton struct{ Closes int }
+
+func NewSingleton(context.Context) (*Singleton, error) { Calls++; return &Singleton{}, nil }
+func (s *Singleton) Close() error                      { s.Closes++; return nil }
+func (*Singleton) Count() int                          { return 1 }
+
+type ISingleton interface {
+	Count() int
+	Close() error
+}
+
+type Tick struct{ ID, Closes int }
+
+func NewTick() *Tick          { Calls++; return &Tick{ID: Calls} }
+func (t *Tick) Close() error  { t.Closes++; return nil }
+func (t *Tick) Sequence() int { return t.ID }
+
+type ITick interface {
+	Sequence() int
+	Close() error
+}
+
+type Dependency struct{ Err error }
+type External struct{ Closes int }
+
+func (e *External) Close() error { e.Closes++; return nil }
+
+type Value struct{}
+
+func NewValue(ctx context.Context, d *Dependency) (Value, error) {
+	ValueCalls++
+	if ctx == nil {
+		panic("lost context")
+	}
+	return Value{}, d.Err
+}
+func (Value) Close() error { ValueCloses++; return nil }
+
+type Failure struct{ Closes int }
+
+func NewFailure(ctx context.Context, _ *Dependency) (*Failure, error) {
+	if ctx == nil {
+		panic("lost context")
+	}
+	LastFailure = &Failure{}
+	return LastFailure, ConstructorError
+}
+func (f *Failure) Close() error { f.Closes++; return nil }
+
+type Pair struct{ First, Second *Tick }
+
+func NewPair(a, b *Tick) Pair { return Pair{a, b} }
+
+type Triple struct{ Ticks [3]*Tick }
+
+func NewTriple(a, b, c *Tick) (Triple, error) { return Triple{[3]*Tick{a, b, c}}, nil }
+
+type Quad struct{ Ticks [4]*Tick }
+
+func NewQuad(ctx context.Context, a, b, c, d *Tick) Quad {
+	if ctx == nil {
+		panic("lost context")
+	}
+	return Quad{[4]*Tick{a, b, c, d}}
+}
+
+type Wide struct{ Ticks [5]*Tick }
+
+func NewWide(ctx context.Context, a, b, c, d, e *Tick) (*Wide, error) {
+	if ctx == nil {
+		panic("lost context")
+	}
+	return &Wide{[5]*Tick{a, b, c, d, e}}, nil
+}
+
+//cratis:ignore-convention
+type Ignored struct{}
+
+func NewIgnored() *Ignored { panic("ignored service activated") }
+
+//arc:command
+//arc:allow-anonymous
+type Add struct {
+	Name string `json:"name"`
+}
+
+func (c Add) Provide(context.Context) (string, error) { return c.Name, nil }
+func (c Add) Validate(context.Context) ([]validation.Result, error) {
+	if c.Name == "" {
+		return []validation.Result{{Severity: validation.Error, Message: "name required"}}, nil
+	}
+	return nil, nil
+}
+func (Add) Handle(_ context.Context, name string, foo IFoo) (int, error) {
+	return len(name) + len(foo.Name()), nil
+}
+
+//arc:command
+//arc:authorize roles=Writer
+type Denied struct{}
+
+func (Denied) Handle(IFoo) error { panic("unauthorized Handle executed") }
+
+//arc:command
+//arc:allow-anonymous
+type Stop struct{}
+
+func (Stop) Provide(info commands.CommandContext) (commands.Result[commands.NoResponse], error) {
+	return commands.Unauthorized(info.CorrelationID(), "stop"), nil
+}
+func (Stop) Handle(IFoo) error { panic("stopped Handle executed") }
+
+//arc:readmodel name=Item
+//arc:authorize roles=Reader
+type Item struct {
+	Name string `json:"name"`
+}
+
+func (Item) All(_ queries.NoArguments, foo IFoo) ([]Item, error) {
+	return []Item{{Name: foo.Name()}}, nil
+}
+
+type QueryArgs struct {
+	Count int `json:"count"`
+}
+
+//arc:query model=Item name=Find
+//arc:allow-anonymous
+func Find(args QueryArgs, foo IFoo) ([]Item, error) { return []Item{{Name: foo.Name()}}, nil }
