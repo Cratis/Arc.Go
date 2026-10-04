@@ -26,7 +26,7 @@ func TestPagingSkipValidationAndDirectionGrammar(t *testing.T) {
 		}
 	}
 	findings := (queries.Paging{Page: -1, Size: 0, IsPaged: true}).Validate()
-	if len(findings) != 2 || findings[0].Message != "Page number must be greater than or equal to 0" || findings[0].Members[0] != "page" || findings[1].Message != "Page size must be greater than 0" || findings[1].Members[0] != "size" {
+	if len(findings) != 2 || findings[0].Message != "Page number must be greater than or equal to 0" || findings[0].Members[0] != "Page" || findings[1].Message != "Page size must be greater than 0" || findings[1].Members[0] != "Size" {
 		t.Fatalf("findings = %+v", findings)
 	}
 	if len((queries.Paging{Page: -1, Size: -1}).Validate()) != 0 {
