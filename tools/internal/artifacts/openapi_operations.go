@@ -78,7 +78,13 @@ func (r *openAPIRenderer) paths() (openAPIObject, error) {
 			item = openAPIObject{}
 			paths[endpoint.Path] = item
 		}
-		item[strings.ToLower(endpoint.Method)] = operation
+		if endpoint.Method == "QUERY" {
+			// QUERY is not a native OpenAPI 3.1 method. Keep the actual operation
+			// at its original extension pointer; never substitute GET or POST.
+			item["x-cratis-query"] = openAPIObject{"method": "QUERY", "operation": operation}
+		} else {
+			item[strings.ToLower(endpoint.Method)] = operation
+		}
 		if endpoint.Method == "GET" {
 			head := endpoint
 			head.Method = "HEAD"
@@ -108,7 +114,7 @@ func (r *openAPIRenderer) operation(endpoint metadata.Endpoint, commands map[str
 		}
 	} else {
 		query, exists := queries[endpoint.Identity]
-		if !exists || endpoint.ValidateOnly || (endpoint.Method != "GET" && endpoint.Method != "HEAD") {
+		if !exists || endpoint.ValidateOnly || (endpoint.Method != "GET" && endpoint.Method != "HEAD" && endpoint.Method != "QUERY") {
 			return nil, fmt.Errorf("unsupported or unresolved query endpoint")
 		}
 		payload, summary = &query.Result, query.Declaration.DocumentationSummary
@@ -150,6 +156,10 @@ func (r *openAPIRenderer) operation(endpoint metadata.Endpoint, commands map[str
 	if summary != "" {
 		operation["summary"] = summary
 	}
+	if endpoint.Method == "QUERY" {
+		operation["requestBody"] = openAPIObject{"required": true, "content": openAPIObject{"application/json": openAPIObject{"schema": openAPIQueryRequest()}}}
+		operation["description"] = "HTTP QUERY with the built-in JSON request reader. OpenAPI 3.1 consumers must explicitly understand x-cratis-query to invoke this operation; it is not a GET or POST alias."
+	}
 	if input != nil {
 		body, err := r.wire(*input, "Input", false, false, 0)
 		if err != nil {
@@ -164,12 +174,15 @@ func (r *openAPIRenderer) operation(endpoint metadata.Endpoint, commands map[str
 func (r *openAPIRenderer) responses(endpoint metadata.Endpoint, schema openAPIObject) openAPIObject {
 	responses := openAPIObject{}
 	descriptions := map[string]string{"200": "Success", "400": "Invalid request or validation failure", "403": "Pipeline authorization denied", "413": "Request exceeds the configured size limit", "500": "Internal error; emergency publication failures may have an empty body", "503": "Application is not admitting requests; empty body"}
-	if endpoint.Method == "POST" {
+	if endpoint.Method == "POST" || endpoint.Method == "QUERY" {
 		descriptions["415"] = "Unsupported request representation"
 	}
 	for status, description := range descriptions {
 		response := openAPIObject{"description": description,
 			"headers": openAPIObject{r.graph.Assertions.Server.HTTP.CorrelationHeader: openAPIObject{"schema": openAPIObject{"type": "string", "format": "uuid"}}},
+		}
+		if endpoint.Method == "QUERY" && status != "503" {
+			response["headers"].(openAPIObject)["Cache-Control"] = openAPIObject{"schema": openAPIObject{"type": "string", "const": "no-store"}}
 		}
 		if status != "503" && endpoint.Method != "HEAD" {
 			response["content"] = openAPIObject{"application/json": openAPIObject{"schema": schema}}
