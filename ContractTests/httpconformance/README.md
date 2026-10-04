@@ -1,0 +1,89 @@
+# Paired snapshot HTTP checkpoint
+
+This is a **Partial**, fail-closed checkpoint for
+[Arc.Go#38](https://github.com/Cratis/Arc.Go/issues/38), not a parity approval.
+It does not change runtime behavior or historical captures. The C# fixture's
+query activation must still be established: a listening Kestrel process is not
+proof that Arc registered its queries. An empty 404 fails the gate.
+
+## Reference and fixture
+
+The authority is Arc source
+`7c1e78075b737df64f69fddfaae83374f75e3612`, especially
+`Source/DotNET/Arc.Core/Queries/QueryEndpointMapper.cs`,
+`QueryableQueryRenderer.cs`, `BodyQueryRequestReader.cs`, and
+`QueryStringQueryRequestReader.cs`. `prepare.py` reads that Git object, discovers
+its six-project build graph, and extracts it to a new task-owned directory.
+It never builds or edits the source checkout. The seventh project is the local
+fixture. All seven dependency locks are committed; subsequent restores must use
+`--locked-mode`. A NuGet Arc package is not a substitute for this source.
+
+The fixture pins SDK `10.0.401` and both runtime patches to `10.0.12`, with
+roll-forward disabled. `verify.py` checks the unchanged source, every restored
+package/content hash in every project/target framework, fixture inputs, built
+assemblies and actual runtime versions. Its task-owned output is rechecked before
+the paired test starts either host. Source preparation alone does not prove HTTP
+parity.
+
+The real C# host calls `AddCratisArc` and `UseCratisArc`, disables controllers,
+enables QUERY, and explicitly redacts exception details. The real Go host uses
+`arc.Application`, its built-in GET/QUERY readers, and the same exception policy.
+Four queries return fresh immutable fixture membership: an ordinary list, a
+renderable collection, a scalar/default filter, and a failing performer. Only
+the renderable and filter queries opt into Go's existing `SliceRenderer` through
+per-query `WithRenderer`. Ordinary lists remain the unpaged control.
+
+## Corpus and comparison
+
+`corpus.go` fixes 14 named groups and 36 requests, each executed against both
+hosts. Every group includes GET and QUERY. The corpus covers baselines, ordinary
+list paging, count-before-window ascending/descending sorting, empty selection,
+out-of-range pages, scalar binding, missing/empty/null defaults, malformed page
+and size, zero/negative size, invalid sort direction, and failure with paging.
+GET's literal `null` is a string; JSON null belongs to QUERY.
+
+The comparator checks status, relevant headers, fixed correlation echo, the
+complete envelope, array order, paging, and missing versus null. It normalizes
+only JSON object ordering and whitespace. It rejects duplicate object members,
+trailing JSON, and lossy numeric comparisons. There are **no accepted deviations**.
+Ordinary-list requested paging metadata and GET/QUERY paging activation are
+known characterization targets, not approved exclusions. New differences need
+an explicit, case/path-specific disposition before acceptance.
+
+Raw exchanges include the exact request, status, all response headers, body bytes
+(base64 in JSON), and case-specific differences. Each body is bounded to 1 MiB,
+and combined host logs to 64 KiB. The hosts use ephemeral IPv4 loopback ports;
+clients disable proxies and redirects. Readiness has 10 seconds, each request
+3 seconds, graceful EOF shutdown 5 seconds, and kill/join 3 seconds. Forced
+cleanup, missing prerequisites, partial inventory, partial execution and timeouts
+fail, never skip. The Go host relaunches the compiled test runner, preserving
+race instrumentation. The C# host launches its already-built DLL.
+
+## Running
+
+Native inventory/comparator/lifecycle checks need no .NET installation:
+
+```bash
+go test -race -count=1 -timeout=90s ./ContractTests/httpconformance
+```
+
+For the paired lane, allocate task-owned source, build and retained output paths
+under ignored `.ai-work/`. Follow the explicit extraction, locked restore,
+Release build, and verification steps in
+[the dedicated workflow](https://github.com/Cratis/Arc.Go/blob/develop/.github/workflows/snapshot-http-conformance.yml).
+Run heavy commands through the local bounded phase runner when using pi. Never
+run restore/build inside the sibling Arc checkout.
+
+After successful preparation, set absolute paths and run the complete paired
+checkpoint (not a subtest selection):
+
+```bash
+export ARC_HTTP_CONFORMANCE_DLL="$PWD/.ai-work/httpconformance/output/artifacts/bin/Reference/release/Arc.Go.HttpConformance.dll"
+export ARC_HTTP_CONFORMANCE_PROVENANCE="$PWD/.ai-work/httpconformance/keep/provenance.json"
+export ARC_HTTP_CONFORMANCE_OUTPUT="$PWD/.ai-work/httpconformance/keep/exchanges"
+go test -race -tags=httpconformance -count=1 -timeout=110s \
+  -run '^TestPairedSnapshotHTTP$' ./ContractTests/httpconformance
+```
+
+Commands, authentication, HEAD, CSV, renderer failures, databases, streams and
+browser/React clients are deferred. This lane authorizes no release or PR.
