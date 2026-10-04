@@ -1,8 +1,11 @@
-# Generate adapters and TypeScript snapshot proxies
+# Generate adapters and TypeScript proxies
 
 `arc-gen` can generate Go registrations and supported TypeScript model, command,
-and **snapshot-query** families together. This is a partial frontend compatibility
-profile for Arc/Arc.React **22.48.2** and Fundamentals **7.22.0**, not full C# parity.
+snapshot-query, and declared observable-query families together. Go observable
+adapters support declared Source/CurrentSource/State/Subject shapes with owning-model
+emissions; opaque provider layouts remain unsupported. This is a partial frontend
+compatibility profile for Arc/Arc.React **22.48.2** and Fundamentals **7.22.0**,
+not full C# parity.
 Node is needed for frontend verification, not for invoking the generator.
 
 From the `tools` module, select your complete application artifact package scope:
@@ -99,15 +102,19 @@ repair the pinned serializer's null-write behavior.
 
 Arbitrary interfaces, opaque codecs, unresolved dynamic responses, unsupported
 rules/defaults/derived providers, rich dictionaries, eager constructor cycles,
-nullable collection elements, query validators, and observable/channel/provider
-results fail instead of degrading to `any`. Primitive query defaults are checked
-against the original Go grammar and target width, and remain server-side defaults.
+nullable collection elements, query validators, channels, and unsupported observable
+or opaque provider emissions fail instead of degrading to `any`. Primitive query
+defaults are checked against the original Go grammar and target width, and remain
+server-side defaults.
 Query parameter names containing regex metacharacters are rejected for Arc 22.48.2
 because its route helper interpolates keys without escaping
 ([Arc#3014](https://github.com/Cratis/Arc/issues/3014)). Sorting helpers use declared
 sortable result fields, the approved Arc#2998 difference; their presence does not
-invent provider-side paging or sorting. Observable proxies and mounted React/browser
-conformance are outside this profile.
+invent provider-side paging or sorting. Declared observable proxies and bounded
+mounted generated `use`, `useChangeStream`, and `useWithPaging` hooks have Node
+coverage using explicit WebSocket hub/Delta providers. That is not browser/DOM,
+StrictMode, every transport, or broader hook conformance; paging tuple coverage
+does not prove provider-side windowing or totals.
 
 ## Ownership, check mode and interrupted publication
 
@@ -148,8 +155,11 @@ adapter/file counts, profile and fingerprint only after complete success.
 ## Optional constructor services
 
 Use `-bindings-config` when you want generated constructor registrations rather
-than hand-authored DI factories. It does not construct command DTOs, change wire
-schemas, or make a container mandatory. Without this flag, ordinary generated
+than hand-authored DI factories. Follow the
+[constructor-service guide](https://github.com/Cratis/Arc.Go/blob/main/Documentation/backend/go/generation/constructor-services.md)
+for prerequisites, composition excerpts, and the configuration reference.
+The option does not construct command DTOs, change wire schemas, or make a
+container mandatory. Without this flag, ordinary generated
 bytes and stage-local `ArcBindings` callbacks remain unchanged.
 
 ```json

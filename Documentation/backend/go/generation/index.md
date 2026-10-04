@@ -12,6 +12,9 @@ bounded observable proxies. The tools module pins pushed runtime `78ebbf8` and
 released Fundamentals.Go `v0.2.0`; it needs no workspace or local replacement.
 Your business methods remain ordinary Go;
 the generated code uses the same public registrars and pipelines as manual wiring.
+To replace repeated service factory registrations, opt in to
+[constructor services](constructor-services.md). That generates a separate
+`RegisterServices` function without changing manual closures or `ArcBindings`.
 
 ## Put behavior on the model
 
