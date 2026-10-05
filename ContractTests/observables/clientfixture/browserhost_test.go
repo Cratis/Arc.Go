@@ -7,8 +7,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"sync"
 	"testing"
 	"testing/fstest"
@@ -131,16 +133,47 @@ func TestBrowserHostReturnsReportFailure(t *testing.T) {
 	}
 	origin := "http://" + listener.Addr().String()
 	failure := errors.New("report failed")
+	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() {
-		done <- clientfixture.ServeBrowser(t.Context(), listener, fstest.MapFS{}, func(clientfixture.BrowserReport) error { return failure })
+		done <- clientfixture.ServeBrowser(ctx, listener, fstest.MapFS{}, func(clientfixture.BrowserReport) error { return failure })
 	}()
+	joined := false
+	t.Cleanup(func() {
+		cancel()
+		if !joined {
+			select {
+			case <-done:
+			case <-time.After(7 * time.Second):
+				t.Error("browser host cleanup did not join")
+			}
+		}
+	})
 	client := browserFixtureClient(t, false)
 	waitBrowserHostReady(t, client, origin)
-	response := browserFixtureRequest(t, client, http.MethodPost, origin+"/fixture/shutdown", "", "")
+	// Readiness must finish reading to EOF before returning. Otherwise Go's
+	// asynchronous Body.Close drain can race the next request: a new dial
+	// loses to the drained connection becoming idle and leaves an unused TCP
+	// connection. net/http waits over five seconds to retire StateNew, which
+	// exceeds this fixture's five-second shutdown budget.
+	var reused bool
+	request, err := http.NewRequestWithContext(httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		GotConn: func(info httptrace.GotConnInfo) { reused = info.Reused },
+	}), http.MethodPost, origin+"/fixture/shutdown", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
 	closeBrowserBody(t, response)
+	if !reused || response.StatusCode != http.StatusNoContent {
+		t.Fatalf("shutdown must reuse the fully read readiness connection: reused=%v status=%d", reused, response.StatusCode)
+	}
 	select {
 	case err := <-done:
+		joined = true
 		if !errors.Is(err, failure) {
 			t.Fatalf("report failure not returned: %v", err)
 		}
@@ -167,7 +200,10 @@ func waitBrowserHostReady(t *testing.T, client *http.Client, origin string) {
 	if err != nil {
 		t.Fatalf("browser host not ready: %v", err)
 	}
-	closeBrowserBody(t, response)
+	defer closeBrowserBody(t, response)
+	if _, err := io.Copy(io.Discard, response.Body); err != nil {
+		t.Fatalf("browser host readiness body: %v", err)
+	}
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("browser host readiness status=%d", response.StatusCode)
 	}
@@ -177,8 +213,12 @@ func readyNames(t *testing.T, client *http.Client, origin string) map[string]str
 	t.Helper()
 	response := browserFixtureRequest(t, client, http.MethodGet, origin+"/fixture/ready", "", "")
 	defer closeBrowserBody(t, response)
+	data, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var names map[string]string
-	if err := json.NewDecoder(response.Body).Decode(&names); err != nil || names["All"] == "" {
+	if err := json.Unmarshal(data, &names); err != nil || names["All"] == "" {
 		t.Fatalf("ready names: %v %v", names, err)
 	}
 	return names
