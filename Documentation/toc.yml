@@ -11,6 +11,8 @@
           href: backend/go/core/lifecycle.md
         - name: Middleware
           href: backend/go/core/middleware.md
+        - name: Operation diagnostics
+          href: backend/go/core/diagnostics.md
         - name: Hosting options
           href: backend/go/configuration/hosting.md
         - name: HTTP contract
@@ -28,6 +30,9 @@
           href: backend/go/introspection/schemas.md
     - name: Concepts and JSON values
       href: backend/go/concepts/index.md
+      items:
+        - name: Int32 enums
+          href: backend/go/concepts/enums.md
     - name: Commands
       href: backend/go/commands/index.md
       items:
@@ -53,6 +58,8 @@
           href: backend/go/commands/response-value-handlers.md
         - name: Command return shapes
           href: backend/go/commands/response-examples.md
+        - name: Traditional action handlers
+          href: backend/go/commands/traditional-actions.md
     - name: Queries
       href: backend/go/queries/index.md
       items:
@@ -89,9 +96,13 @@
           href: backend/go/queries/observable-emission-guards.md
         - name: Collection change streams
           href: backend/go/queries/change-stream.md
+        - name: Protected query health
+          href: backend/go/queries/query-health.md
     - name: Generate adapters and proxies
       href: backend/go/generation/index.md
       items:
+        - name: Constructor services
+          href: backend/go/generation/constructor-services.md
         - name: TypeScript proxies
           href: backend/go/generation/typescript.md
         - name: Directives and signatures
@@ -100,6 +111,9 @@
       href: backend/go/chronicle/index.md
     - name: MongoDB snapshots
       href: backend/go/mongodb/index.md
+      items:
+        - name: Multiple instances
+          href: backend/go/mongodb/multiple-instances.md
     - name: Command results
       href: backend/go/commands/results.md
     - name: Query results
