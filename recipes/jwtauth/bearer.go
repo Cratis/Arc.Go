@@ -22,8 +22,18 @@ import (
 // Claims are the token claims this recipe maps onto an Arc principal.
 type Claims struct {
 	jwt.RegisteredClaims
-	Name  string   `json:"name,omitempty"`
-	Roles []string `json:"roles,omitempty"`
+	Name     string   `json:"name,omitempty"`
+	Roles    []string `json:"roles,omitempty"`
+	TokenUse string   `json:"token_use"`
+}
+
+// Validate requires this issuer's access-token marker; ID tokens are not API
+// credentials. Adapt this check to your issuer's documented token profile.
+func (c Claims) Validate() error {
+	if c.TokenUse != "access" {
+		return errors.New("not an access token")
+	}
+	return nil
 }
 
 // Bearer returns an Arc authentication handler for "Authorization: Bearer"
@@ -33,18 +43,34 @@ type Claims struct {
 // parser accepts whatever the options do not forbid.
 func Bearer(key jwt.Keyfunc, options ...jwt.ParserOption) authentication.Handler {
 	parser := jwt.NewParser(options...)
-	return authentication.HandlerFunc(func(_ context.Context, r *http.Request) (authentication.Result, error) {
-		scheme, token, found := strings.Cut(r.Header.Get("Authorization"), " ")
-		if !found || !strings.EqualFold(scheme, "Bearer") {
+	return authentication.HandlerFunc(func(ctx context.Context, r *http.Request) (authentication.Result, error) {
+		if err := ctx.Err(); err != nil {
+			return authentication.Result{}, err
+		}
+		headers := r.Header.Values("Authorization")
+		if len(headers) == 0 {
 			return authentication.Anonymous(), nil
 		}
+		if len(headers) != 1 {
+			return authentication.Failed("ambiguous authorization header"), nil
+		}
+		parts := strings.Fields(headers[0])
+		if len(parts) == 0 || !strings.EqualFold(parts[0], "Bearer") {
+			return authentication.Anonymous(), nil
+		}
+		if len(parts) != 2 {
+			return authentication.Failed("invalid bearer token"), nil
+		}
 		claims := &Claims{}
-		if _, err := parser.ParseWithClaims(strings.TrimSpace(token), claims, key); err != nil {
+		if _, err := parser.ParseWithClaims(parts[1], claims, key); err != nil {
 			// Reasons stay local; never echo token text or parser details.
 			if errors.Is(err, jwt.ErrTokenExpired) {
 				return authentication.Failed("expired bearer token"), nil
 			}
 			return authentication.Failed("invalid bearer token"), nil
+		}
+		if err := ctx.Err(); err != nil {
+			return authentication.Result{}, err
 		}
 		if claims.Subject == "" {
 			return authentication.Failed("bearer token has no subject"), nil
