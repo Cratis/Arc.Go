@@ -3,7 +3,7 @@ module github.com/cratis/arc.go/recipes
 go 1.26.0
 
 require (
-	github.com/cratis/arc.go v0.0.0-20261005111949-e923477d39a1
+	github.com/cratis/arc.go v0.0.0-20261005184454-af475e547995
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/go-playground/validator/v10 v10.30.5
