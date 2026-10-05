@@ -67,6 +67,12 @@ type PeekRoom struct {
 type GlanceRoom struct {
 	ID integration.EventSourceID `json:"id"`
 }
+type InspectSuite struct {
+	ID integration.EventSourceID `json:"id"`
+}
+type Suite struct {
+	ID string `json:"id" chronicle:"key"`
+}
 
 type roomFixture struct {
 	app     *arc.Application
@@ -254,6 +260,21 @@ func roomApp(t *testing.T) *roomFixture {
 			t.Error("unmarked decision reached Handle")
 			return commands.NoResponse{}, nil
 		})))
+	suites, err := readmodels.Define[Suite]()
+	require(t, err)
+	require(t, commands.Register(builder.Commands(),
+		commands.WithProtectedDecisions[InspectSuite](),
+		commands.WithoutModelValidation[InspectSuite](),
+		commands.Prepare(func(ctx context.Context, inv *commands.Invocation, c InspectSuite) (commands.Preparation[*sdk.Decision[Suite]], error) {
+			decision, err := sdk.ReadDecision(ctx, inv, decisions, suites, readmodels.Key(c.ID))
+			if err != nil {
+				return commands.Preparation[*sdk.Decision[Suite]]{}, err
+			}
+			return commands.Provided(decision), nil
+		}, func(context.Context, *commands.Invocation, InspectSuite, *sdk.Decision[Suite]) (commands.NoResponse, error) {
+			t.Error("unregistered decision reached Handle")
+			return commands.NoResponse{}, nil
+		})))
 	f.app, err = builder.Build()
 	require(t, err)
 	require(t, f.app.Start(ctx))
@@ -364,6 +385,10 @@ func TestDecisionProfilesAndClassifiedModelsAgainstTheKernel(t *testing.T) {
 	}
 	if result.Completion().Disposition == commands.Committed {
 		t.Fatal(result.Completion())
+	}
+	result, err = f.app.Commands().Execute(f.ctx, InspectSuite{ID: "505"})
+	if result.IsSuccess() || !errors.Is(err, integration.ErrNotRegistered) {
+		t.Fatal("unregistered model was read", result.Details(), err)
 	}
 	result, err = f.app.Commands().Execute(f.ctx, GlanceRoom{ID: "505"})
 	if result.IsSuccess() || !errors.Is(err, commands.ErrDecisionProfile) {
