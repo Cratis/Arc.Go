@@ -52,23 +52,24 @@ func queryRepresentationProfile(version int, schemas bool) ApplicationProfile {
 }
 
 func TestQueryRuleRepresentationSurvivesBothGraphFormats(t *testing.T) {
-	for _, version := range []int{GraphVersion, ContractGraphVersion} {
-		t.Run(fmt.Sprintf("v%d", version), func(t *testing.T) {
-			for _, tc := range []struct {
-				name, declaration, fieldType string
-				want                         QueryRuleRepresentation
-				admitted                     bool
-			}{
-				{"string", "", "*string", QueryRuleRepresentation{GoKind: "string", PointerDepth: 1}, true},
-				{"named string", "type TextValue string", "*TextValue", QueryRuleRepresentation{GoKind: "string", PointerDepth: 1}, true},
-				{"struct concept", "type TextValue struct { Value string }" + queryStringConceptCodecs, "*TextValue", QueryRuleRepresentation{GoKind: "struct", PointerDepth: 1, CustomCodec: true}, false},
-				{"string concept codec", "type TextValue string" + queryStringConceptCodecs, "*TextValue", QueryRuleRepresentation{GoKind: "string", PointerDepth: 1, CustomCodec: true}, false},
-				{"nested pointers", "", "**string", QueryRuleRepresentation{GoKind: "string", PointerDepth: 2}, false},
-			} {
-				t.Run(tc.name, func(t *testing.T) {
-					dir := consumer(t)
-					put(t, filepath.Join(dir, "input.go"), queryRepresentationSource(tc.declaration, tc.fieldType, "minLength"))
-					graph, err := buildGraph(graphPackages(t, dir, "."), queryRepresentationProfile(version, tc.want.CustomCodec), true)
+	for _, tc := range []struct {
+		name, declaration, fieldType string
+		want                         QueryRuleRepresentation
+		admitted                     bool
+	}{
+		{"string", "", "*string", QueryRuleRepresentation{GoKind: "string", PointerDepth: 1}, true},
+		{"named string", "type TextValue string", "*TextValue", QueryRuleRepresentation{GoKind: "string", PointerDepth: 1}, true},
+		{"struct concept", "type TextValue struct { Value string }" + queryStringConceptCodecs, "*TextValue", QueryRuleRepresentation{GoKind: "struct", PointerDepth: 1, CustomCodec: true}, false},
+		{"string concept codec", "type TextValue string" + queryStringConceptCodecs, "*TextValue", QueryRuleRepresentation{GoKind: "string", PointerDepth: 1, CustomCodec: true}, false},
+		{"nested pointers", "", "**string", QueryRuleRepresentation{GoKind: "string", PointerDepth: 2}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := consumer(t)
+			put(t, filepath.Join(dir, "input.go"), queryRepresentationSource(tc.declaration, tc.fieldType, "minLength"))
+			loaded := graphPackages(t, dir, ".")
+			for _, version := range []int{GraphVersion, ContractGraphVersion} {
+				t.Run(fmt.Sprintf("v%d", version), func(t *testing.T) {
+					graph, err := freshContractGraph(t, loaded, queryRepresentationProfile(version, tc.want.CustomCodec), true)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -128,6 +129,7 @@ func TestQueryRuleRepresentationNamedStringRegistersAndExecutes(t *testing.T) {
 }
 
 func TestQueryRuleRepresentationProductionCLIRefusesBeforePublication(t *testing.T) {
+	binary := buildArcGenCLI(t)
 	for _, version := range []int{GraphVersion, ContractGraphVersion} {
 		t.Run(fmt.Sprintf("v%d", version), func(t *testing.T) {
 			dir := consumer(t)
@@ -143,11 +145,11 @@ func TestQueryRuleRepresentationProductionCLIRefusesBeforePublication(t *testing
 			cli := func(check bool) ([]byte, error) {
 				ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 				defer cancel()
-				args := []string{"run", "./cmd/arc-gen", "-dir", dir, "-config", filepath.Join(dir, "profile.json")}
+				args := []string{"-dir", dir, "-config", filepath.Join(dir, "profile.json")}
 				if check {
 					args = append(args, "-check")
 				}
-				command := exec.CommandContext(ctx, "go", append(args, ".")...)
+				command := exec.CommandContext(ctx, binary, append(args, ".")...)
 				command.Dir = "../.."
 				command.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=local")
 				return command.CombinedOutput()

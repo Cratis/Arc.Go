@@ -20,6 +20,7 @@ import (
 )
 
 func TestQueryValidationProductionConsumer(t *testing.T) {
+	binary := buildArcGenCLI(t)
 	fixture := filepath.Join("..", "..", "..", "ContractTests", "ProxyComparison", "QueryValidation")
 	dir := consumer(t)
 	source := string(get(t, filepath.Join(fixture, "input.go.txt")))
@@ -28,11 +29,11 @@ func TestQueryValidationProductionConsumer(t *testing.T) {
 	cli := func(check bool) ([]byte, error) {
 		ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 		defer cancel()
-		args := []string{"run", "./cmd/arc-gen", "-dir", dir, "-config", filepath.Join(dir, "profile.json")}
+		args := []string{"-dir", dir, "-config", filepath.Join(dir, "profile.json")}
 		if check {
 			args = append(args, "-check")
 		}
-		command := exec.CommandContext(ctx, "go", append(args, ".")...)
+		command := exec.CommandContext(ctx, binary, append(args, ".")...)
 		command.Dir = "../.."
 		command.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=local")
 		return command.CombinedOutput()

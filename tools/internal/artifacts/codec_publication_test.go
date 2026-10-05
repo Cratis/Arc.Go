@@ -17,6 +17,7 @@ import (
 )
 
 func TestTraversalCodecProductionCLIRefusesBeforeAnyPublication(t *testing.T) {
+	binary := buildArcGenCLI(t)
 	for _, version := range []int{GraphVersion, ContractGraphVersion} {
 		t.Run(fmt.Sprintf("v%d", version), func(t *testing.T) {
 			dir := consumer(t)
@@ -32,11 +33,11 @@ func TestTraversalCodecProductionCLIRefusesBeforeAnyPublication(t *testing.T) {
 			cli := func(check bool) ([]byte, error) {
 				ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 				defer cancel()
-				args := []string{"run", "./cmd/arc-gen", "-dir", dir, "-config", profilePath}
+				args := []string{"-dir", dir, "-config", profilePath}
 				if check {
 					args = append(args, "-check")
 				}
-				command := exec.CommandContext(ctx, "go", append(args, ".")...)
+				command := exec.CommandContext(ctx, binary, append(args, ".")...)
 				command.Dir = "../.."
 				command.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=local")
 				return command.CombinedOutput()

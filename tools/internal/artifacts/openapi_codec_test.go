@@ -31,7 +31,8 @@ func (Payload) MarshalJSONWith(func(any) ([]byte,error)) ([]byte,error) { return
 type Save struct { Value Payload }
 func (Save) Handle() error { return nil }
 `
-	if _, err := contractGraph(t, source, contractProfile(), false); err == nil || !strings.Contains(err.Error(), "schema") {
+	loaded := contractPackages(t, source)
+	if _, err := freshContractGraph(t, loaded, contractProfile(), false); err == nil || !strings.Contains(err.Error(), "schema") {
 		t.Fatalf("opaque traversal hook must require a shared-graph schema declaration, got %v", err)
 	}
 	profile := contractProfile()
@@ -39,7 +40,7 @@ func (Save) Handle() error { return nil }
 		Input:  json.RawMessage(`{"type":"object","properties":{"count":{"type":"integer"}}}`),
 		Output: json.RawMessage(`{"type":"string"}`),
 	}}
-	graph, err := contractGraph(t, source, profile, false)
+	graph, err := freshContractGraph(t, loaded, profile, false)
 	if err != nil {
 		t.Fatal(err)
 	}
