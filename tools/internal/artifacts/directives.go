@@ -8,6 +8,7 @@ import (
 	"go/ast"
 	"go/token"
 	"strings"
+	"unicode"
 
 	"github.com/cratis/arc.go/metadata"
 	"github.com/cratis/arc.go/validation"
@@ -25,6 +26,10 @@ type directives struct {
 	members                                 map[string]string
 	response                                string
 	derivedID, derivedBase, targetInterface string
+	// concept selects concept-leaf validator registration on arc:validator.
+	concept bool
+	// evaluatesAnonymous opts an arc:policy into guest evaluation.
+	evaluatesAnonymous bool
 }
 
 func parseDirectives(group *ast.CommentGroup) (directives, error) {
@@ -67,6 +72,10 @@ func parseDirectives(group *ast.CommentGroup) (directives, error) {
 			allowed = " model name path http "
 		case "authorize":
 			allowed = " roles policy "
+		case "validator":
+			allowed = " concept "
+		case "policy":
+			allowed = " name evaluates-anonymous "
 		case "namespace":
 			if len(words) != 2 {
 				return d, fmt.Errorf("arc:namespace requires one logical namespace")
@@ -92,6 +101,28 @@ func parseDirectives(group *ast.CommentGroup) (directives, error) {
 			opts[key] = value
 		}
 		switch name {
+		case "validator", "policy":
+			if d.kind != "" {
+				return d, fmt.Errorf("conflicting artifact directives")
+			}
+			d.kind = name
+			for key, target := range map[string]*bool{"concept": &d.concept, "evaluates-anonymous": &d.evaluatesAnonymous} {
+				if value, supplied := opts[key]; supplied {
+					if value != "true" && value != "false" {
+						return d, fmt.Errorf("%s must be true or false", key)
+					}
+					*target = value == "true"
+				}
+			}
+			if name == "policy" {
+				d.name = opts["name"]
+				if d.name == "" {
+					return d, fmt.Errorf("arc:policy requires name=<policy name>")
+				}
+				if strings.IndexFunc(d.name, unicode.IsControl) >= 0 {
+					return d, fmt.Errorf("policy name must not contain control characters")
+				}
+			}
 		case "command", "readmodel", "query", "enum", "model":
 			if d.kind != "" {
 				return d, fmt.Errorf("conflicting artifact directives")
@@ -162,6 +193,9 @@ func parseDirectives(group *ast.CommentGroup) (directives, error) {
 	}
 	if d.targetInterface != "" && d.kind != "model" && d.kind != "readmodel" {
 		return d, fmt.Errorf("derived declarations require a wire model")
+	}
+	if (d.kind == "validator" || d.kind == "policy") && (d.auth != nil || d.exclude || d.hasNamespace || d.targetInterface != "") {
+		return d, fmt.Errorf("arc:%s cannot be combined with other directives", d.kind)
 	}
 	if d.ignore && (d.kind != "" || d.auth != nil || d.exclude || d.hasNamespace || d.targetInterface != "") {
 		return d, fmt.Errorf("arc:ignore cannot be combined with other directives")
