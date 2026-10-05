@@ -3,7 +3,7 @@ module github.com/cratis/arc.go/integrations/chronicle
 go 1.26
 
 require (
-	github.com/cratis/arc.go v0.0.0-20261005111949-e923477d39a1
+	github.com/cratis/arc.go v0.0.0-20261005222852-3e2a69270f46
 	github.com/cratis/chronicle.go v0.0.0-20261003210034-9e0c8d5ba5f1
 	github.com/cratis/fundamentals.go v0.1.0
 	google.golang.org/grpc v1.84.0

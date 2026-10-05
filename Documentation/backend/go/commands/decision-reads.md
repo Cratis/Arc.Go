@@ -51,7 +51,7 @@ err := commands.Register(&registry,
     }))
 ```
 
-In practice the provider integration wraps `ReadDecision` in a typed API, and its typed value implements `DecisionEvidence`.
+In practice the provider integration wraps `ReadDecision` in a typed API, and its typed value implements `DecisionEvidence`. For Chronicle, see [Chronicle decision reads](../chronicle/decision-reads.md).
 
 `ReadDecision` shares one acquisition per command frame and target. Concurrent callers wait for the same fold; the first caller's context owns it, and a canceled waiter doesn't cancel it. A failed acquisition is cached for the frame and never retried. Every call checks the evidence again and enrolls it again with the current owner. Every target field (provider, model type, store, namespace and key) is part of the cache key.
 

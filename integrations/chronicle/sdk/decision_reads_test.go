@@ -8,6 +8,8 @@ import (
 	"errors"
 	"testing"
 
+	arc "github.com/cratis/arc.go"
+	"github.com/cratis/arc.go/commands"
 	integration "github.com/cratis/arc.go/integrations/chronicle"
 	"github.com/cratis/chronicle.go/compliance"
 	"github.com/cratis/chronicle.go/events"
@@ -185,5 +187,125 @@ func TestDecisionSDKCancellationDoesNotAcquireOrEnroll(t *testing.T) {
 	}
 	if connection.calls != 0 {
 		t.Fatal("cancellation used RPC")
+	}
+}
+
+type otherDecisionModel struct {
+	ID string `json:"id"`
+}
+
+type decisionTransactions struct{}
+
+func (decisionTransactions) Begin(context.Context, integration.Coordinates) (integration.Participant, integration.CompletionOwner, error) {
+	return nil, nil, integration.ErrUnsupported
+}
+func (decisionTransactions) Descriptors() []integration.EventDescriptor { return nil }
+
+func TestEnableDecisionsRequiresAnSDKIntegration(t *testing.T) {
+	builder, err := arc.NewBuilder(arc.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign, err := integration.New(integration.Options{StoreResolver: func(context.Context, commands.CommandContext) (integration.Coordinates, error) {
+		return integration.Coordinates{}, nil
+	}, Transactions: decisionTransactions{}, Events: decisionTransactions{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, enable := range map[string]func() (*Decisions, error){
+		"nil builder":         func() (*Decisions, error) { return EnableDecisions(nil, foreign) },
+		"nil integration":     func() (*Decisions, error) { return EnableDecisions(builder, nil) },
+		"foreign integration": func() (*Decisions, error) { return EnableDecisions(builder, foreign) },
+	} {
+		if decisions, err := enable(); decisions != nil || !errors.Is(err, integration.ErrInvalid) {
+			t.Error(name, decisions, err)
+		}
+	}
+}
+
+func TestDecisionParticipantRefusesForeignEvidenceWithoutRPC(t *testing.T) {
+	connection := &decisionNoRPC{}
+	participant, owner := decisionParticipantForTest(t, connection)
+	for name, evidence := range map[string]any{
+		"application value":    "token",
+		"bare token":           transactions.DecisionToken{},
+		"nil read":             (*decisionRead[decisionModel])(nil),
+		"unissued read":        &decisionRead[decisionModel]{},
+		"unissued other model": &decisionRead[otherDecisionModel]{},
+	} {
+		if err := participant.EnrollDecision(t.Context(), evidence); !errors.Is(err, transactions.ErrInvalidDecision) {
+			t.Error(name, err)
+		}
+	}
+	if err := owner.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	if connection.calls != 0 || len(participant.unit.GetEvents()) != 0 {
+		t.Fatal("foreign evidence performed work")
+	}
+}
+
+func TestDecisionSourceChecksOnlyItsOwnTypedReads(t *testing.T) {
+	source := &decisionSource[decisionModel]{}
+	for name, value := range map[string]any{
+		"nil":         nil,
+		"other model": &decisionRead[otherDecisionModel]{},
+		"zero token":  &decisionRead[decisionModel]{},
+		"value read":  decisionRead[decisionModel]{},
+	} {
+		if err := source.Check(t.Context(), value); !errors.Is(err, transactions.ErrInvalidDecision) {
+			t.Error(name, err)
+		}
+		if err := source.Enroll(t.Context(), value); !errors.Is(err, transactions.ErrInvalidDecision) {
+			t.Error(name, "enrolled", err)
+		}
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := source.Check(ctx, &decisionRead[decisionModel]{}); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	if value, err := source.Acquire(t.Context()); value != nil || !errors.Is(err, integration.ErrInvalid) {
+		t.Fatal("acquired before admission", value, err)
+	}
+}
+
+func TestDecisionWithoutIssuedReadCarriesNoEvidence(t *testing.T) {
+	var missing *Decision[decisionModel]
+	if missing.IsProtected() || missing.DecisionReads() != nil || missing.Instance().Exists {
+		t.Fatal("nil decision carried evidence")
+	}
+	advisory := &Decision[decisionModel]{advisory: readmodels.Instance[decisionModel]{Value: decisionModel{ID: "a"}, Exists: true}}
+	if advisory.IsProtected() || advisory.DecisionReads() != nil || advisory.Instance().Value.ID != "a" {
+		t.Fatal("advisory decision", advisory.Instance())
+	}
+}
+
+func TestReadDecisionRejectsInvalidArgumentsBeforeUse(t *testing.T) {
+	model, err := readmodels.Define[decisionModel](readmodels.WithIdentifier("decision-model"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	decisions := &Decisions{provider: commands.NewDecisionProvider(), adapter: &adapter{}}
+	for name, err := range map[string]error{
+		"nil context":    func() error { _, err := ReadDecision(nil, nil, decisions, model, "a"); return err }(), //nolint:staticcheck // Deliberately exercise invalid context admission (SA1012).
+		"nil invocation": func() error { _, err := ReadDecision(t.Context(), nil, decisions, model, "a"); return err }(),
+		"nil decisions":  func() error { _, err := ReadDecision(t.Context(), &commands.Invocation{}, nil, model, "a"); return err }(),
+		"zero decisions": func() error {
+			_, err := ReadDecision(t.Context(), &commands.Invocation{}, &Decisions{}, model, "a")
+			return err
+		}(),
+		"empty key": func() error {
+			_, err := ReadDecision(t.Context(), &commands.Invocation{}, decisions, model, "")
+			return err
+		}(),
+		"zero model": func() error {
+			_, err := ReadDecision(t.Context(), &commands.Invocation{}, decisions, readmodels.Model[decisionModel]{}, "a")
+			return err
+		}(),
+	} {
+		if !errors.Is(err, integration.ErrInvalid) {
+			t.Error(name, err)
+		}
 	}
 }
