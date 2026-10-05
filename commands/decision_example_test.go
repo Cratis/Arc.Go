@@ -20,16 +20,18 @@ type Room struct{ Booked bool }
 // evidence is a provider token; Enroll registers it with the completion owner.
 type roomSource struct{}
 
-func (roomSource) Admit(context.Context) error                    { return nil }
-func (roomSource) Acquire(context.Context) (any, error)           { return &Room{}, nil }
-func (roomSource) Check(context.Context, any) error               { return nil }
-func (roomSource) Enroll(context.Context, any) error              { return nil }
+func (roomSource) Admit(context.Context) error          { return nil }
+func (roomSource) Acquire(context.Context) (any, error) { return &Room{}, nil }
+func (roomSource) Check(context.Context, any) error     { return nil }
+func (roomSource) Enroll(context.Context, any) error    { return nil }
+
+// noOwner is a completion owner that persists nothing.
+type noOwner struct{}
+
 func (noOwner) Begin(context.Context, *commands.Invocation) error { return nil }
 func (noOwner) Complete(context.Context, *commands.Invocation, commands.Result[any]) (commands.CompletionReport, error) {
 	return commands.CompletionReport{Disposition: commands.NoPersistedWork}, nil
 }
-
-type noOwner struct{}
 
 func ExampleWithProtectedDecisions() {
 	var registry commands.Registry
