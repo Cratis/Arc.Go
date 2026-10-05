@@ -105,10 +105,12 @@ func (o reserveSeatOperation) Compensate(ctx context.Context, s *seatServices, f
 }
 
 type BookSeat struct {
-	Seat      string                    `json:"seat"`
-	ID        integration.EventSourceID `json:"id"`
-	Name      string                    `json:"name"`
-	Operation reserveSeatOperation      `json:"-"`
+	Seat             string                    `json:"seat"`
+	ID               integration.EventSourceID `json:"id"`
+	Name             string                    `json:"name"`
+	Operation        reserveSeatOperation      `json:"-"`
+	HandlerImmediate string                    `json:"-"`
+	HandlerLoseAck   bool                      `json:"-"`
 }
 
 func seatRegistry(t *testing.T) func(*chronicle.Registry) {
@@ -165,7 +167,15 @@ func seatApp(t *testing.T, ctx context.Context, client *chronicle.Client, store 
 	require(t, commands.RegisterOperation[reserveSeatOperation, *seatServices](builder.Commands(), func(context.Context, *execution.Scope) (*seatServices, error) {
 		return services, nil
 	}))
-	require(t, commands.Register[BookSeat](builder, commands.Handle(func(command BookSeat, _ context.Context) (commands.Outcome[commands.NoResponse], error) {
+	require(t, commands.Register[BookSeat](builder, commands.Handle(func(command BookSeat, ctx context.Context) (commands.Outcome[commands.NoResponse], error) {
+		if command.HandlerImmediate != "" {
+			if command.HandlerLoseAck {
+				services.lost.Store(true)
+			}
+			// Deliberately ignore the result: observation must still prohibit
+			// operation entry when this handler has already caused persistence.
+			_, _ = services.store.EventLog().Append(ctx, events.SourceID(command.Seat), AuthorCreated{Name: command.HandlerImmediate})
+		}
 		effects := []any{command.Operation}
 		if command.Name != "" {
 			effects = append(effects, AuthorCreated{Name: command.Name})
@@ -261,6 +271,41 @@ func TestOperationsAgainstTheKernelFollowCommitAwareRecovery(t *testing.T) {
 	}
 	if findings := mustReject(t, ctx, app, BookSeat{Seat: "s7", ID: "c7", Name: "taken", Operation: reserveSeatOperation{Seat: "s7"}}); findings[0].Reason != validation.ConstraintViolation {
 		t.Fatal(findings)
+	}
+}
+
+func TestHandlerImmediateAppendsRefuseOperationsBeforeEntryAgainstTheKernel(t *testing.T) {
+	for _, scenario := range []struct {
+		name        string
+		loseAck     bool
+		disposition commands.CommitDisposition
+	}{
+		{"confirmed", false, commands.Committed},
+		{"lost acknowledgement", true, commands.OutcomeUnknown},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			client, lost := lossyClient(t, seatRegistry(t))
+			_, store, ctx := clientFor(t, func(*chronicle.Registry) {})
+			app, services := seatApp(t, ctx, client, store, lost)
+			result, err := app.Commands().Execute(ctx, BookSeat{Seat: "handler-seat", ID: "handler-command",
+				HandlerImmediate: "handler-booked", HandlerLoseAck: scenario.loseAck,
+				Operation: reserveSeatOperation{Seat: "handler-seat"}})
+			if result.IsSuccess() || !errors.Is(err, commands.ErrInvalidOperation) || result.Completion().Disposition != scenario.disposition {
+				t.Fatal(result.Details(), result.Completion(), err)
+			}
+			if steps := services.recorded(); len(steps) != 0 {
+				t.Fatal("operation entered after handler persistence", steps)
+			}
+			if summary, present := result.Recovery(); !present || summary.StartedCount != 0 {
+				t.Fatal(summary, present)
+			}
+			if got := names(t, history(t, ctx, client, store, "Default", "handler-seat")); len(got) != 1 || got[0] != "handler-booked" {
+				t.Fatal("handler immediate history", got)
+			}
+			if lost.Load() {
+				t.Fatal("lost-acknowledgement interceptor remained armed")
+			}
+		})
 	}
 }
 

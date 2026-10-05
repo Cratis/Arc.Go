@@ -130,12 +130,13 @@ func (seatReservation) Compensate(_ context.Context, p *operationProvider, failu
 }
 
 type OperationBooking struct {
-	ID        c.EventSourceID `json:"id"`
-	Deferred  bool            `json:"deferred"`
-	Invalid   bool            `json:"invalid"`
-	BeforeOps commands.CommitDisposition
-	Operation seatReservation
-	NoOps     bool
+	ID               c.EventSourceID `json:"id"`
+	Deferred         bool            `json:"deferred"`
+	Invalid          bool            `json:"invalid"`
+	BeforeOps        commands.CommitDisposition
+	ValidationAppend commands.CommitDisposition
+	Operation        seatReservation
+	NoOps            bool
 }
 
 func operationSetup(t *testing.T, p *operationProvider, observe bool) *arc.Application {
@@ -168,8 +169,11 @@ func operationSetup(t *testing.T, p *operationProvider, observe bool) *arc.Appli
 			effects = append(effects, command.Operation)
 		}
 		return commands.Effects[commands.NoResponse](effects...), nil
-	}), commands.WithOperations[OperationBooking](), commands.WithValidator[OperationBooking](validation.ValidatorFunc[OperationBooking](func(context.Context, OperationBooking) ([]validation.Result, error) {
+	}), commands.WithOperations[OperationBooking](), commands.WithValidator[OperationBooking](validation.ValidatorFunc[OperationBooking](func(ctx context.Context, command OperationBooking) ([]validation.Result, error) {
 		p.record("validate")
+		if command.ValidationAppend != commands.NoPersistedWork {
+			return nil, p.Append(ctx, command.ValidationAppend)
+		}
 		return nil, nil
 	})), commands.WithValidator[OperationBooking](validation.ValidatorFunc[OperationBooking](func(_ context.Context, command OperationBooking) ([]validation.Result, error) {
 		if command.Invalid {
@@ -217,6 +221,24 @@ func TestOperationValidationFailureAndValidationOnlyNeverObserveOrBegin(t *testi
 		if p.count(step) != 0 {
 			t.Fatalf("%s ran: %s", step, p.steps())
 		}
+	}
+}
+
+func TestApplicationValidatorAppendsBeforeBeginAreOutsideObservation(t *testing.T) {
+	p := newOperationProvider(commands.Committed)
+	app := operationSetup(t, p, true)
+	result, err := app.Commands().Execute(t.Context(), OperationBooking{ID: "a",
+		ValidationAppend: commands.Committed, Operation: seatReservation{Fail: true}})
+	if result.IsSuccess() || !errors.Is(err, errOperationFailed) || result.Completion().Disposition != commands.NoPersistedWork {
+		t.Fatal(result.Details(), result.Completion(), err)
+	}
+	// The direct application write happened before publication/subscription, so
+	// the integration cannot include it in the completion or suppress recovery.
+	if got, want := p.steps(), "validate,append,subscribe,handle,dependencies,execute,unsubscribe,compensate:NoPersistedWork"; got != want {
+		t.Fatalf("steps = %s, want %s", got, want)
+	}
+	if recovery(t, result).Status != commands.RecoveryCompleted {
+		t.Fatal(result.OperationOutcomes())
 	}
 }
 

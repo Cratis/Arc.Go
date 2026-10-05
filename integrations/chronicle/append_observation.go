@@ -28,7 +28,8 @@ type AppendObserver interface {
 // Operation-capable commands begin the Chronicle transaction after filters and
 // validation. Their root filter therefore only records the authorized request;
 // the terminal Begin opens the transaction, publishes the origin and subscribes
-// before any business callback runs. Filters and validation never persist.
+// before Provide/Handle or operations run. The integration never persists during
+// filters or validation; direct application appends before Begin are unattributed.
 func (i *Integration) OnExecution(ctx context.Context, inv *commands.Invocation) (commands.Result[commands.NoResponse], error) {
 	success := commands.Success(inv.CommandContext().CorrelationID())
 	if inv.CommandContext().IsValidationOnly() {
