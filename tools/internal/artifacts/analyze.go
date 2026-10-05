@@ -80,7 +80,7 @@ func analyze(pkg *packages.Package) (*analysis, error) {
 		return nil, err
 	}
 	if len(a.validators)+len(a.policies) > 0 && len(a.commands)+len(a.models) == 0 && !hasDerivedModels(a) {
-		pos := token.NoPos
+		var pos token.Pos
 		if len(a.validators) > 0 {
 			pos = a.validators[0].pos
 		} else {
