@@ -119,6 +119,21 @@ func goBlocks(content string) []string {
 	return blocks
 }
 
+func TestHostingDocumentsTheTestedConcurrentShutdown(t *testing.T) {
+	sources := regions(t)
+	shutdown, ok := sources["host-shutdown"]
+	if !ok {
+		t.Fatal("no tested host-shutdown recipe region found")
+	}
+	page := read(t, filepath.Join(docsRoot, "../core/hosting.md"))
+	if !slices.Contains(goBlocks(page), shutdown) {
+		t.Fatal("hosting must show the tested concurrent HTTP and Arc shutdown recipe")
+	}
+	if strings.Contains(page, "In your host, retain the same ownership order.") {
+		t.Fatal("hosting must not recommend joining HTTP before canceling Arc observations")
+	}
+}
+
 func TestEveryDocumentedGoBlockIsATestedRecipeRegion(t *testing.T) {
 	sources := regions(t)
 	if len(sources) == 0 {
