@@ -15,6 +15,7 @@ import (
 
 type transaction struct {
 	mu           sync.Mutex
+	enrolling    sync.Mutex // serializes decision enrollment; see EnrollDecision
 	busy, closed bool
 	bound        bool
 	observed     bool
@@ -263,17 +264,8 @@ func (i *Integration) stage(ctx context.Context, inv *commands.Invocation, batch
 		scopes = append(scopes, scope)
 	}
 	batch.Scopes = scopes
-	if tx.owner == nil {
-		tx.participant, tx.owner, err = i.options.Transactions.Begin(frame.context(ctx), frame.coordinates)
-		if err != nil {
-			return err
-		}
-		if isNil(tx.participant) || isNil(tx.owner) {
-			return ErrInvalid
-		}
-		tx.mu.Lock()
-		tx.coordinates, tx.actor, tx.bound = frame.coordinates, frame.actor, true
-		tx.mu.Unlock()
+	if err = i.bind(ctx, tx, frame); err != nil {
+		return err
 	}
 	if err = inv.Execution().Check(ctx); err != nil {
 		return err
