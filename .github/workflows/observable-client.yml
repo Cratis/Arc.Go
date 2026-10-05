@@ -37,6 +37,9 @@ jobs:
           node-version: '26.8.1'
           cache: npm
           cache-dependency-path: ContractTests/observables/frontend/package-lock.json
+      # setup-node ships Node's bundled npm; the lock and engines pin npm 12.0.2.
+      - name: Install pinned npm
+        run: npm install --global --no-audit --no-fund npm@12.0.2
       - name: Install locked prerequisites
         run: node ContractTests/observables/frontend/run.mjs install
       - name: Verify production-generated Go adapter, proxies and manifest

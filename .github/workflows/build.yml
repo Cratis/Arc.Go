@@ -154,6 +154,11 @@ jobs:
     defaults:
       run:
         working-directory: tools
+    env:
+      # Top-level tests split from the rest so each half stays well inside the
+      # per-run go test timeout. The same anchored pattern feeds -run and -skip,
+      # so the two runs are complementary by construction.
+      TOOLS_HEAVY_TESTS: 'TestOwnedPublication.*|TestCompetingObservable.*|TestObservableCollections.*|TestInvalidServiceImports.*|TestQueryRuleRepresentation.*'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -170,10 +175,14 @@ jobs:
         run: go build ./...
       - name: Vet tools
         run: go vet ./...
-      - name: Test tools and generated consumers
-        run: go test -count=1 -timeout=2m ./...
-      - name: Race detector
-        run: go test -race -count=1 -timeout=3m ./...
+      - name: Test tools and generated consumers (publication and CLI families)
+        run: go test -count=1 -timeout=2m -run "^(${TOOLS_HEAVY_TESTS})\$" ./...
+      - name: Test tools and generated consumers (remaining tests)
+        run: go test -count=1 -timeout=2m -skip "^(${TOOLS_HEAVY_TESTS})\$" ./...
+      - name: Race detector (publication and CLI families)
+        run: go test -race -count=1 -timeout=3m -run "^(${TOOLS_HEAVY_TESTS})\$" ./...
+      - name: Race detector (remaining tests)
+        run: go test -race -count=1 -timeout=3m -skip "^(${TOOLS_HEAVY_TESTS})\$" ./...
       - name: Check generated adapters
         run: go run ./cmd/arc-gen -dir .. -check ./ContractTests/generatedconsumer
       - name: Check tidy manifests

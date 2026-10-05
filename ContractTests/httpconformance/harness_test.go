@@ -47,8 +47,12 @@ func (w *hostOutput) Write(p []byte) (int, error) {
 func (w *hostOutput) String() string { w.mu.Lock(); defer w.mu.Unlock(); return w.buffer.String() }
 
 type processHost struct {
-	cmd     *exec.Cmd
-	stdin   io.WriteCloser
+	cmd *exec.Cmd
+	// stdin is the parent-owned write end of the host's standard input. It is
+	// created with os.Pipe rather than Cmd.StdinPipe because Cmd.Wait closes a
+	// StdinPipe after the child exits; an early exit would then race stop's
+	// graceful-shutdown Close into os.ErrClosed. Only stop closes it.
+	stdin   *os.File
 	done    chan struct{}
 	waitErr error
 	output  *hostOutput
@@ -62,17 +66,23 @@ func launch(ctx context.Context, command string, args, env []string) (*processHo
 	h.cmd.Env = append(os.Environ(), env...)
 	h.cmd.Stdout, h.cmd.Stderr = h.output, h.output
 	h.cmd.WaitDelay = 3 * time.Second
-	stdin, err := h.cmd.StdinPipe()
+	childStdin, stdin, err := os.Pipe()
 	if err != nil {
 		cancel()
 		return nil, err
 	}
+	h.cmd.Stdin = childStdin
 	h.stdin = stdin
 	if err := h.cmd.Start(); err != nil {
 		cancel()
-		return nil, errors.Join(err, stdin.Close())
+		return nil, errors.Join(err, childStdin.Close(), stdin.Close())
 	}
 	go func() { h.waitErr = h.cmd.Wait(); close(h.done) }()
+	// The child holds its own descriptor after Start; the parent's copy of the
+	// read end must be released so closing stdin delivers EOF to the child.
+	if err := childStdin.Close(); err != nil {
+		return nil, errors.Join(err, h.stop(5*time.Second))
+	}
 	return h, nil
 }
 func (h *processHost) origin(ctx context.Context) (string, error) {
@@ -293,6 +303,21 @@ func TestEarlyExitFails(t *testing.T) {
 	}
 	if cleanup != nil {
 		t.Fatal(cleanup)
+	}
+}
+
+// TestStopAfterJoinedExitIsClean forces the ordering in which the host has
+// already exited and been joined before stop closes its standard input. With
+// Cmd.StdinPipe, Wait closed the pipe first and stop reported os.ErrClosed.
+func TestStopAfterJoinedExitIsClean(t *testing.T) {
+	command, args, env := child(t, "early")
+	h, err := launch(t.Context(), command, args, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-h.done
+	if err := h.stop(5 * time.Second); err != nil {
+		t.Fatalf("stop after joined exit = %v", err)
 	}
 }
 func TestForcedCleanupFailsAndJoins(t *testing.T) {

@@ -22,7 +22,8 @@ class SourceMembershipTests(unittest.TestCase):
         self.source = self.root / "source"
         self.source.mkdir()
         locks = Path(inventory.__file__).parent / "locks"
-        self.graph = sorted(str(path.relative_to(locks).with_name(path.parent.name + ".csproj"))
+        # Project graph entries are repository-relative POSIX paths on every platform.
+        self.graph = sorted(path.relative_to(locks).with_name(path.parent.name + ".csproj").as_posix()
                             for path in locks.rglob("packages.lock.json"))
         self.expected = {}
         for project in self.graph:

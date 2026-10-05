@@ -47,7 +47,17 @@ go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 govulncheck ./...
 ```
 
-Repeat the Go build, vet, ordinary and race tests, lint, tidy-diff, and vulnerability checks from `tools/`, also with `GOWORK=off` and `GOTOOLCHAIN=local`. Use `golangci-lint run --config=../.golangci.yml` there. Regenerate the checked-in consumer adapters from `tools/` with `go run ./cmd/arc-gen -dir .. ./ContractTests/generatedconsumer`; verify them with the same command plus `-check` before the package pattern. Generator tests also compile and execute independent consumers against the pinned runtime version.
+Repeat the Go build, vet, lint, tidy-diff, and vulnerability checks from `tools/`, also with `GOWORK=off` and `GOTOOLCHAIN=local`. Use `golangci-lint run --config=../.golangci.yml` there. Run the `tools/` ordinary and race tests as two complementary halves, as CI does, so each half stays inside its timeout; the same anchored pattern selects one half with `-run` and the other with `-skip`:
+
+```sh
+heavy='TestOwnedPublication.*|TestCompetingObservable.*|TestObservableCollections.*|TestInvalidServiceImports.*|TestQueryRuleRepresentation.*'
+go test -count=1 -timeout=2m -run "^($heavy)\$" ./...
+go test -count=1 -timeout=2m -skip "^($heavy)\$" ./...
+go test -race -count=1 -timeout=3m -run "^($heavy)\$" ./...
+go test -race -count=1 -timeout=3m -skip "^($heavy)\$" ./...
+```
+
+Regenerate the checked-in consumer adapters from `tools/` with `go run ./cmd/arc-gen -dir .. ./ContractTests/generatedconsumer`; verify them with the same command plus `-check` before the package pattern. Generator tests also compile and execute independent consumers against the pinned runtime version.
 
 Format all Go source in all four modules with `gofmt`; no source files should appear in `gofmt -l` output. After `go mod tidy -diff`, also check `git status --short -- go.mod go.sum tools/go.mod tools/go.sum integrations/chronicle/go.mod integrations/chronicle/go.sum integrations/mongodb/go.mod integrations/mongodb/go.sum` for untracked manifests. Commit `go.sum` when dependencies require it. Do not add other nested modules, local `replace` directives, or personal `go.work` files: all four modules must build without sibling checkouts.
 
