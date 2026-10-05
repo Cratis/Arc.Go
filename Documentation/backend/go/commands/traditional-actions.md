@@ -47,7 +47,10 @@ go test -run ExampleNewActionHandler .
 No route is registered for you: mount the same handler on the action path and its
 `/validate` path. A request whose path ends in `/validate` (any letter case) binds
 the input and runs validation, then stops. It **never** invokes the action or a raw
-handler. Methods other than POST receive 405 with `Allow: POST`.
+handler. When a request reaches the adapter with another method it receives 405 with
+`Allow: POST`. A method-qualified mount such as `POST /greet` never routes other
+methods to the adapter: the router answers those itself (404 from the
+application), so mount method-independent paths if you need the adapter's 405.
 
 ## What the adapter does and does not do
 

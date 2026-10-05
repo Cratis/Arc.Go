@@ -79,7 +79,7 @@ role. See [authentication handlers](../authentication/index.md).
 
 | Member | Meaning |
 | --- | --- |
-| `observations` | One `queries.ObservationHealth` per registered query label (or `_other`) with `opening`, `running`, `closing`, `retained` and `delivered` counts |
+| `observations` | One `queries.ObservationHealth` (`query` label, `opening`, `running`, `closing`, `retained`, `delivered`) for each registered label or `_other` that currently owns at least one observation; labels with no owned observations are omitted, and a label disappears once its final observation joins |
 | `hubs` | One entry each for `sse` and `websocket` with `connected` and `closing` physical connections |
 | `openings` | Hub subscriptions still in admission or source opening |
 | `operations` | Active plus retired-but-unjoined hub subscriptions |

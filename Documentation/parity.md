@@ -195,9 +195,10 @@ The frontend authority is `Source/DotNET/Tools/ProxyGenerator` and
   windowing or totals. Same-key paging/sorting setter retention reproduces open
   [Arc issue 2869](https://github.com/Cratis/Arc/issues/2869), without compensating
   cache eviction or a Go server change. Joined socket/host cleanup is bounded.
-- **Remaining frontend gaps**: proxy-only generation, query validators,
+- **Remaining frontend gaps**: proxy-only generation, query validation beyond the bounded
+  snapshot-query string rules (see the generated snapshot-query validation row),
   unsupported model/rule/default/provider forms, custom import,
-  interface/grouping/library modes, OpenAPI, browser hosts, broader mounted-hook
+  interface/grouping/library modes, OpenAPI publication, browser hosts, broader mounted-hook
   families, and full paired .NET parity. Opaque MongoDB `Source[Find]` generation requires
   explicit emission metadata; manual runtime support does not imply generation.
   The Node manual lane covers a wider transport matrix than the generated default

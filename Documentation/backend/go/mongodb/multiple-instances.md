@@ -42,7 +42,7 @@ connection ID. They only work on that same instance.
 | --- | --- |
 | Correct owner, same instance | 200; the result arrives on the stream |
 | Correct owner, **other** instance | 404; no resources are opened |
-| Wrong subject, tenant or anonymous caller on the right instance | 404 |
+| Wrong subject or tenant, an anonymous caller controlling an authenticated owner's connection, or an anonymous caller whose ownership evidence (connection cookie or `AnonymousOwner` result) does not match, on the right instance | 404 |
 | Any caller after the owning instance is gone | 404 |
 
 Configure your load balancer so that the hub GET and its controls reach the same
