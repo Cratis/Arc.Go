@@ -5,7 +5,7 @@ description: Declare immediate inline work, inspect commit-aware recovery, and u
 
 Returning work lets you test a command's decision without performing the write. Arc.Go executes explicitly registered operation declarations through the existing command pipeline and attempts their declared reversals only when observed persistence permits it.
 
-This is **Partial C# parity**: manual, flat, sequential operations are supported. Chronicle operation participation, generated operation adapters, receipts, nested operation workflows, and durable recovery are not implemented.
+This is **Partial C# parity**: manual, flat, sequential operations are supported. Generated operation adapters, receipts, nested operation workflows, and durable recovery are not implemented.
 
 ## Declare and register work
 
@@ -56,7 +56,8 @@ Every scope must opt in statically:
 
 - `Registry.AddOperationExecutionScope` promises noncommitting `Begin` and `Complete`, with recovery dependencies usable until resource disposal.
 - `Registry.AddOperationCommitParticipant` occupies the existing sole terminal slot. Its `ObserveCommit` hook reports provider facts before external operation entry; `Complete` supplies the authoritative final report.
-- Unclassified ordinary or terminal scopes reject operation commands at `Build`, before factories or `Begin`. They remain supported for non-operation commands. In particular, the existing Chronicle installation remains usable for non-operation commands but **cannot yet host operation commands**.
+- Unclassified ordinary or terminal scopes reject operation commands at `Build`, before factories or `Begin`. They remain supported for non-operation commands.
+- The installed Chronicle integration registers through `AddOperationCommitParticipant` and hosts operation commands. See [Chronicle compensation](../chronicle/index.md#compensate-operations-against-chronicle-outcomes) for append observer/resolver prerequisites and remaining limitations.
 
 Ordinary scopes complete in reverse entry order, then the sole terminal participant completes. Only afterward does Arc choose recovery, while the originating resource owner is still alive. Pending pre-entry `NotCommitted` observations are not merged as finalized attempts; confirmed, unknown, or mixed persistence facts remain sticky and prohibit operation entry.
 
@@ -84,4 +85,4 @@ Completed recovery means callbacks returned, not that external history was erase
 
 The authority is C# Arc revision `7c1e78075b737df64f69fddfaae83374f75e3612`: `Arc.Core/Commands/CommandOperationExecution.cs`, `CommandOperationBoundary.cs`, the operation execution/recovery reference, and `Arc.Core.Specs/Commands/for_CommandOperationExecution`.
 
-Go evidence is in `commands/operations_test.go`, `operation_execution_test.go`, `operation_boundaries_test.go`, and `operation_example_test.go`: declaration copying and metadata, complete preflight, all five existing dispositions, partial failure, controls, denial and validation nonactivation, sticky nesting, cancellation, panic, detached budgets, resource retention/join resumption, error identity and actual HTTP privacy. These core fixtures do not establish Chronicle provider compatibility.
+Go evidence is in `commands/operations_test.go`, `operation_execution_test.go`, `operation_boundaries_test.go`, and `operation_example_test.go`: declaration copying and metadata, complete preflight, all five existing dispositions, partial failure, controls, denial and validation nonactivation, sticky nesting, cancellation, panic, detached budgets, resource retention/join resumption, error identity and actual HTTP privacy. These core fixtures alone do not establish Chronicle provider compatibility; the [Chronicle integration guide](../chronicle/index.md#compensate-operations-against-chronicle-outcomes) describes its separate provider and kernel evidence.
