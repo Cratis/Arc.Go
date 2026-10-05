@@ -46,6 +46,8 @@
           href: backend/go/commands/command-context.md
         - name: Command filters
           href: backend/go/commands/command-filters.md
+        - name: Protected decision reads
+          href: backend/go/commands/decision-reads.md
         - name: Flat command operations
           href: backend/go/commands/operations.md
         - name: Command execution scopes

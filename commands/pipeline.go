@@ -589,7 +589,7 @@ func (f *frame) execute() {
 		return
 	}
 	// Foreign, nil and expired decision reads are refused before Handle's effects.
-	f.fail(f.verifyProvided(prepared.payload), false)
+	f.fail(f.verifyProvided(prepared.payload, prepared.payloadEvidence), false)
 	if !f.result.IsSuccess() {
 		return
 	}

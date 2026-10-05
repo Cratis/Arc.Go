@@ -232,7 +232,7 @@ func TestProtectedDecisionReadIsEnrolledAndVerifiedBeforeHandle(t *testing.T) {
 }
 
 func TestProvidedDecisionReadsAreRefusedBeforeHandle(t *testing.T) {
-	for _, name := range []string{"foreign", "nil", "zero", "empty-evidence", "expired", "uncertified-provider", "unmarked-foreign"} {
+	for _, name := range []string{"foreign", "nil", "nil-interface-evidence", "zero", "empty-evidence", "expired", "uncertified-provider", "unmarked-foreign"} {
 		t.Run(name, func(t *testing.T) {
 			provider, source := commands.NewDecisionProvider(), &seatSource{}
 			var handled atomic.Int32
@@ -253,6 +253,8 @@ func TestProvidedDecisionReadsAreRefusedBeforeHandle(t *testing.T) {
 				switch name {
 				case "nil":
 					return (*commands.DecisionRead)(nil), nil
+				case "nil-interface-evidence":
+					return nil, nil // Provided[DecisionEvidence](nil) in seatPipeline
 				case "zero":
 					return &commands.DecisionRead{}, nil
 				case "empty-evidence":
@@ -370,6 +372,64 @@ func TestUnprotectedCommandMayReturnReadlessEvidenceButNotReads(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestProtectedPreparationAllowsNilPayloadWithoutEvidenceContract(t *testing.T) {
+	testNilPreparationPayload[any](t)
+	testNilPreparationPayload[*Seat](t)
+}
+
+func testNilPreparationPayload[P any](t *testing.T) {
+	t.Helper()
+	var r commands.Registry
+	var handled bool
+	var payload P
+	must(t, commands.Register(&r, commands.WithoutModelValidation[ReserveSeat](), commands.WithProtectedDecisions[ReserveSeat](),
+		commands.Prepare(func(context.Context, *commands.Invocation, ReserveSeat) (commands.Preparation[P], error) {
+			return commands.Provided(payload), nil
+		}, func(context.Context, *commands.Invocation, ReserveSeat, P) (commands.NoResponse, error) {
+			handled = true
+			return commands.NoResponse{}, nil
+		})))
+	must(t, r.AddDecisionProvider(commands.NewDecisionProvider()))
+	addOwner(t, &r)
+	result, err := build(t, &r, commands.PipelineOptions{}).Execute(t.Context(), ReserveSeat{Seat: "A1"})
+	if err != nil || !result.IsSuccess() || !handled {
+		t.Fatalf("nil %T payload = %v, %v, handled %v", payload, result, err, handled)
+	}
+}
+
+func TestCachedOverwrittenDecisionReadIsRefusedBeforeHandle(t *testing.T) {
+	for _, name := range []string{"foreign", "zero"} {
+		t.Run(name, func(t *testing.T) {
+			provider, source := commands.NewDecisionProvider(), &seatSource{}
+			foreign := issuedElsewhere(t)
+			var handled atomic.Int32
+			p := seatPipeline(t, provider, &handled, func(ctx context.Context, inv *commands.Invocation, c ReserveSeat) (commands.DecisionEvidence, error) {
+				current, err := commands.ReadDecision(ctx, inv, seatTarget(provider, c.Seat), source)
+				if err != nil {
+					return nil, err
+				}
+				if name == "foreign" {
+					*current = *foreign
+				} else {
+					*current = commands.DecisionRead{}
+				}
+				read, err := commands.ReadDecision(ctx, inv, seatTarget(provider, c.Seat), source)
+				if read != nil || !errors.Is(err, commands.ErrDecisionRead) {
+					t.Fatalf("cached overwritten read = %v, %v", read, err)
+				}
+				return read, err
+			}, commands.WithProtectedDecisions[ReserveSeat]())
+			result, err := p.Execute(t.Context(), ReserveSeat{Seat: "A1"})
+			if result.IsSuccess() || !errors.Is(err, commands.ErrDecisionRead) || handled.Load() != 0 {
+				t.Fatalf("overwritten reread = %v, %v, handled %d", result, err, handled.Load())
+			}
+			if source.acquired.Load() != 1 || source.enrolled.Load() != 1 {
+				t.Fatalf("overwritten reread acquired=%d enrolled=%d", source.acquired.Load(), source.enrolled.Load())
+			}
+		})
 	}
 }
 

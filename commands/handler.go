@@ -17,7 +17,9 @@ type preparedCall struct {
 	hasControl bool
 	stop       bool
 	payload    any // Provide's value, verified for decision evidence before handle
-	handle     func(context.Context, *Invocation) (any, error)
+	// payloadEvidence preserves a nil interface's declared evidence contract.
+	payloadEvidence bool
+	handle          func(context.Context, *Invocation) (any, error)
 }
 type adapter struct {
 	prepare      func(context.Context, *Invocation, any) (preparedCall, error)
@@ -110,6 +112,7 @@ func WithPreparation[C, P, O any](provide func(C, context.Context) (Preparation[
 func Prepare[C, P, O any](provide func(context.Context, *Invocation, C) (Preparation[P], error), handle func(context.Context, *Invocation, C, P) (O, error)) Handler[C, O] {
 	a := returnAdapter[O]()
 	a.valid = provide != nil && handle != nil
+	payloadEvidence := reflect.TypeFor[P]().Implements(reflect.TypeFor[DecisionEvidence]())
 	a.prepare = func(ctx context.Context, inv *Invocation, value any) (preparedCall, error) {
 		c := value.(C)
 		p, err := provide(ctx, inv, c)
@@ -119,7 +122,7 @@ func Prepare[C, P, O any](provide func(context.Context, *Invocation, C) (Prepara
 		if !p.valid {
 			return preparedCall{}, ErrInvalidPreparation
 		}
-		return preparedCall{control: p.control, hasControl: true, stop: p.stop, payload: p.value, handle: func(ctx context.Context, inv *Invocation) (any, error) { return handle(ctx, inv, c, p.value) }}, nil
+		return preparedCall{control: p.control, hasControl: true, stop: p.stop, payload: p.value, payloadEvidence: payloadEvidence, handle: func(ctx context.Context, inv *Invocation) (any, error) { return handle(ctx, inv, c, p.value) }}, nil
 	}
 	return Handler[C, O]{adapter: a}
 }

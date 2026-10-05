@@ -240,6 +240,9 @@ func ReadDecision(ctx context.Context, inv *Invocation, target DecisionTarget, s
 		return nil, err
 	}
 	read, issue := pending.read, pending.issue
+	if read == nil || issue == nil || read.issue != issue {
+		return nil, ErrDecisionRead
+	}
 	err = boundary.Call(ctx, func(ctx context.Context) error {
 		if err := issue.check(ctx, issue.value); err != nil {
 			return err
@@ -248,6 +251,9 @@ func ReadDecision(ctx context.Context, inv *Invocation, target DecisionTarget, s
 		// Refuse the next effect even when checking itself reports success.
 		if err := inv.Execution().Check(ctx); err != nil {
 			return err
+		}
+		if read.issue != issue {
+			return ErrDecisionRead
 		}
 		if state.mode == decisionProtected {
 			return source.Enroll(ctx, issue.value)
@@ -259,7 +265,7 @@ func ReadDecision(ctx context.Context, inv *Invocation, target DecisionTarget, s
 	}
 	err = withState(ctx, inv, func(e *Execution) error {
 		current, err := currentDecisionReads(e)
-		if err != nil || current != state {
+		if err != nil || current != state || read.issue != issue {
 			return ErrDecisionRead
 		}
 		current.issued[read] = issue
@@ -306,7 +312,10 @@ func VerifyDecision(ctx context.Context, inv *Invocation, read *DecisionRead) (e
 // is refused. A protected command must carry at least one read; unmarked and
 // unprotected commands may return read-less DecisionEvidence as an advisory
 // snapshot. Payloads that carry no DecisionEvidence are not inspected.
-func (f *frame) verifyProvided(payload any) error {
+func (f *frame) verifyProvided(payload any, payloadEvidence bool) error {
+	if payload == nil && payloadEvidence && f.registration.decisions == DecisionsProtected {
+		return decisionFailure(ErrDecisionRead)
+	}
 	evidence, ok := payload.(DecisionEvidence)
 	if !ok {
 		return nil

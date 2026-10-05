@@ -258,6 +258,65 @@ func TestOverwrittenDecisionHandleIsRefusedRegardlessOfEvidenceShape(t *testing.
 	}
 }
 
+func TestCachedDecisionReadRefusesOverwriteDuringProviderCallbacks(t *testing.T) {
+	for _, stage := range []string{"check", "enroll"} {
+		for _, replacement := range []string{"foreign", "zero"} {
+			t.Run(stage+"/"+replacement, func(t *testing.T) {
+				f := decisionFrameForTest(t, false)
+				var acquired, enrolled atomic.Int32
+				target, source := decisionSourceForTest(&acquired, &enrolled)
+				var read *DecisionRead
+				var overwrite DecisionRead
+				var armed bool
+				check := source.check
+				source.check = func(ctx context.Context, value any) error {
+					if armed && stage == "check" {
+						*read = overwrite
+					}
+					return check(ctx, value)
+				}
+				callDecisionFrame(t, f, func(ctx context.Context, inv *Invocation) error {
+					var err error
+					read, err = ReadDecision(ctx, inv, target, source)
+					if err != nil {
+						return err
+					}
+					if replacement == "foreign" {
+						other := target
+						other.Key = "other"
+						foreign, err := ReadDecision(ctx, inv, other, source)
+						if err != nil {
+							return err
+						}
+						overwrite = *foreign
+					}
+					before := enrolled.Load()
+					armed = true
+					if stage == "enroll" {
+						source.enroll = func(context.Context, any) error {
+							enrolled.Add(1)
+							*read = overwrite
+							return nil
+						}
+					}
+					got, err := ReadDecision(ctx, inv, target, source)
+					if got != nil || !errors.Is(err, ErrDecisionRead) {
+						t.Fatalf("overwritten during %s = %v, %v", stage, got, err)
+					}
+					want := before
+					if stage == "enroll" {
+						want++
+					}
+					if enrolled.Load() != want {
+						t.Fatalf("enrolled = %d, want %d", enrolled.Load(), want)
+					}
+					return nil
+				})
+			})
+		}
+	}
+}
+
 func TestDecisionCacheSeparatesEveryTargetDimension(t *testing.T) {
 	f := decisionFrameForTest(t, false)
 	var acquired, enrolled atomic.Int32
