@@ -19,9 +19,11 @@ are not client data. Concrete sources use ordinary interface assignment, retaini
 CurrentSource behavior. Dependencies resolve after admission; adapters do not open
 streams, start workers or dispose resources.
 
-The first collection-client milestone requires a selected direct Go ID/Id field
-serialized as `id`, with a supported nonnullable scalar. Other identity layouts,
-nullable collection elements and unsupported sources diagnose before publication.
+Collection clients require either a selected direct Go ID/Id field serialized
+as `id`, with a supported nonnullable scalar, or no identity at all (no ID/Id
+member and no serialized `id`), matching the C# JSON fallback. Other identity
+layouts, nullable collection elements and unsupported sources diagnose before
+publication.
 Identity tags are not client delta extractors. Collection shape does not set the
 runtime's streaming-required `WithEnumerable` option.
 

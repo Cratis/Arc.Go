@@ -85,10 +85,11 @@ for discovery.
   data. Generated `ObservableQueryFor` classes expose subscription, snapshot
   perform, sorting, paging, and hook helpers through the pinned client runtime;
   they do not generate a transport or delta algorithm.
-- Observable collection proxies require one unambiguous direct Go `ID`/`Id`
-  serialized as `id`, with a supported nonnullable scalar and no omission tag.
-  Competing conventional members, including JSON-hidden and embedded members,
-  fail before publication. An identity tag is not a custom client delta extractor.
+- Observable collection proxies accept either one unambiguous direct Go `ID`/`Id`
+  serialized as `id`, with a supported nonnullable scalar and no omission tag,
+  or no identity at all (C# JSON fallback). A serialized `id` without `ID`/`Id`,
+  and competing, JSON-hidden or embedded conventional members, fail before
+  publication. An identity tag is not a custom client delta extractor.
 - Primitive query defaults validate the original Go grammar and target width,
   but remain server defaults rather than initialized client values. Nullable
   collection elements and rich defaults are unsupported. Snapshot query string

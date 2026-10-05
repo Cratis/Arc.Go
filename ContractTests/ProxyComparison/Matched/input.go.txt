@@ -1,0 +1,77 @@
+// Copyright (c) Cratis. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+
+//arc:namespace ProxyComparison
+package consumer
+
+import (
+	"time"
+
+	"github.com/cratis/arc.go/concepts"
+	"github.com/cratis/arc.go/queries"
+)
+
+//arc:enum members=StatusDraft:Draft,StatusPublished:Published
+type Status int32
+
+const (
+	StatusDraft     Status = 0
+	StatusPublished Status = 1
+)
+
+type Detail struct {
+	ID      concepts.UUID `json:"id"`
+	Created time.Time     `json:"created"`
+}
+
+type INotice interface{ notice() }
+
+//arc:model
+//arc:derived interface=INotice
+type Notice struct {
+	Title string `json:"title"`
+}
+
+func (Notice) notice() {}
+
+//arc:model
+//arc:derived interface=INotice base=Notice id=1578f20a-cd63-456f-98aa-c97daf05d0fa
+type UrgentNotice struct {
+	Notice
+	Priority int32 `json:"priority"`
+}
+
+//arc:command path=/api/proxy-comparison/register
+type Register struct {
+	ID       concepts.UUID `json:"id"`
+	Name     string        `json:"name" rules:"[{\"name\":\"notEmpty\",\"message\":\"Name required\"},{\"name\":\"maxLength\",\"arguments\":[40],\"message\":\"Name too long\"}]"`
+	Quantity int32         `json:"quantity" rules:"[{\"name\":\"greaterThanOrEqual\",\"arguments\":[1],\"message\":\"Quantity must be positive\"}]"`
+}
+
+func (Register) Handle() error { return nil }
+
+//arc:readmodel
+type Listing struct {
+	Name   string `json:"name" sortable:"true"`
+	Detail Detail `json:"detail"`
+	Notice Notice `json:"notice"`
+	Status Status `json:"status" sortable:"true"`
+}
+
+type Arguments struct {
+	ID concepts.UUID `json:"id" query:"required"`
+}
+
+//arc:query path=/api/proxy-comparison/all
+//arc:allow-anonymous
+func (Listing) All(args Arguments) (queries.Page[Listing], error) {
+	return queries.Page[Listing]{Items: rows(args.ID)}, nil
+}
+
+func rows(id concepts.UUID) []Listing {
+	return []Listing{
+		{Name: "charlie", Detail: Detail{ID: id, Created: time.Date(2026, 1, 3, 3, 4, 5, 0, time.UTC)}, Notice: Notice{Title: "third"}, Status: StatusDraft},
+		{Name: "alpha", Detail: Detail{ID: id, Created: time.Date(2026, 1, 1, 3, 4, 5, 0, time.UTC)}, Notice: Notice{Title: "first"}, Status: StatusPublished},
+		{Name: "bravo", Detail: Detail{ID: id, Created: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)}, Notice: Notice{Title: "second"}, Status: StatusDraft},
+	}
+}
