@@ -61,12 +61,13 @@ Nested commands and validation-only runs get their own cache. A `Validate` run n
 
 After `Provide` and before `Handle`, Arc verifies every read carried by a payload that implements `DecisionEvidence` (`*DecisionRead` does). It refuses:
 
-- a nil or zero `DecisionRead`, or evidence that carries no reads;
+- a nil or zero `DecisionRead`, or, for a protected command, evidence that carries no reads;
+- a `DecisionRead` whose evidence was replaced after issue, for example by copying another read over it;
 - a read issued to another invocation, another command, a validation-only run or another pipeline;
 - a read the provider's `Check` no longer accepts;
 - a read used after its callback expired, or under a changed principal or correlation.
 
-This applies to every profile: an unmarked command has no issued reads, so any read it carries is refused. Call `VerifyDecision` yourself before relying on a read in a callback Arc doesn't verify. Arc only inspects payloads that implement `DecisionEvidence`; it doesn't look inside other structs or slices.
+This applies to every profile: an unmarked or unprotected command has no issued reads, so any read it carries is refused. Such a command may still return a provider-typed `DecisionEvidence` value that carries no reads, which is how a provider serves an advisory snapshot. Call `VerifyDecision` yourself before relying on a read in a callback Arc doesn't verify. Arc only inspects payloads that implement `DecisionEvidence`; it doesn't look inside other structs or slices.
 
 Every refusal wraps `ErrDecisionRead` and keeps the provider's cause for `errors.Is` and `errors.As`. It is an infrastructure failure, never a validation finding, so `ExecuteOptions.AllowedSeverity` can't turn it into success.
 

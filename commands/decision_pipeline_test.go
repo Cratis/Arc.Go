@@ -338,3 +338,52 @@ func TestDecisionRefusalCannotBeAllowedBySeverity(t *testing.T) {
 		t.Fatalf("allowed severity admitted a refused read: %v, %v", result, err)
 	}
 }
+
+func TestUnprotectedCommandMayReturnReadlessEvidenceButNotReads(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		evidence func() commands.DecisionEvidence
+		want     bool
+	}{
+		{"advisory-snapshot", func() commands.DecisionEvidence { return emptyEvidence{} }, true},
+		{"foreign-read", func() commands.DecisionEvidence { return issuedElsewhere(t) }, false},
+		{"zero-read", func() commands.DecisionEvidence { return &commands.DecisionRead{} }, false},
+	} {
+		for name, profile := range map[string]commands.Option[ReserveSeat]{
+			"unprotected": commands.WithUnprotectedDecisions[ReserveSeat](),
+			"unmarked":    commands.WithName[ReserveSeat]("ReserveSeat"),
+		} {
+			t.Run(tc.name+"/"+name, func(t *testing.T) {
+				var handled atomic.Int32
+				p := seatPipeline(t, commands.NewDecisionProvider(), &handled, func(context.Context, *commands.Invocation, ReserveSeat) (commands.DecisionEvidence, error) {
+					return tc.evidence(), nil
+				}, profile)
+				result, err := p.Execute(t.Context(), ReserveSeat{Seat: "A1"})
+				if tc.want && (err != nil || !result.IsSuccess() || handled.Load() != 1) {
+					t.Fatalf("advisory evidence = %v, %v, handled %d", result, err, handled.Load())
+				}
+				if !tc.want && (result.IsSuccess() || !errors.Is(err, commands.ErrDecisionRead) || handled.Load() != 0) {
+					t.Fatalf("refused evidence = %v, %v, handled %d", result, err, handled.Load())
+				}
+			})
+		}
+	}
+}
+
+func TestOverwrittenDecisionReadIsRefusedBeforeHandle(t *testing.T) {
+	provider, source := commands.NewDecisionProvider(), &seatSource{}
+	foreign := issuedElsewhere(t)
+	var handled atomic.Int32
+	p := seatPipeline(t, provider, &handled, func(ctx context.Context, inv *commands.Invocation, c ReserveSeat) (commands.DecisionEvidence, error) {
+		current, err := commands.ReadDecision(ctx, inv, seatTarget(provider, c.Seat), source)
+		if err != nil {
+			return nil, err
+		}
+		*current = *foreign // replace the issued handle's evidence with a foreign read's
+		return current, nil
+	}, commands.WithProtectedDecisions[ReserveSeat]())
+	result, err := p.Execute(t.Context(), ReserveSeat{Seat: "A1"})
+	if result.IsSuccess() || !errors.Is(err, commands.ErrDecisionRead) || handled.Load() != 0 {
+		t.Fatalf("overwritten read = %v, %v, handled %d", result, err, handled.Load())
+	}
+}

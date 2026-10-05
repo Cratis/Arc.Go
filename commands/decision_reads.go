@@ -52,7 +52,10 @@ type DecisionSource interface {
 // DecisionEvidence is implemented by values that carry issued decision reads. A
 // protected command's Provide payload that implements it is verified before
 // Handle runs; *DecisionRead implements it. Arc does not inspect other payload
-// shapes, so a provider-typed decision value should implement this interface.
+// shapes, so a provider-typed decision value should implement this interface. A protected
+// command's evidence must carry at least one issued read. An unmarked or
+// unprotected command may return evidence that carries no reads as an advisory
+// snapshot; any read it does carry is refused, because it was never issued.
 type DecisionEvidence interface{ DecisionReads() []*DecisionRead }
 
 // DecisionRead is an issued read. Only ReadDecision issues one; a zero or copied
@@ -88,14 +91,36 @@ type decisionTarget struct {
 	store, namespace, key string
 }
 type decisionPending struct {
-	done chan struct{}
-	read *DecisionRead
-	err  error
+	done  chan struct{}
+	read  *DecisionRead
+	issue issuedRead
+	err   error
 }
 type decisionReads struct {
 	mode   decisionMode
 	reads  map[decisionTarget]*decisionPending
-	issued map[*DecisionRead]struct{}
+	issued map[*DecisionRead]issuedRead
+}
+
+// issuedRead is the immutable issuance record for one handle. Verification uses
+// it instead of the handle's own fields, which application code can overwrite by
+// copying another DecisionRead over the handle.
+type issuedRead struct {
+	value any
+	check func(context.Context, any) error
+}
+
+// sameEvidence reports whether a handle still carries the evidence it was issued
+// with. Evidence that is not comparable cannot be told apart and is accepted;
+// the stored record is still the only checker invoked.
+func sameEvidence(a, b any) bool {
+	if reflect.TypeOf(a) != reflect.TypeOf(b) {
+		return false
+	}
+	if v := reflect.ValueOf(a); v.IsValid() && !v.Comparable() {
+		return true
+	}
+	return a == b
 }
 
 var decisionState = NewStateKey[*decisionReads]()
@@ -131,7 +156,7 @@ func decisionsFor(e *Execution, provider *DecisionProvider) (*decisionReads, err
 	if f.snapshot.validationOnly {
 		mode = decisionValidation
 	}
-	state := &decisionReads{mode: mode, reads: make(map[decisionTarget]*decisionPending), issued: make(map[*DecisionRead]struct{})}
+	state := &decisionReads{mode: mode, reads: make(map[decisionTarget]*decisionPending), issued: make(map[*DecisionRead]issuedRead)}
 	f.state[decisionState.identity] = stateValue[*decisionReads]{state}
 	return state, nil
 }
@@ -210,6 +235,7 @@ func ReadDecision(ctx context.Context, inv *Invocation, target DecisionTarget, s
 				if err != nil || current != state {
 					return ErrDecisionRead
 				}
+				pending.issue = issuedRead{value: value, check: source.Check}
 				pending.read = &DecisionRead{value: value, check: source.Check}
 				return nil
 			})
@@ -227,9 +253,9 @@ func ReadDecision(ctx context.Context, inv *Invocation, target DecisionTarget, s
 	if err := inv.Execution().Check(ctx); err != nil {
 		return nil, err
 	}
-	read = pending.read
+	read, issue := pending.read, pending.issue
 	err = boundary.Call(ctx, func(ctx context.Context) error {
-		if err := read.check(ctx, read.value); err != nil {
+		if err := issue.check(ctx, issue.value); err != nil {
 			return err
 		}
 		// Provider checks may outlive the callback or change security continuity.
@@ -238,7 +264,7 @@ func ReadDecision(ctx context.Context, inv *Invocation, target DecisionTarget, s
 			return err
 		}
 		if state.mode == decisionProtected {
-			return source.Enroll(ctx, read.value)
+			return source.Enroll(ctx, issue.value)
 		}
 		return nil
 	})
@@ -250,7 +276,7 @@ func ReadDecision(ctx context.Context, inv *Invocation, target DecisionTarget, s
 		if err != nil || current != state {
 			return ErrDecisionRead
 		}
-		current.issued[read] = struct{}{}
+		current.issued[read] = issue
 		return nil
 	})
 	if err != nil {
@@ -267,20 +293,23 @@ func ReadDecision(ctx context.Context, inv *Invocation, target DecisionTarget, s
 // wraps ErrDecisionRead.
 func VerifyDecision(ctx context.Context, inv *Invocation, read *DecisionRead) (err error) {
 	defer func() { err = decisionFailure(err) }()
+	var issue issuedRead
 	verify := func(e *Execution) error {
 		state, err := currentDecisionReads(e)
 		if err != nil || read == nil {
 			return ErrDecisionRead
 		}
-		if _, issued := state.issued[read]; !issued {
+		recorded, issued := state.issued[read]
+		if !issued || !sameEvidence(read.value, recorded.value) {
 			return ErrDecisionRead
 		}
+		issue = recorded
 		return nil
 	}
 	if err := withState(ctx, inv, verify); err != nil {
 		return err
 	}
-	if err := boundary.Call(ctx, func(ctx context.Context) error { return read.check(ctx, read.value) }); err != nil {
+	if err := boundary.Call(ctx, func(ctx context.Context) error { return issue.check(ctx, issue.value) }); err != nil {
 		return err
 	}
 	return withState(ctx, inv, verify)
@@ -288,7 +317,9 @@ func VerifyDecision(ctx context.Context, inv *Invocation, read *DecisionRead) (e
 
 // verifyProvided verifies every read carried by a Provide payload before Handle,
 // for every profile: an unmarked command has no issued reads, so any carried read
-// is refused. Payloads that carry no DecisionEvidence are not inspected.
+// is refused. A protected command must carry at least one read; unmarked and
+// unprotected commands may return read-less DecisionEvidence as an advisory
+// snapshot. Payloads that carry no DecisionEvidence are not inspected.
 func (f *frame) verifyProvided(payload any) error {
 	evidence, ok := payload.(DecisionEvidence)
 	if !ok {
@@ -300,7 +331,13 @@ func (f *frame) verifyProvided(payload any) error {
 		}
 		reads := evidence.DecisionReads()
 		if len(reads) == 0 {
-			return decisionFailure(ErrDecisionRead)
+			if f.registration.decisions == DecisionsProtected {
+				return decisionFailure(ErrDecisionRead)
+			}
+			// An unmarked or unprotected command holds no issued reads, so
+			// evidence without reads is an advisory snapshot and carries nothing
+			// to verify. Any read it does carry is still refused below.
+			return nil
 		}
 		for _, read := range reads {
 			if err := VerifyDecision(ctx, inv, read); err != nil {
@@ -315,7 +352,7 @@ func (f *frame) verifyProvided(payload any) error {
 // infrastructure branch, so an allowed validation severity cannot turn a refused
 // read into success.
 func decisionFailure(err error) error {
-	if err == nil || errors.Is(err, ErrDecisionRead) {
+	if err == nil || (errors.Is(err, ErrDecisionRead) && len(boundary.Classify(err).Exceptions) > 0) {
 		return err
 	}
 	return errors.Join(ErrDecisionRead, err)
