@@ -79,6 +79,6 @@ for (const name of selected.length ? selected : known) {
         await mkdir(output, { recursive: true });
         await stage('go', ['build', '-o', host, './ContractTests/browser/host'], root);
     } else {
-        await stage(process.execPath, ['--test', '--test-concurrency=1', '--test-timeout=60000', 'browser.test.mjs'], directory, 240000);
+        await stage(process.execPath, ['--test', '--test-concurrency=1', '--test-timeout=60000', 'host.test.mjs', 'browser.test.mjs'], directory, 240000);
     }
 }

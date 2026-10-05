@@ -28,8 +28,9 @@ stages need the earlier stages' outputs:
 - `bundle` builds `app.jsx` with esbuild **0.25.10** into
   `.ai-work/browser-contract/assets`, using development React.
 - `host-build` builds `./ContractTests/browser/host`.
-- `runtime` runs `browser.test.mjs` with a 60-second bound per case and
-  240 seconds for the stage.
+- `runtime` runs `host.test.mjs` and `browser.test.mjs` with a 60-second bound
+  per case and 240 seconds for the stage. Startup-failure regressions use real
+  subprocesses and prove termination and joining, including a SIGKILL fallback.
 
 The dependencies are exactly the pins in the Node lane: `@cratis/arc` and
 `@cratis/arc.react` **22.48.2**, `@cratis/fundamentals` **7.22.0**, and React and
@@ -84,8 +85,11 @@ and checking its joined report.
   close, and later updates render.
 - **Terminal `Unauthorized`.** A denying emission guard makes the hook settle as
   ready and unauthorized. The denied value never renders, the server joins the
-  source, and the client never subscribes again: one subscribe POST and one
-  opened source for the whole host lifetime.
+  source. The page stays mounted through a real host restart and a bounded
+  2500ms observation window covering the pinned first reconnect back-off and
+  subscribe retries. It remains unauthorized, sends no new subscribe POST,
+  opens no new source and renders no denied or later value. Across both host
+  generations there is only one subscribe POST and one opened source.
 - **Joined shutdown.** An SSE page and a WebSocket page each hold one live
   source. `SIGTERM` makes the host join with both sources closed and every
   resolved resource disposed. Both pages then observe the close: an

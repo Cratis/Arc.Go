@@ -1,12 +1,11 @@
 // Copyright (c) Cratis. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
-import { createInterface } from 'node:readline';
+import { resolve } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium } from 'playwright-core';
+import { Bus, startHost } from './host.mjs';
 
 const assets = process.env.ARC_BROWSER_ASSETS;
 const hostExecutable = process.env.ARC_BROWSER_HOST;
@@ -30,97 +29,6 @@ after(async () => {
         await writeFile(evidencePath, JSON.stringify(failures, null, 2));
     }
 });
-
-// Items arrive in order. Each wait has one absolute deadline for its predicate,
-// not a fresh timeout per unrelated item, and there are no sleeps or retries.
-class Bus {
-    items = [];
-    #waiters = new Set();
-    push(item) {
-        this.items.push(item);
-        for (const check of [...this.#waiters]) check();
-    }
-    wait(label, predicate, count = 1, timeout = 5000) {
-        return new Promise((resolve, reject) => {
-            const check = () => {
-                const matches = this.items.filter(predicate);
-                if (matches.length < count) return false;
-                done();
-                resolve(matches);
-                return true;
-            };
-            const timer = setTimeout(() => { done(); reject(new Error(`Timed out waiting for ${label}`)); }, timeout);
-            const done = () => { clearTimeout(timer); this.#waiters.delete(check); };
-            if (!check()) this.#waiters.add(check);
-        });
-    }
-}
-
-// One host process per case: a fresh fixture, fresh cookies and a joined exit.
-async function startHost(evidence) {
-    const child = spawn(hostExecutable, ['-assets', assets], { stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env } });
-    const exited = new Promise((resolve, reject) => {
-        child.once('error', reject);
-        child.once('exit', (code, signal) => resolve({ code, signal }));
-    });
-    exited.catch(() => {});
-    const reports = new Bus();
-    evidence.host = reports.items;
-    const lines = createInterface({ input: child.stdout });
-    lines.on('line', line => reports.push(JSON.parse(line)));
-    let stopped;
-    const host = {
-        reports,
-        async request(method, path, body) {
-            const response = await fetch(host.origin + path, {
-                method, signal: AbortSignal.timeout(5000),
-                ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
-            });
-            return response;
-        },
-        async control(path, body) {
-            const response = await host.request('POST', path, body);
-            assert.equal(response.status, 204, `${path} failed: ${await response.text()}`);
-        },
-        publish(group, items) { return host.control('/fixture/publish', { group, items }); },
-        async signals() { return (await host.request('GET', '/fixture/signals')).json(); },
-        async wait(condition) {
-            const response = await host.request('GET', `/fixture/wait?${condition}`);
-            assert.equal(response.status, 204, `fixture condition ${condition}: ${await response.text()}`);
-        },
-        // SIGTERM must produce Arc's joined shutdown, never a forced kill.
-        stop() {
-            stopped ??= (async () => {
-                child.kill('SIGTERM');
-                const kill = setTimeout(() => child.kill('SIGKILL'), 7000);
-                try {
-                    const result = await exited;
-                    assert.equal(result.code, 0, `Host did not join cleanly: ${JSON.stringify(result)}`);
-                } finally {
-                    clearTimeout(kill);
-                    lines.close();
-                }
-                const joined = reports.items.find(report => report.joined);
-                assert.ok(joined, 'Host must report completed Arc shutdown');
-                assert.equal(joined.signals.open, joined.signals.close, 'All opened sources joined');
-                return joined;
-            })();
-            return stopped;
-        },
-    };
-    const [announcement] = await Promise.race([
-        reports.wait('host announcement', report => report.origin),
-        exited.then(result => { throw new Error(`Host exited before announcing: ${JSON.stringify(result)}`); }),
-    ]);
-    assert.match(announcement.origin, /^http:\/\/127\.0\.0\.1:\d+$/);
-    host.origin = announcement.origin;
-    // The listener exists, so one bounded request waits for Arc admission.
-    const ready = await host.request('GET', '/fixture/ready');
-    assert.equal(ready.status, 200);
-    host.names = await ready.json();
-    assert.ok(host.names.All, 'Required generated query is missing');
-    return host;
-}
 
 async function openPage(host, query, evidence, label) {
     const context = await browser.newContext();
@@ -326,13 +234,35 @@ browserTest('terminal Unauthorized settles the hook and never resubscribes', asy
     });
     // The server terminated and joined the source; the denied value never rendered.
     await host.wait('event=close&count=1');
-    const renders = await client.page.evaluate(() => window.__arcRenders);
-    assert.ok(!renders.some(render => render.titles.includes('alpha-denied')), 'denied update reached the page');
+    const deniedRenderCount = await client.page.evaluate(() => window.__arcRenders.length);
     await host.publish('alpha', items('alpha-later'));
+
+    // Keep the denied hook mounted while a real server close provides the same
+    // reconnect opportunity as the positive reconnect case. The new generation
+    // permits alpha again, so a retained subscription would visibly recover.
+    await host.control('/fixture/shutdown');
+    const [restarted] = await host.reports.wait('restart after denial', report => report.restarted === 1);
+    assert.equal(restarted.signals.open, 1);
+    assert.equal(restarted.signals.close, 1);
+    await client.consoleMessages.wait('denied hub observes server close', text => text.includes('SSE hub connection error'));
+    // Negative observation window: the pinned first reconnect delay is 1000ms.
+    // 2500ms also covers its three subscribe retry delays (200+400+600ms).
+    // This is a bounded absence check, not a guessed delay for a positive event.
+    await client.page.evaluate(() => new Promise(resolve => setTimeout(resolve, 2500)));
+    const state = await client.page.evaluate(() => window.__arcState);
+    assert.equal(state.isReady, true);
+    assert.equal(state.isAuthorized, false, 'denied hook remains unauthorized after reconnect opportunity');
+    assert.equal(await client.page.locator('section').getAttribute('data-authorized'), 'false');
+    const renders = await client.page.evaluate(() => window.__arcRenders);
+    assert.ok(!renders.some(render => render.titles.includes('alpha-denied') || render.titles.includes('alpha-later')), 'post-denial update reached the page');
+    assert.ok(renders.slice(deniedRenderCount).every(render => render.isAuthorized === false), 'denied hook recovered during the observation window');
+    assert.equal(client.requests.items.filter(isHubRequest('/subscribe')).length, 1, 'denied query sent no new subscribe POST');
+    assert.equal(client.requests.items.filter(isEventSource).length, 1, 'empty denied hub did not reopen');
+    assert.equal((await host.signals()).open, 0, 'denied query opened no source in the fresh generation');
     await client.context.close();
     const joined = await host.stop();
-    assert.equal(joined.signals.open, 1, 'Unauthorized is terminal: the client did not resubscribe');
-    assert.equal(client.requests.items.filter(isHubRequest('/subscribe')).length, 1, 'one subscribe POST in total');
+    assert.equal(joined.generation, 2);
+    assert.equal(joined.signals.open, 0, 'Unauthorized is terminal: the client did not resubscribe');
 });
 
 browserTest('joined host shutdown ends live SSE and WebSocket hubs in the browser', async ({ host, open }) => {
