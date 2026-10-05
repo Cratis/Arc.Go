@@ -117,7 +117,11 @@ func TestOneModelProjectsAndServesArcNamespaceQuery(t *testing.T) {
 // active, subscribed, behind a known tail and has no failed partitions.
 func awaitInventoryOrKnownStall(t *testing.T, ctx context.Context, store *chronicle.EventStore, model readmodels.Model[sharedmodel.Inventory], reader *readmodels.Reader[sharedmodel.Inventory], want sharedmodel.Inventory, position *events.SequenceNumber, namespace string) {
 	t.Helper()
-	if awaitInventory(t, ctx, reader, want) {
+	materialized, waitElapsed := awaitInventory(t, ctx, reader, want)
+	if err := ctx.Err(); err != nil {
+		t.Fatal("test context exhausted while waiting for projected inventory:", err)
+	}
+	if materialized {
 		return
 	}
 	failure := "projection did not materialize"
@@ -128,7 +132,7 @@ func awaitInventoryOrKnownStall(t *testing.T, ctx context.Context, store *chroni
 		if projection.Model().Identifier() != model.Identifier() {
 			continue
 		}
-		stall, evidence := observeStall(t, ctx, store, observation.ID(projection.Identifier()), projection.EventSequence(), *position, 0, failure)
+		stall, evidence := observeStall(t, ctx, store, observation.ID(projection.Identifier()), projection.EventSequence(), *position, 0, waitElapsed, failure)
 		if stall.matchesChronicle4548() {
 			knownKernelDefectObserved(t, chronicle4548+": catch-up job reuse strands observers in a freshly ensured namespace; re-enable with https://github.com/Cratis/Arc.Go/issues/43", failure, evidence)
 			return
@@ -138,10 +142,11 @@ func awaitInventoryOrKnownStall(t *testing.T, ctx context.Context, store *chroni
 	t.Fatal(failure, "; projection for the model not registered")
 }
 
-// awaitInventory polls for want and reports whether it materialized within 15 seconds.
-func awaitInventory(t *testing.T, ctx context.Context, reader *readmodels.Reader[sharedmodel.Inventory], want sharedmodel.Inventory) bool {
+// awaitInventory reports whether want materialized and whether the full
+// 15-second window elapsed, rather than the parent context ending the wait.
+func awaitInventory(t *testing.T, ctx context.Context, reader *readmodels.Reader[sharedmodel.Inventory], want sharedmodel.Inventory) (materialized, waitElapsed bool) {
 	t.Helper()
-	deadline, cancel := context.WithTimeout(ctx, 15*time.Second)
+	deadline, cancel := context.WithTimeoutCause(ctx, 15*time.Second, errObserverWaitElapsed)
 	defer cancel()
 	ticker := time.NewTicker(25 * time.Millisecond)
 	defer ticker.Stop()
@@ -151,13 +156,13 @@ func awaitInventory(t *testing.T, ctx context.Context, reader *readmodels.Reader
 			require(t, err)
 		}
 		if err == nil && instance.Exists && reflect.DeepEqual(instance.Value, want) {
-			return true
+			return true, false
 		}
 		select {
 		case <-deadline.Done():
 			t.Logf("last polling snapshot: exists=%t note=%s LastHandled=%s wantNote=%s", instance.Exists, diagnosticValue(instance.Value.Note), diagnosticValue(instance.LastHandled), diagnosticValue(want.Note))
 			t.Logf("projection did not materialize: got %+v, want %+v", instance, want)
-			return false
+			return false, observerWaitElapsed(deadline)
 		case <-ticker.C:
 		}
 	}
