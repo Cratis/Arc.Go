@@ -190,7 +190,7 @@ Inside a handwritten `commands.Invoke` or `commands.Prepare` adapter, use `comma
 
 Missing/blank keys fail even for optional injection. A valid key with no model gives nil for optional reads and `dependencyUnavailable` for required reads. A present zero-valued model remains present. Successful reads, including absence, are cached per frame, model, key and coordinates; Provide and Handle reuse them, while child frames do not. Failures are never cached as absence.
 
-The SDK typed reader owns codecs, collection normalization and its admitted release boundaries. Do not generalize materialized keyed-read behavior to legacy watches, windows or local reducer notifications; their release ownership remains unresolved in Chronicle.Go #35. Snapshot progress is diagnostic, not protected-decision evidence. A materialized projection can lag. Validation filters may read models without starting transaction participants or running Provide/Handle.
+The SDK typed reader owns codecs, collection normalization and its admitted release boundaries. Do not generalize materialized keyed-read behavior to legacy watches, windows or local reducer notifications; their release ownership remains unresolved in Chronicle.Go #35. Snapshot progress is diagnostic, not protected-decision evidence; decide from [Chronicle decision reads](decision-reads.md) instead. A materialized projection can lag. Validation filters may read models without starting transaction participants or running Provide/Handle.
 
 ## Make aggregate decisions
 
@@ -362,6 +362,6 @@ go test -tags=integration -count=1 -timeout=2m ./internal/integration ./examples
 python3 scripts/check-boundaries.py
 ```
 
-Integration-tagged tests fail when the endpoint variable is absent. They exercise HTTP commands, atomic rejection/readback, tenants, shared projection/query models, projection injection, aggregate competition, reactor-returned commands, failed observer partitions, ignored immediate-append rejection and operation recovery for every completion, including a lost acknowledgement. Root and tools gates run separately; `./...` does not cross module boundaries.
+Integration-tagged tests fail when the endpoint variable is absent. They exercise HTTP commands, atomic rejection/readback, tenants, shared projection/query models, projection injection, aggregate competition, reactor-returned commands, failed observer partitions, ignored immediate-append rejection, operation recovery for every completion, including a lost acknowledgement, and protected decision reads. Root and tools gates run separately; `./...` does not cross module boundaries.
 
-Protected decisions/enrollment tokens, watches, aggregate snapshots, automatic historical-generation migration, full compliance authoring, generated operation adapters, nested operation workflows and durable operation recovery remain unsupported. None is implied by an ordinary injected model or a successful snapshot test.
+Watches, aggregate snapshots, automatic historical-generation migration, full compliance authoring, generated operation adapters, nested operation workflows and durable operation recovery remain unsupported. None is implied by an ordinary injected model or a successful snapshot test.
