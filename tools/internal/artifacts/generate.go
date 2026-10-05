@@ -33,7 +33,12 @@ type Config struct {
 	BindingsConfigFile string
 	Profile            *ApplicationProfile
 	TypeScriptOut      string
-	EmitGo             *bool
+	// OpenAPIOut overrides the profile's openapi.out .json file. The profile
+	// must still declare the openapi section and server assertions.
+	OpenAPIOut string
+	// ScreenplayOut overrides or enables the profile's screenplay.out .play file.
+	ScreenplayOut string
+	EmitGo        *bool
 	// Report receives the successful supported-family inventory, if nonnil.
 	Report io.Writer
 }
@@ -72,13 +77,36 @@ func Generate(ctx context.Context, config Config) error {
 	if config.EmitGo != nil {
 		profile.TypeScript.EmitGo = config.EmitGo
 	}
-	if err := validateProfile(profile); err != nil {
+	if config.OpenAPIOut != "" {
+		if profile.OpenAPI == nil {
+			return fmt.Errorf("-openapi-out requires an openapi profile section with title, version and server assertions (formatVersion 2)")
+		}
+		openAPI := *profile.OpenAPI
+		openAPI.Out = config.OpenAPIOut
+		profile.OpenAPI = &openAPI
+	}
+	if config.ScreenplayOut != "" {
+		screenplay := ScreenplayProfile{}
+		if profile.Screenplay != nil {
+			screenplay = *profile.Screenplay
+		}
+		screenplay.Out = config.ScreenplayOut
+		profile.Screenplay = &screenplay
+	}
+	if profile.OpenAPI != nil && profile.OpenAPI.Out == "" {
+		return fmt.Errorf("openapi profile requires an output file: set openapi.out or -openapi-out")
+	}
+	if profile.Screenplay != nil && profile.Screenplay.Out == "" {
+		return fmt.Errorf("screenplay profile requires an output file: set screenplay.out or -screenplay-out")
+	}
+	// Flag locations may be absolute; renderArtifacts validates their
+	// module-relative form once the module root is known.
+	if err := validateProfile(withoutArtifactOuts(profile)); err != nil {
 		return err
 	}
-	if profile.OpenAPI != nil {
-		return fmt.Errorf("OpenAPI profile contract analysis is internal only; document generation/publication is not enabled")
-	}
 	typescript := profile.TypeScript.Out != ""
+	openAPIOut := profile.OpenAPI != nil
+	screenplayOut := profile.Screenplay != nil
 	if !typescript && profile.TypeScript.EmitGo != nil && !*profile.TypeScript.EmitGo {
 		return fmt.Errorf("emit-go=false requires TypeScript output")
 	}
@@ -128,7 +156,7 @@ func Generate(ctx context.Context, config Config) error {
 		load.Overlay[path] = []byte("package " + name + "\n")
 	}
 	load.Mode = packages.NeedName | packages.NeedFiles | packages.NeedModule | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports | packages.NeedTypesSizes
-	if typescript {
+	if typescript || openAPIOut || screenplayOut {
 		load.Mode |= packages.NeedDeps
 	}
 	loaded, err := packages.Load(load, patterns...)
@@ -164,7 +192,7 @@ func Generate(ctx context.Context, config Config) error {
 	if err := validateServiceImports(load, patterns, services); err != nil {
 		return err
 	}
-	graph, err := buildGraph(analyses, profile, typescript)
+	graph, err := buildGraph(analyses, withoutArtifactOuts(profile), typescript)
 	if err != nil {
 		return err
 	}
@@ -174,6 +202,10 @@ func Generate(ctx context.Context, config Config) error {
 		if err != nil {
 			return err
 		}
+	}
+	published, err := renderArtifacts(loaded[0].Module.Dir, profile, graph)
+	if err != nil {
+		return err
 	}
 	for _, a := range analyses {
 		dir, err := packageDirectory(a.pkg)
@@ -205,6 +237,7 @@ func Generate(ctx context.Context, config Config) error {
 		for _, out := range proxies {
 			plan = append(plan, ownedOutput{Path: filepath.Join(outRoot, filepath.FromSlash(out.path)), Content: out.content})
 		}
+		plan = append(plan, published...)
 		if err := publishOwned(ctx, loaded[0].Module.Dir, outRoot, profile, graph, config.Tags, plan, config.Check, nil); err != nil {
 			return err
 		}
@@ -220,6 +253,9 @@ func Generate(ctx context.Context, config Config) error {
 				return err
 			}
 		}
+		if err := reportArtifacts(config.Report, published, config.Check); err != nil {
+			return err
+		}
 		return reportServices(config.Report, services, config.Check)
 	}
 	// Preflight every output before the first write, including newly appeared files.
@@ -233,6 +269,20 @@ func Generate(ctx context.Context, config Config) error {
 		}
 		if config.Check && !bytes.Equal(previous, out.content) {
 			return fmt.Errorf("%s: generated adapters are stale; run arc-gen", out.path)
+		}
+	}
+	// Artifacts publish transactionally under their own module-root manifest,
+	// after every Go adapter passed its ownership preflight and before any
+	// adapter write.
+	configured := config.ConfigFile != "" || config.Profile != nil
+	if len(published) > 0 || configured && moduleManifestExists(loaded[0].Module.Dir) {
+		// A configured profile that stopped requesting artifacts still
+		// reconciles its module-root manifest, removing stale owned files.
+		if err := publishArtifacts(ctx, loaded[0].Module.Dir, profile, graph, config.Tags, published, config.Check, nil); err != nil {
+			return err
+		}
+		if err := reportArtifacts(config.Report, published, config.Check); err != nil {
+			return err
 		}
 	}
 	if config.Check {

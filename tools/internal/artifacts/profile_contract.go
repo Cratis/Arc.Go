@@ -17,7 +17,8 @@ import (
 	"github.com/cratis/arc.go/metadata"
 )
 
-// OpenAPIProfile requests contract analysis, not document publication in this checkpoint.
+// OpenAPIProfile requests a file-only OpenAPI 3.1.1 document. Out names a
+// module-relative .json file; the document is never served over HTTP.
 type OpenAPIProfile struct {
 	Out                       string   `json:"out,omitempty"`
 	Title                     string   `json:"title"`

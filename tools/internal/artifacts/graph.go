@@ -137,7 +137,7 @@ func buildGraph(analyses []*analysis, profile ApplicationProfile, wire bool) (*G
 		return nil, err
 	}
 	typescript := wire
-	wire = wire || profile.OpenAPI != nil
+	wire = wire || profile.OpenAPI != nil || profile.Screenplay != nil
 	if !wire && (len(profile.WireSchemas) > 0 || len(profile.ResponseFields) > 0) {
 		return nil, fmt.Errorf("schema/response assertions require a wire-contract consumer (TypeScript or internal OpenAPI analysis)")
 	}
@@ -147,6 +147,7 @@ func buildGraph(analyses []*analysis, profile ApplicationProfile, wire bool) (*G
 	}
 	// Output locations are operational, not contract identity or machine provenance.
 	graph.Profile.TypeScript.Out = ""
+	graph.Profile.Screenplay = nil
 	if profile.OpenAPI != nil {
 		copy := *profile.OpenAPI
 		copy.Out = ""

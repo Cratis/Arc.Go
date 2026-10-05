@@ -1,7 +1,8 @@
 # Screenplay metadata export contract fixture
 
-This is a pure, internal **partial metadata** export, not Graph JSON, a complete
-application model, a code-generation input, a CLI option or a published file.
+This is a pure **partial metadata** export, not Graph JSON, a complete
+application model or a code-generation input. `arc-gen -screenplay-out` publishes
+it as a manifest-owned file prefixed with the generated-code header line.
 Every returned document carries the same omission diagnostics as its result.
 Unknown or ambiguous shapes fail without document bytes. No source analysis runs
 inside the exporter; `Graph` is the only input.
@@ -75,7 +76,8 @@ to the **shared** graph and its owning analyzer:
 - Repository-relative, unambiguous implementation locations: the existing source
   basename cannot safely become a Screenplay `file` reference.
 
-CLI/check publication and embedded viewer admission remain separate work. No
+CLI/check publication is implemented by `arc-gen`. An embedded viewer is
+deliberately not implemented. No
 route is added and no Go environment variable is interpreted as C# Debug mode.
 
 ## Run the bounded witnesses

@@ -49,6 +49,8 @@ path remains a frontend runtime setting, not a generator route prefix.
 | `-bindings-config` | Disabled; separate strict versioned constructor-service configuration |
 | `-typescript-out` | Disabled; overrides profile `typescript.out` |
 | `-emit-go` | True; an explicitly supplied value overrides profile `typescript.emitGo` |
+| `-openapi-out` | Disabled; overrides profile `openapi.out` (module-relative `.json`); requires the profile's `openapi` section |
+| `-screenplay-out` | Disabled; sets or overrides profile `screenplay.out` (module-relative `.play`); requires `formatVersion` 2 |
 | `-check` | False; compare complete inventory and bytes without writes or repair |
 | Package patterns | `.`; selected main-module application artifact packages |
 
@@ -63,8 +65,18 @@ Profile fields:
 
 - `formatVersion`: `1` retains the existing adapter/TS projection and fingerprints;
   `2` explicitly selects the richer [shared contract projection](../../internal/artifacts/contract.md).
-  OpenAPI profile requests remain diagnostic: document generation/publication is
-  not enabled. `name`: stable nonempty ownership identity.
+  `name`: stable nonempty ownership identity.
+- `openapi`: `title`, `version`, `out`, optional `servers` (only `/`). Requires
+  `server` and `responseFields` assertions and publishes a file-only OpenAPI 3.1.1
+  document; unsupported shapes refuse the whole document. There is no HTTP
+  exposure or embedded viewer. See
+  [Publish an OpenAPI document](../../../Documentation/backend/go/generation/openapi.md).
+- `screenplay`: `out`. Publishes partial Screenplay 4.48.1 metadata; the profile
+  `name` is the domain. There is no embedded viewer. See
+  [Export Screenplay metadata](../../../Documentation/backend/go/generation/screenplay.md).
+  Without TypeScript output, OpenAPI and Screenplay files are owned by a
+  `.arc-gen-manifest.json` in the module root; with TypeScript output they join
+  its manifest. Go adapters keep marker-based ownership in either case.
 - `defaultNamespace` and `packageNamespaces`: logical names; source namespaces
   remain available. Reachable dependency models need a declared namespace or
   explicit package mapping; dependencies never receive generated Go adapters.

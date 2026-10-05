@@ -57,6 +57,23 @@ fail. This is a blocked capability gate, not a passing renderer test.
 
 The renderer, operation/security/extensions validation, graph-to-document
 witnesses, external-reference refusal matrix and broader unrepresentable-value
-checks remain unimplemented or unverified. `Generate` continues to refuse OpenAPI
-requests. No schema weakening, float rounding, version substitution or alternate
+checks remain unimplemented or unverified in this historical gate. `Generate`
+now publishes the renderer's document as a file through `-openapi-out` (see
+`Documentation/backend/go/generation/openapi.md`); that publication does not
+change this gate's findings. No schema weakening, float rounding, version substitution or alternate
 validation engine is authorized by this fixture.
+
+## Query arguments consumer
+
+`openapi_arguments_consumer_test.go` (package `artifacts`, build-ignored) loads
+the arguments/paging fixture document with kin's standard OpenAPI 3.1 loader and
+legacy router, validates GET/HEAD query parameters with `openapi3filter`, and
+asserts that QUERY stays unrouted. Run it from `tools/` with the alternate
+manifest above and an overlay replacing that file with a copy without its
+`//go:build ignore` line:
+
+```bash
+GOWORK=off GOTOOLCHAIN=local GOPROXY=off go test -mod=mod \
+  -modfile="$CAPABILITY_MOD" -overlay="$OVERLAY_JSON" -count=1 -timeout=90s \
+  -run '^TestOpenAPIQueryArgumentsStandardConsumer$' ./internal/artifacts/
+```
