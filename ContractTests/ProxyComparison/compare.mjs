@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import ts from 'typescript';
-import { directory, filesIn, stableBytes } from './reference.mjs';
+import { directory, filesIn, stableBytes } from './helpers.mjs';
 
 export const pairedFiles = ['All', 'Detail', 'Listing', 'Notice', 'Register', 'Status', 'UrgentNotice', 'index']
     .map(name => `ProxyComparison/${name}.ts`);

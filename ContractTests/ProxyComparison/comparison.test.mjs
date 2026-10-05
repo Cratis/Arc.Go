@@ -8,7 +8,7 @@ import test from 'node:test';
 import ts from 'typescript';
 import { compare, compareFragments, fragments, pairedFiles } from './compare.mjs';
 import { generate, prepare } from './Matched/prepare.mjs';
-import { directory } from './reference.mjs';
+import { directory } from './helpers.mjs';
 
 const output = await generate();
 const ledger = JSON.parse(await readFile(join(directory, 'Matched/allowances.json')));

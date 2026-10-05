@@ -2,7 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { directory, run } from '../reference.mjs';
+import { directory, run } from '../helpers.mjs';
 
 export async function prepare({ observable = false } = {}) {
     const root = resolve(directory, '../..');
