@@ -30,6 +30,7 @@ type SeatBooked struct {
 type BookSeat struct {
 	BookingID string `json:"bookingId"`
 	SeatID    string `json:"seatId"`
+	Passenger string `json:"passenger"`
 }
 
 // The operation and registration below are the documented excerpt.
