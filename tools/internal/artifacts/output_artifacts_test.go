@@ -100,7 +100,12 @@ func TestArtifactsPublishCheckAndRemoveStaleWithoutTypeScript(t *testing.T) {
 	}
 	put(t, filepath.Join(dir, "api", "openapi.json"), string(openAPI))
 
-	// Dropping the Screenplay request removes only its owned file.
+	// Dropping the Screenplay request is reported as stale by check mode and
+	// removes only its owned file. The Go adapters are unaffected because the
+	// output location is not contract identity.
+	if err := Generate(t.Context(), artifactConfig(dir, true, false)); err == nil || !strings.Contains(err.Error(), "stale: ") {
+		t.Fatalf("check mode did not report the stale Screenplay file: %v", err)
+	}
 	generate(t, artifactConfig(dir, false, false))
 	if _, err := os.Stat(filepath.Join(dir, "docs", "model.play")); !os.IsNotExist(err) {
 		t.Fatal("stale owned Screenplay file was retained", err)
@@ -114,17 +119,24 @@ func TestArtifactsPublishCheckAndRemoveStaleWithoutTypeScript(t *testing.T) {
 	}
 
 	// A configured profile without artifacts still reconciles its manifest.
+	// Dropping the openapi section also drops the wire graph, so check mode
+	// first reports the Go adapters' changed endpoint expectations.
 	put(t, filepath.Join(dir, "profile.json"), `{"formatVersion":2,"name":"Tasks"}`)
 	none := artifactConfig(dir, true, false)
 	none.OpenAPIOut = ""
-	if err := Generate(t.Context(), none); err == nil || !strings.Contains(err.Error(), "stale: ") {
-		t.Fatalf("check mode did not report the stale document: %v", err)
+	if err := Generate(t.Context(), none); err == nil || !strings.Contains(err.Error(), "stale") {
+		t.Fatalf("check mode accepted the changed profile: %v", err)
+	}
+	if !bytes.Equal(openAPI, get(t, filepath.Join(dir, "api", "openapi.json"))) {
+		t.Fatal("check mode changed the published document")
 	}
 	none.Check = false
 	generate(t, none)
 	if _, err := os.Stat(filepath.Join(dir, "api", "openapi.json")); !os.IsNotExist(err) {
 		t.Fatal("stale owned OpenAPI document was retained", err)
 	}
+	none.Check = true
+	generate(t, none)
 }
 
 func TestArtifactsAreDeterministicAcrossPackageOrder(t *testing.T) {
