@@ -18,10 +18,17 @@ import (
 // never loads packages or executes user code. Diagnostics are advisory; arc-gen
 // and runtime registration remain the admission authorities.
 var DeclarationAnalyzer = &goanalysis.Analyzer{
-	Name: "arcdeclarations",
-	Doc:  "report ARC0001-0006, ARC0014 and ARC0019 on Arc declarations",
-	Run:  runDeclarationDiagnostics,
+	Name:      "arcdeclarations",
+	Doc:       "report ARC0001-0006, ARC0014 and ARC0019 on Arc declarations",
+	Run:       runDeclarationDiagnostics,
+	FactTypes: []goanalysis.Fact{new(declarationFact)},
 }
+
+// declarationFact carries only opted-in identities, never source names or paths.
+// The analysis driver transports these across imports for the selected build.
+type declarationFact struct{ Kind string }
+
+func (*declarationFact) AFact() {}
 
 type diagnosticDeclaration struct {
 	kind    string
@@ -110,6 +117,27 @@ func runDeclarationDiagnostics(pass *goanalysis.Pass) (any, error) {
 			}
 		}
 	}
+	for typ, d := range declarations {
+		if named, ok := typ.(*types.Named); ok && !d.ignored && (d.kind == "command" || d.kind == "readmodel") && pass.ExportObjectFact != nil {
+			pass.ExportObjectFact(named.Obj(), &declarationFact{Kind: d.kind})
+		}
+	}
+	kindOf := func(t types.Type) string {
+		t = diagnosticDeclarationType(t)
+		if d, exists := declarations[t]; exists {
+			if d.ignored {
+				return ""
+			}
+			return d.kind
+		}
+		if named, ok := t.(*types.Named); ok && pass.ImportObjectFact != nil {
+			var fact declarationFact
+			if pass.ImportObjectFact(named.Obj(), &fact) {
+				return fact.Kind
+			}
+		}
+		return ""
+	}
 	// Iterate source order, never map order, to keep output reproducible.
 	for _, file := range pass.Files {
 		if ast.IsGenerated(file) {
@@ -159,7 +187,7 @@ func runDeclarationDiagnostics(pass *goanalysis.Pass) (any, error) {
 		}
 		if decl.Name.Name == "Handle" && receiver != nil && owner.kind != "command" {
 			for i := range sig.Params().Len() {
-				if declarations[diagnosticDeclarationType(sig.Params().At(i).Type())].kind == "command" {
+				if kindOf(sig.Params().At(i).Type()) == "command" {
 					report(decl.Name, "ARC0003", "external Handle receives an arc:command; move handling to that command's Handle method")
 					break
 				}
@@ -168,7 +196,7 @@ func runDeclarationDiagnostics(pass *goanalysis.Pass) (any, error) {
 		if owner.kind == "command" && (decl.Name.Name == "Handle" || decl.Name.Name == "Provide") || d.kind == "validator" && receiver == nil {
 			for i := range sig.Params().Len() {
 				parameter := sig.Params().At(i)
-				if declarations[types.Unalias(parameter.Type())].kind == "readmodel" {
+				if _, pointer := types.Unalias(parameter.Type()).(*types.Pointer); !pointer && kindOf(parameter.Type()) == "readmodel" {
 					// Pointers are not unwrapped: they preserve absence in a
 					// resolver that explicitly supports optional read models.
 					node := ast.Node(decl.Name)

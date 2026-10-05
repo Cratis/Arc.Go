@@ -1,6 +1,6 @@
 # arc-vet
 
-`arc-vet` reports authoring mistakes in opted-in Arc query declarations. It does
+`arc-vet` reports authoring mistakes in Arc command and query declarations. It does
 not generate adapters, execute application code, or replace runtime validation.
 
 Build the command from the `tools` module, then run it in the application module:
@@ -15,10 +15,15 @@ GOFLAGS=-tags=myprofile /path/to/arc-vet ./...
 ```
 
 The application must type-check, including any existing generated adapters. The
-command shares arc-gen's declaration and query-signature admission rather than
-maintaining a second artifact recognizer. Invalid declarations and invalid
-concept definitions encountered by this check fail analysis. Generated files
-are not inspected.
+ARC0015 check shares arc-gen's declaration and query-signature admission.
+The separate declaration analyzer reports ARC0001-0006, ARC0014 and ARC0019
+before that admission, including command-like structs missing opt-in. Invalid
+declarations and concept definitions can fail ARC0015 analysis alongside
+those findings. Generated files are not inspected.
+
+See the [authoring diagnostic reference](https://github.com/Cratis/Arc.Go/blob/develop/Documentation/backend/go/generation/arc-vet.md)
+for each rule's Go meaning, pinned C# source, limitations and rules that do not
+apply to Go.
 
 ## ARC0015: primitive argument converted to a concept
 
@@ -60,13 +65,13 @@ implemented.
 
 ## Output and exit status
 
-The default text output includes `file:line:column`, `ARC0015`, and the field and
-concept types. It reports each matching conversion separately. With the standard
+The default text output includes `file:line:column`, the ARC code, and a recovery
+message. ARC0015 also names the field and concept types. It reports each matching conversion separately. With the standard
 Go analysis driver, exit `0` means no findings, `3` means findings, and `1` means
 loading or analysis failed. Invalid command-line flags can also fail.
 
-`-json` emits the standard Go analysis report, including diagnostic category
-`ARC0015`. **JSON mode can return zero despite findings or analysis errors:**
+`-json` emits the standard Go analysis report, including ARC diagnostic categories
+under analyzer keys `arcdeclarations` and `arcauthoring`. **JSON mode can return zero despite findings or analysis errors:**
 consumers must inspect both diagnostic and error records. Use default text mode
 for an exit-status gate. `go run` can wrap the executable's nonzero exit status;
 use the built command when distinguishing exit codes.

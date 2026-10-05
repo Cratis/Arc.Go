@@ -39,6 +39,9 @@ func TestArcVetCommandContracts(t *testing.T) {
 		{name: "invalid_concept", args: []string{fixture + "invalidconcept"}, wantExit: 1, contains: "missing-codec"},
 		{name: "invalid_artifact", args: []string{fixture + "invalidartifact"}, wantExit: 1, contains: "arc:query requires model="},
 		{name: "package_error", args: []string{fixture + "missing"}, wantExit: 1, contains: "missing"},
+		{name: "imported_declarations", args: []string{fixture + "importeddeclarations"}, wantExit: 3, contains: "ARC0006: read-model dependency"},
+		{name: "declaration_diagnostics", args: []string{fixture + "declarations"}, wantExit: 1, contains: "ARC0001: query must return"},
+		{name: "tagged_declaration_diagnostics", args: []string{fixture + "declarations"}, tags: "arcdiagnostics", wantExit: 1, contains: "tagged.go:"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			cmd := exec.CommandContext(t.Context(), binary, test.args...)
@@ -60,6 +63,18 @@ func TestArcVetCommandContracts(t *testing.T) {
 			}
 			if count := strings.Count(string(output), "ARC0015: query argument"); count != test.findings {
 				t.Fatalf("findings = %d, want %d: %s", count, test.findings, output)
+			}
+			if test.name == "imported_declarations" {
+				if strings.Count(string(output), "ARC0003:") != 1 || strings.Count(string(output), "ARC0006:") != 1 {
+					t.Fatalf("imported aliases lost declaration identity: %s", output)
+				}
+			}
+			if test.name == "declaration_diagnostics" || test.name == "tagged_declaration_diagnostics" {
+				for _, code := range []string{"ARC0001", "ARC0002", "ARC0003", "ARC0004", "ARC0005", "ARC0006", "ARC0014", "ARC0019"} {
+					if !strings.Contains(string(output), code+":") {
+						t.Fatalf("missing %s diagnostic: %s", code, output)
+					}
+				}
 			}
 			if test.name == "clean" && len(output) != 0 {
 				t.Fatalf("unexpected clean-package output: %s", output)

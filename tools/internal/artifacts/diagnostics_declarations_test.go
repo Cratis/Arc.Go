@@ -66,7 +66,7 @@ func assertDeclarationDiagnostics(t *testing.T, pkg *packages.Package, findings 
 			counts[code]++
 		}
 	}
-	wantCounts := map[string]int{"ARC0001": 2, "ARC0002": 2, "ARC0003": 1, "ARC0004": 2, "ARC0005": 3, "ARC0006": 3, "ARC0014": 3, "ARC0019": 2}
+	wantCounts := map[string]int{"ARC0001": 4, "ARC0002": 2, "ARC0003": 1, "ARC0004": 2, "ARC0005": 3, "ARC0006": 3, "ARC0014": 3, "ARC0019": 2}
 	for code, want := range wantCounts {
 		if tagged {
 			want++
