@@ -8,6 +8,11 @@ import (
 	"go/types"
 )
 
+// validateObservableGoIdentity admits an observable collection element whose
+// client key agrees with the server delta key. Like C# ChangeSetComputor and the
+// Arc client (7c1e780), an element without any conventional ID/Id member and
+// without a serialized id property is identity-less: the server falls back to
+// JSON-set deltas and the client removes and reconciles by JSON or position.
 func validateObservableGoIdentity(model *types.Named) error {
 	members, err := compilerFields(model)
 	if err != nil {
@@ -17,7 +22,16 @@ func validateObservableGoIdentity(model *types.Named) error {
 	// Runtime identity discovery ignores JSON visibility and visits promoted
 	// fields too. Reject competing conventional members, including hidden ones,
 	// rather than publish a client key that can differ from the server delta key.
-	if conventionalIdentityMembers(st, map[*types.Struct]bool{}) != 1 {
+	conventional := conventionalIdentityMembers(st, map[*types.Struct]bool{})
+	if conventional == 0 {
+		for _, member := range members {
+			if member.Name == "id" {
+				return fmt.Errorf("observable collection serializes id without a conventional identity member ID/Id; the client would key by id while the server delta falls back to JSON comparison")
+			}
+		}
+		return nil
+	}
+	if conventional != 1 {
 		return fmt.Errorf("observable collection requires one unambiguous conventional identity member ID/Id, including JSON-hidden and embedded members")
 	}
 	for _, member := range members {
