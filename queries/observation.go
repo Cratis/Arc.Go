@@ -18,6 +18,7 @@ import (
 	"github.com/cratis/arc.go/execution"
 	"github.com/cratis/arc.go/identity"
 	boundary "github.com/cratis/arc.go/internal/pipeline"
+	"github.com/cratis/arc.go/observability"
 	"github.com/cratis/arc.go/observable"
 	"github.com/cratis/arc.go/serialization"
 	"github.com/cratis/arc.go/tenancy"
@@ -142,6 +143,9 @@ type Observation struct {
 	closeErr                                error
 	release                                 func()
 	first                                   bool
+	opening, retained, diagnosticJoined     bool
+	delivered                               uint64
+	diagnostic                              *observationDiagnostics
 }
 
 func (p *queryPipeline) track(o *Observation) error {
@@ -212,7 +216,26 @@ func (p *queryPipeline) Open(ctx context.Context, name FullyQualifiedQueryName, 
 	return p.openObservation(ctx, name, request, true)
 }
 
-func (p *queryPipeline) openObservation(ctx context.Context, name FullyQualifiedQueryName, request Request, activate bool) (*Observation, Result[any], error) {
+func (p *queryPipeline) openObservation(ctx context.Context, name FullyQualifiedQueryName, request Request, activate bool) (observation *Observation, output Result[any], outputErr error) {
+	ctx, attempt := beginDiagnostics(ctx, p, name, observability.ObservableTransport, observability.Opening)
+	var state openState
+	defer func() {
+		if state.cleanupStarted {
+			attempt.Finish(boundary.Outcome(output.IsAuthorized(), output.HasExceptions(), outputErr != nil, state.cancelledBeforeCleanup, output.details.ValidationResults))
+		} else {
+			finishDiagnostics(attempt, ctx, output, outputErr)
+		}
+	}()
+	return p.admitObservation(boundary.ClearDiagnostics(ctx), name, request, activate, &state)
+}
+
+// openState reports cleanup bookkeeping to the logical attempt's owner.
+type openState struct{ cleanupStarted, cancelledBeforeCleanup bool }
+
+// admitObservation performs admission without starting a diagnostics attempt.
+// Its caller owns the one logical attempt, so a nil context cannot double count.
+func (p *queryPipeline) admitObservation(ctx context.Context, name FullyQualifiedQueryName, request Request, activate bool, state *openState) (observation *Observation, output Result[any], outputErr error) {
+	diagnostic := p.observationDiagnostics(name)
 	result := NewResult[any](Details{Ready: true, Authorized: true}, serialization.Optional[any]{})
 	failure := func(err error) (*Observation, Result[any], error) {
 		return nil, p.observableResult(ctx, name, result, err), err
@@ -266,7 +289,7 @@ func (p *queryPipeline) openObservation(ctx context.Context, name FullyQualified
 		}
 	}
 	work, cancel := context.WithCancel(ctx)
-	o := &Observation{pipeline: p, ctx: work, cancel: cancel, query: q, prepared: prepared, metadata: c, active: make(chan struct{}), closeGate: make(chan struct{}, 1), first: true}
+	o := &Observation{pipeline: p, ctx: work, cancel: cancel, query: q, prepared: prepared, metadata: c, active: make(chan struct{}), closeGate: make(chan struct{}, 1), first: true, opening: true, diagnostic: diagnostic}
 	if err := p.track(o); err != nil {
 		cancel()
 		return failure(err)
@@ -320,8 +343,11 @@ func (p *queryPipeline) openObservation(ctx context.Context, name FullyQualified
 	o.mu.Lock()
 	close(o.active)
 	o.active = nil
+	o.opening = false
 	o.mu.Unlock()
 	if err != nil || !verdictSuccess(result) {
+		o.openingFailed(ctx, result, err)
+		state.cleanupStarted, state.cancelledBeforeCleanup = true, ctx.Err() != nil
 		err = errors.Join(err, o.cleanup())
 		return failure(err)
 	}
@@ -347,10 +373,12 @@ func (o *Observation) cleanup() error {
 // Recovered close panics retain ownership and diagnostics, never certify a join.
 // The pipeline retains failed-opening cleanup until
 // this completes; operation resources outlive source workers, never vice versa.
-func (o *Observation) Close(ctx context.Context) error {
+func (o *Observation) Close(ctx context.Context) (closeErr error) {
 	if o == nil || ctx == nil {
 		return execution.ErrInvalidArgument
 	}
+	o.closingDiagnostics()
+	defer o.closeDiagnostics()
 	o.cancel()
 	o.mu.Lock()
 	o.closing = true
@@ -399,12 +427,14 @@ func (o *Observation) Close(ctx context.Context) error {
 		}
 		o.closeErr = errors.Join(o.closeErr, err)
 	}
-	o.closed = true
 	o.pipeline.forget(o)
 	if o.release != nil {
 		o.release()
 		o.release = nil
 	}
+	// Only the serialized closer certifies the join, and only after every
+	// ownership release completed, using the authoritative stored result.
+	o.markClosed()
 	return o.closeErr
 }
 
@@ -418,6 +448,9 @@ func (o *Observation) begin(ctx context.Context) error {
 		return ErrObservationRunning
 	}
 	o.consumed = true
+	if o.diagnostic != nil {
+		o.diagnostic.consuming = time.Now()
+	}
 	o.active = make(chan struct{})
 	return nil
 }
@@ -519,7 +552,7 @@ func (o *Observation) candidate(ctx context.Context, value any) (Result[any], Em
 // io.EOF completes normally; source failure sends one safe terminal result.
 // A denied candidate sends one unauthorized result and terminates. Suppression
 // never satisfies a wait or advances the first-successful-delivery flag.
-func (o *Observation) Run(ctx context.Context, options ObservationOptions, deliver func(Result[any]) error) error {
+func (o *Observation) Run(ctx context.Context, options ObservationOptions, deliver func(Result[any]) error) (runErr error) {
 	if o == nil || deliver == nil {
 		return execution.ErrInvalidArgument
 	}
@@ -533,6 +566,8 @@ func (o *Observation) Run(ctx context.Context, options ObservationOptions, deliv
 		return err
 	}
 	defer o.end()
+	outcome := observability.Success
+	defer func() { o.consumptionFinished(ctx, outcome, runErr) }()
 	if err := o.scope.CheckContext(ctx); err != nil {
 		return err
 	}
@@ -543,11 +578,21 @@ func (o *Observation) Run(ctx context.Context, options ObservationOptions, deliv
 	transfer := collectionTransfer{shape: o.query.collection, mode: options.TransferMode, limit: options.MaxBaselineBytes, reserve: options.ReserveBaseline}
 	defer transfer.close()
 	for {
+		outcome = observability.Success // A prior candidate does not classify the next terminal read.
 		var value any
 		err := boundary.Call(work, func(ctx context.Context) error { var err error; value, err = o.stream.next(ctx); return err })
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil
+			}
+			// Cancellation reaches ancestor/source contexts before their children,
+			// and AfterFunc forwarding may still be pending. Check both owners,
+			// not only the derived work context, before sending a provider failure.
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if err := o.ctx.Err(); err != nil {
+				return err
 			}
 			if work.Err() != nil {
 				return work.Err()
@@ -559,12 +604,14 @@ func (o *Observation) Run(ctx context.Context, options ObservationOptions, deliv
 			continue
 		}
 		result, verdict, err := o.candidate(work, value)
+		outcome = boundary.Outcome(result.IsAuthorized(), result.HasExceptions(), err != nil, work.Err() != nil, result.details.ValidationResults)
 		if work.Err() != nil {
 			return errors.Join(err, work.Err())
 		}
 		if verdict == Suppress && err == nil {
 			continue
 		}
+		accepted := result // Delta transfer removes Data, so acknowledge the accepted candidate.
 		var hints collectionHints
 		if observed, ok := value.(observedCollection); ok {
 			hints = observed.collectionHints()
@@ -594,14 +641,22 @@ func (o *Observation) Run(ctx context.Context, options ObservationOptions, deliv
 		if verdict == DenyAndTerminate || err != nil {
 			return err
 		}
+		o.acknowledged(accepted)
 		o.first = false
 	}
 }
 
 // Subscribe owns open/run/close and defaults to complete results. Compatibility
 // is checked before activating the source. Custom snapshot-only pipelines fail.
-func Subscribe[R any](ctx context.Context, p Pipeline, name FullyQualifiedQueryName, request Request, deliver func(Result[R]) error) error {
-	if nilValue(p) || deliver == nil {
+func Subscribe[R any](ctx context.Context, p Pipeline, name FullyQualifiedQueryName, request Request, deliver func(Result[R]) error) (subscribeErr error) {
+	if nilValue(p) {
+		return execution.ErrInvalidArgument
+	}
+	ctx, attempt := beginDiagnostics(ctx, p, name, observability.ObservableTransport, observability.Opening)
+	defer func() {
+		attempt.Finish(boundary.Outcome(true, subscribeErr != nil, subscribeErr != nil, ctx != nil && ctx.Err() != nil, nil))
+	}()
+	if deliver == nil {
 		return execution.ErrInvalidArgument
 	}
 	capability, ok := p.(ObservablePipeline)
@@ -615,7 +670,13 @@ func Subscribe[R any](ctx context.Context, p Pipeline, name FullyQualifiedQueryN
 	if q.DataType() == nil || !q.DataType().AssignableTo(reflect.TypeFor[R]()) {
 		return ErrResponseType
 	}
+	if ctx == nil {
+		attempt = nil // The native/admitted Open boundary owns nil rejection.
+	}
 	o, admission, err := capability.Open(ctx, name, request)
+	attempt.FinishForwarded(boundary.Outcome(admission.IsAuthorized(), admission.HasExceptions(), err != nil, ctx != nil && ctx.Err() != nil, admission.details.ValidationResults))
+	attempt = nil
+	ctx = boundary.ClearDiagnostics(ctx)
 	if o == nil {
 		return errors.Join(err, deliver(NewResult(admission.Details(), serialization.Optional[R]{})))
 	}

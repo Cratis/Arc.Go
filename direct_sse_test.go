@@ -256,3 +256,32 @@ func TestDirectSSEDisconnectDoesNotFailApplicationOwnedSubject(t *testing.T) {
 		t.Fatal("transport failed shared subject", err)
 	}
 }
+
+func TestDirectSSEReplacesCacheablePolicyFromApplicationMiddleware(t *testing.T) {
+	b, err := arc.NewBuilder(arc.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "private, max-age=600")
+			next.ServeHTTP(w, r)
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	state, err := observable.NewState([]builderModel{}, observable.SubjectOptions[[]builderModel]{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := queries.RegisterObservable[builderModel](b, "Observe", queries.Function(func(context.Context, queries.NoArguments) (observable.Source[[]builderModel], error) {
+		return state, nil
+	}), queries.WithPath[queries.NoArguments]("/observe")); err != nil {
+		t.Fatal(err)
+	}
+	_, server := startSSEServer(t, b, false)
+	response := openSSE(t, server, "GET", "/observe", "")
+	if response.StatusCode != 200 || response.Header.Get("Cache-Control") != "no-cache" {
+		t.Fatal(response.StatusCode, response.Header)
+	}
+}

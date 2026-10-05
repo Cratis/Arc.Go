@@ -51,6 +51,8 @@ type query struct {
 	d          directives
 	call       method
 	args       types.Type // nil means queries.NoArguments
+	emission   types.Type // nonnil only for declared observable sources
+	shape      queryShape
 }
 
 type analysis struct {
@@ -71,6 +73,12 @@ func diagnostic(pkg *packages.Package, pos token.Pos, format string, args ...any
 }
 
 func analyze(pkg *packages.Package) (*analysis, error) {
+	return analyzeDeclarations(pkg, false)
+}
+
+// analyzeDeclarations can inspect handwritten declarations in an already generated
+// package. Generation still reserves its output names through analyze.
+func analyzeDeclarations(pkg *packages.Package, allowGeneratedNames bool) (*analysis, error) {
 	a := &analysis{pkg: pkg}
 	docs := map[*ast.CommentGroup]directives{}
 	for _, file := range pkg.Syntax {
@@ -245,7 +253,7 @@ func analyze(pkg *packages.Package) (*analysis, error) {
 			if d.model != "" && d.model != receiver.Obj().Name() {
 				return nil, diagnostic(pkg, decl.Pos(), "query model conflicts with receiver")
 			}
-			if !explicit && (!decl.Name.IsExported() || sig.Results().Len() == 0 || !modelShape(owner.typ, sig.Results().At(0).Type())) {
+			if !explicit && (!decl.Name.IsExported() || sig.Results().Len() == 0 || !queryCandidate(owner.typ, sig.Results().At(0).Type())) {
 				continue
 			}
 		} else if explicit {
@@ -274,7 +282,7 @@ func analyze(pkg *packages.Package) (*analysis, error) {
 			}
 		}
 	}
-	if len(a.commands)+len(a.models) > 0 {
+	if !allowGeneratedNames && len(a.commands)+len(a.models) > 0 {
 		for _, name := range []string{"RegisterArtifacts", "ArcBindings"} {
 			if obj := pkg.Types.Scope().Lookup(name); obj != nil {
 				return nil, diagnostic(pkg, obj.Pos(), "%s is reserved for generated adapters; keep composition in another package", name)
@@ -380,8 +388,17 @@ func analyzeQuery(pkg *packages.Package, owner *model, d directives, decl *ast.F
 	if err != nil {
 		return q, err
 	}
-	if !modelShape(owner.typ, m.output) {
-		return q, diagnostic(pkg, decl.Pos(), "query must return its owning model, pointer, slice, array, or queries.Page")
+	output := m.output
+	if emission, recognized, err := sourceEmission(output); recognized {
+		if err != nil {
+			return q, diagnostic(pkg, decl.Pos(), "%v", err)
+		}
+		q.emission, output = emission, emission
+	}
+	var supported bool
+	q.shape, supported = classifyQueryShape(owner.typ, output)
+	if !supported {
+		return q, diagnostic(pkg, decl.Pos(), "query must return or emit its owning model, pointer, slice, array, value queries.Page or queries.ObservedCollection")
 	}
 	for i := range m.params {
 		if m.params[i].kind != "dependency" {
@@ -436,31 +453,8 @@ func namedType(t types.Type, path, name string) bool {
 }
 
 func modelShape(model, output types.Type) bool {
-	output = types.Unalias(output)
-	if types.Identical(model, output) {
-		return true
-	}
-	if ptr, ok := output.(*types.Pointer); ok {
-		return types.Identical(ptr.Elem(), model)
-	}
-	var elem types.Type
-	switch t := output.(type) {
-	case *types.Slice:
-		elem = t.Elem()
-	case *types.Array:
-		elem = t.Elem()
-	case *types.Named:
-		if namedType(t, runtimePath+"/queries", "Page") && t.TypeArgs().Len() == 1 {
-			elem = t.TypeArgs().At(0)
-		}
-	}
-	if elem == nil {
-		return false
-	}
-	if ptr, ok := types.Unalias(elem).(*types.Pointer); ok {
-		elem = ptr.Elem()
-	}
-	return types.Identical(elem, model)
+	_, supported := classifyQueryShape(model, output)
+	return supported
 }
 
 func preparationType(t types.Type) (types.Type, string) {

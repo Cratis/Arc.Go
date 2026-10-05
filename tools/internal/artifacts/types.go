@@ -11,6 +11,7 @@ import (
 	"go/types"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 
@@ -54,10 +55,23 @@ type wireAnalyzer struct {
 	nodes           map[string]*TypeDescriptor
 	compilerTypes   map[string]types.Type
 	interfaceModels map[string]*model
+	typescript      bool
+	contract        bool
+	sizes           types.Sizes
+	seenTypes       map[string]bool
+	tsRoots         []WireType
 }
 
-func analyzeWireGraph(graph *Graph, analyses []*analysis, profile ApplicationProfile) error {
-	w := &wireAnalyzer{graph: graph, profile: profile, packages: map[string]*packages.Package{}, namespaces: map[string]string{}, declarations: map[string]*model{}, nodes: map[string]*TypeDescriptor{}, compilerTypes: map[string]types.Type{}, interfaceModels: map[string]*model{}}
+func analyzeWireGraph(graph *Graph, analyses []*analysis, profile ApplicationProfile, typescript bool) error {
+	w := &wireAnalyzer{graph: graph, profile: profile, packages: map[string]*packages.Package{}, namespaces: map[string]string{}, declarations: map[string]*model{}, nodes: map[string]*TypeDescriptor{}, compilerTypes: map[string]types.Type{}, interfaceModels: map[string]*model{}, typescript: typescript, contract: graph.FormatVersion == ContractGraphVersion, seenTypes: map[string]bool{}}
+	if len(analyses) > 0 {
+		w.sizes = analyses[0].pkg.TypesSizes
+	}
+	// V2 normalizes runtime contracts first. TS admission is a separate walk
+	// of the same graph, rooted only in the selected TS families.
+	if w.contract {
+		w.typescript = false
+	}
 	var indexPackage func(*packages.Package)
 	indexPackage = func(pkg *packages.Package) {
 		if pkg == nil || w.packages[pkg.PkgPath] != nil {
@@ -163,7 +177,7 @@ func analyzeWireGraph(graph *Graph, analyses []*analysis, profile ApplicationPro
 		for i := range a.commands {
 			command := &a.commands[i]
 			descriptor := command.descriptor
-			if descriptor.Excluded {
+			if descriptor.Excluded && profile.OpenAPI == nil {
 				continue
 			}
 			input, err := w.describe(command.typ)
@@ -171,6 +185,12 @@ func analyzeWireGraph(graph *Graph, analyses []*analysis, profile ApplicationPro
 				return err
 			}
 			descriptor.Fields = w.nodes[input.Target].Fields
+			if w.contract {
+				descriptor.Input = &input
+			}
+			if !descriptor.Excluded {
+				w.tsRoots = append(w.tsRoots, input)
+			}
 			for _, field := range descriptor.Fields {
 				if field.TagRules() {
 					descriptor.PortableRules = true
@@ -200,22 +220,38 @@ func analyzeWireGraph(graph *Graph, analyses []*analysis, profile ApplicationPro
 				} else if override != "" {
 					return w.fail(output, "response override must be none or value")
 				}
+				ambiguous := descriptor.ResponseKind == "unknown"
+				if ambiguous && w.contract {
+					if field, exists := profile.ResponseFields[descriptor.Declaration.Type.Identity()]["response"]; exists {
+						if field.Absent {
+							descriptor.ResponseKind = "none"
+						} else {
+							descriptor.ResponseKind = "value"
+						}
+					}
+				}
 				if descriptor.ResponseKind == "unknown" {
 					return diagnostic(a.pkg, command.handle.decl.Pos(), "client response is ambiguous; use commands.Outcome[T] or an explicit response=none/value contract")
 				}
 				if descriptor.ResponseKind == "value" {
 					response, err := w.describe(output)
+					if field, exists := profile.ResponseFields[descriptor.Declaration.Type.Identity()]["response"]; w.contract && ambiguous && exists && !field.Absent {
+						response, err = w.declaredResponse(field)
+					}
 					if err != nil {
 						return err
 					}
 					descriptor.Response = &response
+					if !descriptor.Excluded {
+						w.tsRoots = append(w.tsRoots, response)
+					}
 				}
 			}
 		}
 		for i := range a.queries {
 			query := &a.queries[i]
 			descriptor := query.descriptor
-			if descriptor.Excluded {
+			if descriptor.Excluded && profile.OpenAPI == nil {
 				continue
 			}
 			result, err := w.describe(query.model.typ)
@@ -223,31 +259,42 @@ func analyzeWireGraph(graph *Graph, analyses []*analysis, profile ApplicationPro
 				return err
 			}
 			descriptor.Result = result
-			if !types.Identical(types.Unalias(query.call.output), query.model.typ) {
-				switch output := types.Unalias(query.call.output).(type) {
-				case *types.Slice:
-					element, err := w.describe(output.Elem())
+			descriptor.Result.Nullable = query.shape.nullable
+			descriptor.Paged = query.shape.paged
+			if query.shape.collection {
+				element, err := w.describe(query.shape.element)
+				if err != nil {
+					return err
+				}
+				descriptor.Result = WireType{Kind: "array", Element: &element}
+			}
+			if w.contract {
+				descriptor.DataPresence = "omit-nil-data"
+				if query.shape.collection {
+					data, err := w.describe(types.NewSlice(query.shape.element))
 					if err != nil {
 						return err
 					}
-					descriptor.Result = WireType{Kind: "array", Element: &element}
-				case *types.Array:
-					element, err := w.describe(output.Elem())
-					if err != nil {
-						return err
+					declared := query.call.output
+					if query.emission != nil {
+						declared = query.emission
 					}
-					descriptor.Result = WireType{Kind: "array", Element: &element}
-				case *types.Named:
-					if namedType(output, runtimePath+"/queries", "Page") {
-						descriptor.Paged = true
-						element, err := w.describe(output.TypeArgs().At(0))
-						if err != nil {
-							return err
-						}
-						descriptor.Result = WireType{Kind: "array", Element: &element}
+					data.Contract.Declared = typeKey(declared)
+					if array, ok := types.Unalias(declared).Underlying().(*types.Array); ok {
+						length := array.Len()
+						data.Contract.FixedLength = &length
+						data.Contract.InputNull = false
+						data.Contract.OutputNull = false
 					}
-				case *types.Pointer:
-					descriptor.Result.Nullable = true
+					descriptor.Result.Contract = data.Contract
+				}
+			}
+			if !descriptor.Excluded {
+				w.tsRoots = append(w.tsRoots, descriptor.Result)
+			}
+			if query.emission != nil && query.shape.collection {
+				if err := validateObservableGoIdentity(query.model.typ); err != nil {
+					return diagnostic(a.pkg, query.call.decl.Pos(), "%v", err)
 				}
 			}
 			for _, field := range w.nodes[result.Target].Fields {
@@ -264,6 +311,19 @@ func analyzeWireGraph(graph *Graph, analyses []*analysis, profile ApplicationPro
 					return err
 				}
 				descriptor.Parameters = fields
+				if !descriptor.Excluded {
+					for _, field := range fields {
+						if typescript && w.contract {
+							if field.Binding.PreservePresence {
+								return w.fail(query.args, "query preservePresence requires an explicit presence-compatible client contract")
+							}
+							if field.Name == "constructor" || field.Name == "__proto__" || field.Name == "prototype" {
+								return w.fail(query.args, "reserved frontend wire field %q", field.Name)
+							}
+						}
+						w.tsRoots = append(w.tsRoots, field.Type)
+					}
+				}
 				for _, field := range fields {
 					if field.TagRules() {
 						descriptor.PortableRules = true
@@ -271,23 +331,57 @@ func analyzeWireGraph(graph *Graph, analyses []*analysis, profile ApplicationPro
 				}
 			}
 		}
-		for _, root := range a.exports {
-			if !excluded(profile, (metadata.TypeName{Namespace: a.namespace, Name: root.d.name}).Identity()) {
-				if _, err := w.describe(root.typ); err != nil {
-					return err
-				}
-			}
-		}
-		for _, root := range a.enums {
-			if !excluded(profile, (metadata.TypeName{Namespace: a.namespace, Name: root.d.name}).Identity()) {
-				if _, err := w.describe(root.typ); err != nil {
-					return err
+		for _, roots := range [][]*model{a.exports, a.enums} {
+			for _, root := range roots {
+				excluded := excluded(profile, (metadata.TypeName{Namespace: a.namespace, Name: root.d.name}).Identity())
+				if profile.OpenAPI != nil || !excluded {
+					wire, err := w.describe(root.typ)
+					if err != nil {
+						return err
+					}
+					if !excluded {
+						w.tsRoots = append(w.tsRoots, wire)
+					}
 				}
 			}
 		}
 	}
 	for _, key := range profile.TypeRoots {
 		t, err := w.reference(nil, key)
+		if err != nil {
+			return err
+		}
+		wire, err := w.describe(t)
+		if err != nil {
+			return err
+		}
+		w.tsRoots = append(w.tsRoots, wire)
+	}
+	var validationState *WireType
+	for _, identity := range sortedKeys(profile.ResponseFields) {
+		for _, path := range sortedKeys(profile.ResponseFields[identity]) {
+			field := profile.ResponseFields[identity][path]
+			if field.Absent {
+				continue
+			}
+			wire, err := w.declaredResponse(field)
+			if err != nil {
+				return fmt.Errorf("responseFields %s.%s: %w", identity, path, err)
+			}
+			if identity == "Cratis.ValidationResult" && path == "state" {
+				validationState = &wire
+			}
+		}
+	}
+	if profile.OpenAPI != nil {
+		framework, err := frameworkContracts(graph, validationState)
+		if err != nil {
+			return err
+		}
+		graph.Framework = framework
+	}
+	if profile.Server != nil && profile.Server.Identity.DetailsType != "" {
+		t, err := w.reference(nil, profile.Server.Identity.DetailsType)
 		if err != nil {
 			return err
 		}
@@ -304,8 +398,24 @@ func analyzeWireGraph(graph *Graph, analyses []*analysis, profile ApplicationPro
 		graph.Types = append(graph.Types, *w.nodes[key])
 	}
 	sort.Strings(graph.Diagnostics)
-	if err := rejectConstructorCycles(graph.Types); err != nil {
-		return err
+	if w.contract {
+		if err := validateContractDerivatives(graph.Types); err != nil {
+			return err
+		}
+	}
+	if w.contract && typescript {
+		if err := w.validateTypeScriptContract(); err != nil {
+			return err
+		}
+	} else if w.typescript {
+		if err := rejectConstructorCycles(graph.Types); err != nil {
+			return err
+		}
+	}
+	for _, key := range sortedKeys(profile.WireSchemas) {
+		if !w.seenTypes[key] {
+			return fmt.Errorf("unknown or unreachable wireSchemas type reference %q", key)
+		}
 	}
 	for _, a := range analyses {
 		a.wireTypes = w.compilerTypes
@@ -332,6 +442,9 @@ func (w *wireAnalyzer) fail(t types.Type, format string, args ...any) error {
 }
 
 func (w *wireAnalyzer) reference(pkg *types.Package, reference string) (types.Type, error) {
+	if t := w.compilerTypes[reference]; t != nil {
+		return t, nil
+	}
 	if pkg != nil {
 		if object := pkg.Scope().Lookup(reference); object != nil {
 			return object.Type(), nil
@@ -355,14 +468,19 @@ func (w *wireAnalyzer) reference(pkg *types.Package, reference string) (types.Ty
 	return nil, fmt.Errorf("unknown wire type reference %q", reference)
 }
 
-func (w *wireAnalyzer) describe(t types.Type) (WireType, error) {
-	if wire, recognized, err := conceptWire(t); err != nil {
-		return WireType{}, fmt.Errorf("wire type %s: %w", typeKey(t), err)
-	} else if recognized {
-		if wire.Kind == "number" {
-			w.graph.Diagnostics = append(w.graph.Diagnostics, "number precision: concept "+typeKey(t)+" uses JavaScript number; enforce safe range in domain validation")
+func (w *wireAnalyzer) describeValue(t types.Type) (WireType, error) {
+	// The traversal hook owns runtime output before scalar/struct inference,
+	// including application concepts. Keep declared schemas and import mappings
+	// on the existing named-type path instead of treating a marker as evidence.
+	if !slices.Contains(codecMethodNames(t), "MarshalJSONWith") {
+		if wire, recognized, err := conceptWire(t); err != nil {
+			return WireType{}, fmt.Errorf("wire type %s: %w", typeKey(t), err)
+		} else if recognized {
+			if w.typescript && wire.Kind == "number" {
+				w.graph.Diagnostics = append(w.graph.Diagnostics, "number precision: concept "+typeKey(t)+" uses JavaScript number; enforce safe range in domain validation")
+			}
+			return wire, nil
 		}
-		return wire, nil
 	}
 	t = types.Unalias(t)
 	if pointer, ok := t.Underlying().(*types.Pointer); ok {
@@ -375,10 +493,28 @@ func (w *wireAnalyzer) describe(t types.Type) (WireType, error) {
 	}
 	if named, ok := t.(*types.Named); ok {
 		if namedType(t, runtimePath+"/serialization", "Optional") {
-			return WireType{}, w.fail(t, "serialization.Optional requires a presence-compatible surface; strict C# proxy mode does not erase explicit null")
+			if w.typescript {
+				return WireType{}, w.fail(t, "serialization.Optional requires a presence-compatible surface; strict C# proxy mode does not erase explicit null")
+			}
+			if named.TypeArgs().Len() != 1 {
+				return WireType{}, w.fail(t, "invalid Optional type arguments")
+			}
+			element, err := w.describe(named.TypeArgs().At(0))
+			return WireType{Kind: "optional", Element: &element, Nullable: true}, err
 		}
 		key := typeKey(t)
+		if schemas, exists := w.profile.WireSchemas[key]; exists && !w.typescript {
+			copy := schemas
+			w.nodes[key] = &TypeDescriptor{Key: key, Name: metadata.TypeName{Name: named.Obj().Name()}, Kind: "declared", Schemas: &copy}
+			w.compilerTypes[key] = t
+			return WireType{Kind: "declared", Target: key}, nil
+		}
 		if mapped := w.profile.Imports[key]; mapped.Module != "" {
+			if w.profile.OpenAPI != nil {
+				if _, exists := w.profile.WireSchemas[key]; !exists {
+					return WireType{}, w.fail(t, "opaque import requires explicit input/output wireSchemas; TS imports are not schema evidence")
+				}
+			}
 			if w.nodes[key] == nil {
 				mapping := mapped
 				w.nodes[key] = &TypeDescriptor{Key: key, Name: metadata.TypeName{Name: mapped.Type}, Kind: "external", Import: &mapping}
@@ -389,12 +525,11 @@ func (w *wireAnalyzer) describe(t types.Type) (WireType, error) {
 		if model := w.interfaceModels[key]; model != nil {
 			return w.describe(model.typ)
 		}
-		for _, set := range []*types.MethodSet{types.NewMethodSet(named), types.NewMethodSet(types.NewPointer(named))} {
-			for _, name := range []string{"MarshalJSON", "UnmarshalJSON", "MarshalText", "UnmarshalText"} {
-				if set.Lookup(nil, name) != nil {
-					return WireType{}, w.fail(t, "opaque custom codec requires an explicit wire import mapping")
-				}
+		if methods := codecMethodNames(named); len(methods) > 0 {
+			if slices.Contains(methods, "MarshalJSONWith") {
+				return WireType{}, w.fail(t, "opaque custom codec requires an explicit wire import mapping: %s implements MarshalJSONWith (or declare explicit input/output schemas with contract-v2 wireSchemas)", key)
 			}
+			return WireType{}, w.fail(t, "opaque custom codec requires an explicit wire import mapping")
 		}
 		declaration := w.declarations[key]
 		if declaration != nil && declaration.d.kind == "enum" {
@@ -435,9 +570,17 @@ func (w *wireAnalyzer) describe(t types.Type) (WireType, error) {
 				if _, ok := baseInterface.Underlying().(*types.Interface); !ok || !types.AssignableTo(named, baseInterface) && !types.AssignableTo(types.NewPointer(named), baseInterface) {
 					return WireType{}, w.fail(t, "declared derivative must implement its interface")
 				}
+				if w.contract {
+					if base, ok := types.Unalias(baseInterface).(*types.Named); !ok || base.Underlying().(*types.Interface).NumMethods() == 0 {
+						return WireType{}, w.fail(t, "declared derivative requires a named nonempty interface")
+					}
+				}
 				w.compilerTypes[typeKey(baseInterface)] = baseInterface
 				node.Interface = typeKey(baseInterface)
 				node.DerivedID = declaration.d.derivedID
+				if w.contract {
+					node.Discriminator = &DerivedContract{Property: "_derivedTypeId", Default: node.DerivedID == "", ID: node.DerivedID, OutputRequired: node.DerivedID != ""}
+				}
 				if declaration.d.derivedBase != "" {
 					base, err := w.reference(named.Obj().Pkg(), declaration.d.derivedBase)
 					if err != nil {
@@ -477,7 +620,7 @@ func (w *wireAnalyzer) describe(t types.Type) (WireType, error) {
 		case t.Info()&types.IsBoolean != 0:
 			return WireType{Kind: "boolean"}, nil
 		case t.Info()&(types.IsInteger|types.IsFloat) != 0:
-			if t.Kind() == types.Int64 || t.Kind() == types.Uint64 || t.Kind() == types.Int || t.Kind() == types.Uint {
+			if w.typescript && (t.Kind() == types.Int64 || t.Kind() == types.Uint64 || t.Kind() == types.Int || t.Kind() == types.Uint) {
 				w.graph.Diagnostics = append(w.graph.Diagnostics, "number precision: "+t.Name()+" values must remain within JavaScript's safe integer range")
 			}
 			return WireType{Kind: "number"}, nil
@@ -489,7 +632,7 @@ func (w *wireAnalyzer) describe(t types.Type) (WireType, error) {
 		element, err := w.describe(t.Elem())
 		return WireType{Kind: "array", Element: &element, Nullable: true}, err
 	case *types.Array:
-		if basic, ok := types.Unalias(t.Elem()).Underlying().(*types.Basic); ok && basic.Kind() == types.Uint8 {
+		if basic, ok := types.Unalias(t.Elem()).Underlying().(*types.Basic); ok && basic.Kind() == types.Uint8 && !w.contract {
 			return WireType{}, w.fail(t, "binary arrays require an explicit wire contract (not inferred UUID)")
 		}
 		element, err := w.describe(t.Elem())
@@ -502,7 +645,7 @@ func (w *wireAnalyzer) describe(t types.Type) (WireType, error) {
 		if err != nil {
 			return WireType{}, err
 		}
-		if element.Kind != "string" && element.Kind != "number" && element.Kind != "boolean" && element.Kind != "enum" {
+		if w.typescript && element.Kind != "string" && element.Kind != "number" && element.Kind != "boolean" && element.Kind != "enum" {
 			return WireType{}, w.fail(t, "rich dictionary values cannot hydrate through Object metadata; an explicit codec/mapping is required")
 		}
 		return WireType{Kind: "record", Element: &element, Nullable: true}, nil
@@ -523,7 +666,31 @@ func (w *wireAnalyzer) fields(t types.Type, arguments bool) ([]FieldDescriptor, 
 			return nil, fmt.Errorf("wire field %s.%s: %w", typeKey(t), member.Name, err)
 		}
 		field := FieldDescriptor{Name: member.Name, Type: wire, Optional: wire.Nullable || member.OmitEmpty || member.OmitZero, OmitEmpty: member.OmitEmpty, OmitZero: member.OmitZero}
-		if member.Name == "constructor" || member.Name == "__proto__" || member.Name == "prototype" {
+		if w.contract {
+			parentNullable := embeddedNullable(t, member.Index)
+			presence := &FieldPresence{InputMissing: "zero", InputNull: wire.Contract.InputNull, OutputNull: wire.Contract.OutputNull, OmitNil: nilableGo(member.Type), OmitMissing: wire.Kind == "optional" && wire.Contract.PointerDepth <= 1, OmitEmpty: member.OmitEmpty && emptyOmission(member.Type), OmitZero: member.OmitZero, EmbeddedParentNullable: parentNullable}
+			if wire.Kind == "optional" && wire.Contract.PointerDepth == 0 {
+				presence.InputMissing = "missing"
+			}
+			if member.OmitZero && hasMethod(member.Type, "IsZero") && wire.Kind != "optional" && wire.Kind != "Date" {
+				return nil, w.fail(t, "field %s dynamic omitzero predicate requires a containing-type output schema declaration", member.Name)
+			}
+			presence.OutputRequired = !presence.OmitNil && !presence.OmitMissing && !presence.OmitEmpty && !presence.OmitZero && !parentNullable
+			if presence.OmitNil {
+				// Only immediate nil is omitted, not a declared codec's encoded
+				// null. Nonnil pointers can also encode inner nil or Optional null.
+				presence.OutputNull = wire.Contract.Schemas != nil && schemaAcceptsNull(wire.Contract.Schemas.Output)
+				if pointer, ok := types.Unalias(member.Type).Underlying().(*types.Pointer); ok {
+					element, err := w.describe(pointer.Elem())
+					if err != nil {
+						return nil, fmt.Errorf("wire field %s.%s: %w", typeKey(t), member.Name, err)
+					}
+					presence.OutputNull = element.Contract.OutputNull
+				}
+			}
+			field.Presence = presence
+		}
+		if w.typescript && (member.Name == "constructor" || member.Name == "__proto__" || member.Name == "prototype") {
 			return nil, w.fail(t, "reserved frontend wire field %q", member.Name)
 		}
 		if value := member.Tag.Get("sortable"); value != "" {
@@ -573,6 +740,9 @@ func (w *wireAnalyzer) fields(t types.Type, arguments bool) ([]FieldDescriptor, 
 			return nil, w.fail(t, "field %s mixes required annotation with explicit rules; declare the presence rule explicitly", member.Name)
 		}
 		if arguments {
+			if len(field.Rules) > 0 {
+				field.QueryRules = queryRuleRepresentation(member.Type)
+			}
 			key := strings.ToLower(member.Name)
 			if seenArgs[key] {
 				return nil, w.fail(t, "ambiguous query arguments %s", member.Name)
@@ -582,10 +752,42 @@ func (w *wireAnalyzer) fields(t types.Type, arguments bool) ([]FieldDescriptor, 
 			if err != nil {
 				return nil, err
 			}
-			if queryTags.PreservePresence {
+			if w.typescript && queryTags.PreservePresence {
 				return nil, w.fail(t, "query preservePresence requires an explicit presence-compatible client contract")
 			}
 			field.Required, field.HasDefault, field.Default = queryTags.Required, queryTags.HasDefault, queryTags.Default
+			if w.contract {
+				if err := validateBuiltinQueryType(member.Type, false); err != nil {
+					return nil, w.fail(t, "query parameter %q: %v", member.Name, err)
+				}
+				missing := "zero"
+				if field.Required {
+					missing = "error"
+				} else if field.HasDefault {
+					missing = "default"
+				}
+				encoding := "scalar-text"
+				queryType := unwrapOptional(member.Type)
+				for {
+					pointer, ok := types.Unalias(queryType).(*types.Pointer)
+					if !ok {
+						break
+					}
+					queryType = pointer.Elem()
+				}
+				var fixedLength *int64
+				if !hasMethod(queryType, "UnmarshalText") {
+					switch collection := queryType.Underlying().(type) {
+					case *types.Array:
+						encoding = "csv-or-json-array"
+						length := collection.Len()
+						fixedLength = &length
+					case *types.Slice:
+						encoding = "csv-or-json-array"
+					}
+				}
+				field.Binding = &QueryBinding{Reader: "builtin", Encoding: encoding, CaseInsensitive: true, DuplicateNames: "reject-case-variants", RepeatedValues: "comma-join", EmptyAsMissing: !queryTags.PreservePresence, NullAsMissing: !queryTags.PreservePresence, PreservePresence: queryTags.PreservePresence, Missing: missing, FixedLength: fixedLength}
+			}
 			if field.HasDefault {
 				var sizes types.Sizes
 				if named, ok := types.Unalias(t).(*types.Named); ok {
@@ -596,7 +798,11 @@ func (w *wireAnalyzer) fields(t types.Type, arguments bool) ([]FieldDescriptor, 
 				if sizes == nil {
 					return nil, w.fail(t, "query defaults require target compiler sizes")
 				}
-				if err := validateGoQueryDefault(member.Type, field.Default, sizes); err != nil {
+				defaultType := member.Type
+				if w.contract {
+					defaultType = unwrapOptional(defaultType)
+				}
+				if err := validateGoQueryDefault(defaultType, field.Default, sizes); err != nil {
 					return nil, w.fail(t, "query parameter %q has unsupported server default: %v", member.Name, err)
 				}
 			}
@@ -626,6 +832,14 @@ func (w *wireAnalyzer) enum(model *model) (WireType, error) {
 		return WireType{}, w.fail(model.typ, "enum namespace must be explicitly mapped")
 	}
 	node := &TypeDescriptor{Key: key, Name: metadata.TypeName{Namespace: namespace, Name: model.d.name}, Kind: "enum", Flags: model.d.flags}
+	if w.contract {
+		scalar, err := scalarContract(base, w.sizes)
+		if err != nil {
+			return WireType{}, err
+		}
+		node.Scalar = scalar
+		node.EnumDomain = "open-underlying-integer"
+	}
 	if pkg := w.packages[model.typ.Obj().Pkg().Path()]; pkg != nil {
 		node.Source = filepath.Base(pkg.Fset.Position(model.pos).Filename)
 	}
@@ -633,6 +847,7 @@ func (w *wireAnalyzer) enum(model *model) (WireType, error) {
 		value    int64
 		position token.Pos
 		name     string
+		exact    string
 	}
 	var values []entry
 	mapped := map[string]bool{}
@@ -642,7 +857,7 @@ func (w *wireAnalyzer) enum(model *model) (WireType, error) {
 			continue
 		}
 		value, ok := constant.Int64Val(object.Val())
-		if !ok || value < -9007199254740991 || value > 9007199254740991 || model.d.flags && (value < -2147483648 || value > 2147483647) {
+		if w.typescript && (!ok || value < -9007199254740991 || value > 9007199254740991 || model.d.flags && (value < -2147483648 || value > 2147483647)) {
 			return WireType{}, w.fail(model.typ, "enum value %s exceeds safe number/bitwise limits", object.Name())
 		}
 		member := name
@@ -650,7 +865,14 @@ func (w *wireAnalyzer) enum(model *model) (WireType, error) {
 			member = override
 			mapped[name] = true
 		}
-		values = append(values, entry{value, object.Pos(), naming.CamelCase(member)})
+		if !ok {
+			unsigned, fits := constant.Uint64Val(object.Val())
+			if !fits {
+				return WireType{}, w.fail(model.typ, "invalid integer enum value %s", object.Name())
+			}
+			value = int64(unsigned)
+		}
+		values = append(values, entry{value, object.Pos(), naming.CamelCase(member), object.Val().ExactString()})
 	}
 	if len(values) == 0 || len(mapped) != len(model.d.members) {
 		return WireType{}, w.fail(model.typ, "enum requires typed constants and valid member mappings")
@@ -667,7 +889,7 @@ func (w *wireAnalyzer) enum(model *model) (WireType, error) {
 			return WireType{}, w.fail(model.typ, "duplicate enum export %s", value.name)
 		}
 		seen[value.name] = true
-		node.Members = append(node.Members, EnumMember{Name: value.name, Value: fmt.Sprint(value.value)})
+		node.Members = append(node.Members, EnumMember{Name: value.name, Value: value.exact})
 	}
 	w.nodes[key] = node
 	w.compilerTypes[key] = model.typ

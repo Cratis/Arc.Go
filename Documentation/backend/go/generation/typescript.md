@@ -1,14 +1,15 @@
 ---
-title: Generate TypeScript snapshot proxies
-description: Publish supported models, commands, and snapshot queries alongside their Go adapters, and check owned output safely.
+title: Generate TypeScript proxies
+description: Publish supported models, commands, snapshot queries, and observable queries alongside their Go adapters, and check owned output safely.
 ---
 
 Keep your frontend contract aligned with your Go declarations instead of copying
 request and result types. The experimental `arc-gen` application profile generates
-models, numeric enums, commands, and **snapshot queries** together with their Go
-adapters. Compatibility is Partial: the tested client versions are Arc/Arc.React
-22.48.2 and Fundamentals 7.22.0. Observable proxies and proxy-only output are
-explicitly unsupported; browser and mounted React-hook behavior are unverified.
+models, numeric enums, commands, **snapshot queries**, and declared **observable
+queries** together with their Go adapters. Compatibility is Partial: the tested
+client versions are Arc/Arc.React 22.48.2 and Fundamentals 7.22.0. Proxy-only
+output is unsupported. Generated observable hooks have bounded mounted Node
+evidence; browser and complete React parity remain unverified.
 
 ## Select the application profile
 
@@ -77,6 +78,17 @@ for discovery.
 - Model-owned single, pointer, slice, array, and `queries.Page` snapshots become
   model or model-array payloads. Plain lists do not acquire synthetic paging.
   GET/HTTP QUERY preference must agree with the exposed endpoint methods.
+- Observable queries declare `observable.Source[O]`, `CurrentSource[O]`,
+  `*State[O]`, or `*Subject[O]`, including aliases. Their emissions use the same
+  owning-model single/pointer/list/array shapes, value `queries.Page[M]`, or value
+  `queries.ObservedCollection[M]`. Source wrappers and change hints are not client
+  data. Generated `ObservableQueryFor` classes expose subscription, snapshot
+  perform, sorting, paging, and hook helpers through the pinned client runtime;
+  they do not generate a transport or delta algorithm.
+- Observable collection proxies require one unambiguous direct Go `ID`/`Id`
+  serialized as `id`, with a supported nonnullable scalar and no omission tag.
+  Competing conventional members, including JSON-hidden and embedded members,
+  fail before publication. An identity tag is not a custom client delta extractor.
 - Primitive query defaults validate the original Go grammar and target width,
   but remain server defaults rather than initialized client values. Nullable
   collection elements, rich defaults, and query validators are unsupported.
@@ -86,8 +98,11 @@ for discovery.
 
 Unsupported interfaces, opaque codecs, dynamic responses, rule forms, derived
 providers, rich dictionaries, eager constructor cycles, unsafe names/layouts,
-and observable/channel/provider results fail instead of producing `any` or a
-partial successful plan. Custom imports, interface output, source grouping, and
+and unsupported source/channel/provider results fail instead of producing `any`
+or a partial successful plan. Custom opaque `Source[Find]` MongoDB generation is
+unsupported until explicit emission metadata exists, even when manual runtime
+registration works. This subset does not cover every C# rich nullable or provider
+layout. Custom imports, interface output, source grouping, and
 library mode are unsupported. `-emit-go=false` fails because proxy-only runtime
 contract verification is not implemented.
 
@@ -139,8 +154,24 @@ independent server rejection. Publication tests cover failed writes/renames/dele
 recovery edits, empty-versus-absent files, full path preflight, and unmanifested
 ownership rejection.
 
-This is separate from the locked Node **manual observable-client** transport lane
-and from the independent Go consumer's delta reconstruction. Neither proves
-observable proxy generation, mounted React hooks, a browser host, paired .NET
-execution, or full frontend parity. The [parity map](../../../parity.md) records
-these boundaries; the [CLI reference](reference.md) lists invocation options.
+Observable production tests generate mixed families and verify exact output with
+`-check`; independent Go consumers exercise lazy factories, argument/authorization
+admission, current/pending snapshots, failures, cancellation, and join-before-
+disposal. Strict TypeScript compilation covers observable hook signatures with
+both decorator modes, not mounted hooks.
+
+The locked Node lane executes an actual production-generated model-bound query
+using untouched default WebSocket hub + Delta settings: shared socket, date/model
+hydration, exact change sets and callback counts, argument replacement, independent
+cancellation, terminal Unauthorized, and joined host shutdown with cumulative
+source counters. Its final collection uses an independent test-consumer reducer,
+not React. The existing manual lane separately executes the wider transport
+matrix. A third lane mounts generated observable hooks using real providers with
+explicit WebSocket hub/Delta: rich collection reconstruction, argument replacement,
+cache sharing/reuse and joined source/resource cleanup. It does not use the full
+Arc wrapper or prove browser/DOM/StrictMode, suspense, reconnect, 30-second expiry,
+server-side paging or setter correctness. Same-key setter retention characterizes
+[Arc issue 2869](https://github.com/Cratis/Arc/issues/2869) at 22.48.2, not a fix.
+Paired .NET hosts and full frontend parity remain unverified. The [observable fixture](../../../../ContractTests/observables/README.md)
+and [parity map](../../../parity.md) record the exact limits; the
+[CLI reference](reference.md) lists invocation options.

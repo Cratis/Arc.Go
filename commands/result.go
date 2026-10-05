@@ -27,6 +27,7 @@ type Details struct {
 	CorrelationID concepts.UUID
 	// Completion is server-side persistence evidence, never serialized in the envelope.
 	Completion CompletionReport `json:"-"`
+	operations *operationObservations
 	// Authorized states the final authorization decision.
 	Authorized bool
 	// ValidationResults are retained findings after severity filtering.
@@ -53,6 +54,11 @@ type Result[R any] struct {
 func NewResult[R any](details Details, response serialization.Optional[R]) Result[R] {
 	details.ValidationResults = wire.Findings(details.ValidationResults)
 	details.ExceptionMessages = wire.Messages(details.ExceptionMessages)
+	if details.operations != nil {
+		observations := *details.operations
+		observations.outcomes = append([]OperationOutcome(nil), observations.outcomes...)
+		details.operations = &observations
+	}
 	result := Result[R]{details: details, response: response}
 	if !result.IsSuccess() {
 		result.response = serialization.Optional[R]{}

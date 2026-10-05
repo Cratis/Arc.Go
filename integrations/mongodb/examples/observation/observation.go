@@ -26,6 +26,12 @@ type Author struct {
 	Active bool   `json:"active" bson:"Active"`
 }
 
+// ActiveAuthors returns trusted invalidation instructions, not rendered rows.
+// Register this source against the renderer for the same collection binding.
+func ActiveAuthors(watcher *mongodb.Watcher, authors *mongodb.Collection[Author]) (observable.Source[mongodb.Find[Author]], error) {
+	return mongodb.Observe(watcher, authors, mongodb.Find[Author]{Filter: bson.D{{Key: "Active", Value: true}}})
+}
+
 type authorResources struct{ authors *mongodb.Collection[Author] }
 
 func (*authorResources) Close(context.Context) error { return nil }
@@ -51,7 +57,7 @@ func ObservationExample(lifetime context.Context, client *mongo.Client, membersh
 	var registry queries.Registry
 	err = queries.RegisterObservable[Author, queries.NoArguments, mongodb.Find[Author]](&registry, "Active", queries.Function(
 		func(context.Context, queries.NoArguments) (observable.Source[mongodb.Find[Author]], error) {
-			return mongodb.Observe(watcher, authors, mongodb.Find[Author]{Filter: bson.D{{Key: "Active", Value: true}}})
+			return ActiveAuthors(watcher, authors)
 		}), queries.WithAuthorization[queries.NoArguments](metadata.Authorization{}),
 		queries.WithRenderer[queries.NoArguments, mongodb.Find[Author], []Author](
 			func(ctx context.Context, scope *execution.Scope) (queries.Renderer[mongodb.Find[Author], []Author], error) {

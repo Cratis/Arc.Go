@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -53,13 +54,24 @@ func canFlush(w http.ResponseWriter) bool {
 	return false
 }
 
+// cacheControlHasNoStore reports whether a Cache-Control value carries a
+// no-store directive, matched as a trimmed, case-insensitive comma-separated token.
+func cacheControlHasNoStore(value string) bool {
+	for directive := range strings.SplitSeq(value, ",") {
+		if strings.EqualFold(strings.TrimSpace(directive), "no-store") {
+			return true
+		}
+	}
+	return false
+}
+
 // Start commits and flushes SSE headers with a bounded write deadline. HTTP/2
 // omits the HTTP/1.x hop-by-hop Connection header. No pending result is invented.
 func (w *SSEWriter) Start() error {
 	h := w.writer.Header()
 	h.Del("Content-Length")
 	h.Set("Content-Type", "text/event-stream; charset=utf-8")
-	if h.Get("Cache-Control") != "no-store" {
+	if !cacheControlHasNoStore(h.Get("Cache-Control")) {
 		h.Set("Cache-Control", "no-cache")
 	}
 	h.Set("X-Accel-Buffering", "no")

@@ -25,12 +25,29 @@ class {{.Name}}SortByWithoutQuery {
 {{range .Parameters}}    {{.Name}}{{.Optional}}: {{.Type}};
 {{end}}}
 
+{{end}}{{if .Rules}}export class {{.Name}}Validator extends {{.Validator}}<{{.ParametersName}}> {
+    constructor() {
+        super();
+{{range .Rules}}        {{.}}
+{{end}}    }
+{{if .EmptyAsMissing}}
+    validate(query: {{.ParametersName}}) {
+        // Builtin GET/QUERY binding treats empty nullable strings as missing.
+        // Normalize a copy for validation only; never mutate the caller's args.
+        return super.validate({
+            ...query,
+{{range .EmptyAsMissing}}            {{.}}: query[{{.}}] === '' ? undefined : query[{{.}}],
+{{end}}        });
+    }
+{{end}}}
+
 {{end}}export class {{.Name}} extends {{.Base}}<{{.Data}}{{if .ParametersName}}, {{.ParametersName}}{{end}}> {
     readonly route: string = {{.Route}};
     readonly queryName: string = {{.Identity}};
     readonly treatWarningsAsErrors: boolean = false;
     readonly roles: string[] = {{.Roles}};
-    readonly defaultValue: {{.Data}} = {{if .Enumerable}}[]{{else}}{} as {{.Data}}{{end}};
+{{if .Rules}}    readonly validation = new {{.Name}}Validator();
+{{end}}    readonly defaultValue: {{.Data}} = {{if .Enumerable}}[]{{else}}{} as {{.Data}}{{end}};
 {{if .SortFields}}    private readonly _sortBy: {{.Name}}SortBy;
     private static readonly _sortBy = new {{.Name}}SortByWithoutQuery();
 {{end}}

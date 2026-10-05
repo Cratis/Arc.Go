@@ -133,14 +133,19 @@ func fieldTag(tag string) (string, bool, bool) {
 	return parts[0], omit, true
 }
 
-// BSON document hooks can bypass the driver's registry entirely. Check every
-// type and pointer method set before container/concept/cache fast paths. Required
+// BSON hooks, including IsZero field inspection, can execute application code
+// outside the driver's registry. Check every type and pointer method set before
+// container/concept/cache fast paths. Required
 // JSON/text concept conversion remains supported through the declared codecs.
 func hasBSONCodec(t reflect.Type) bool {
 	for _, contract := range []reflect.Type{
 		reflect.TypeFor[bson.Marshaler](), reflect.TypeFor[bson.Unmarshaler](),
 		reflect.TypeFor[bson.ValueMarshaler](), reflect.TypeFor[bson.ValueUnmarshaler](),
+		reflect.TypeFor[bson.Zeroer](),
 	} {
+		if contract == reflect.TypeFor[bson.Zeroer]() && knownPrimitiveZeroer(t) {
+			continue
+		}
 		if t.Implements(contract) || reflect.PointerTo(t).Implements(contract) {
 			return true
 		}
@@ -148,12 +153,31 @@ func hasBSONCodec(t reflect.Type) bool {
 	return false
 }
 
+// These exact pinned primitives inspect only scalar state or payload lengths.
+// Do not admit named wrappers or embedded/promoted application implementations.
+// This exempts IsZero only; other hooks and structural budgets still apply.
+func knownPrimitiveZeroer(t reflect.Type) bool {
+	if t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	switch t {
+	case reflect.TypeFor[time.Time](), reflect.TypeFor[concepts.UUID](),
+		reflect.TypeFor[bson.ObjectID](), reflect.TypeFor[bson.Decimal128](),
+		reflect.TypeFor[bson.Binary](), reflect.TypeFor[bson.Regex](),
+		reflect.TypeFor[bson.DBPointer](), reflect.TypeFor[bson.Timestamp](),
+		reflect.TypeFor[bson.RawValue]():
+		return true
+	}
+	return false
+}
+
 func hasCustomCodec(t reflect.Type) bool {
+	if hasBSONCodec(t) {
+		return true
+	}
 	for _, contract := range []reflect.Type{
 		reflect.TypeFor[json.Marshaler](), reflect.TypeFor[json.Unmarshaler](),
 		reflect.TypeFor[encoding.TextMarshaler](), reflect.TypeFor[encoding.TextUnmarshaler](),
-		reflect.TypeFor[bson.Marshaler](), reflect.TypeFor[bson.Unmarshaler](),
-		reflect.TypeFor[bson.ValueMarshaler](), reflect.TypeFor[bson.ValueUnmarshaler](),
 	} {
 		if t.Implements(contract) || reflect.PointerTo(t).Implements(contract) {
 			return true

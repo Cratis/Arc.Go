@@ -13,9 +13,11 @@ import (
 
 	"github.com/cratis/arc.go/authentication"
 	"github.com/cratis/arc.go/authorization"
+	"github.com/cratis/arc.go/commands"
 	"github.com/cratis/arc.go/correlation"
 	"github.com/cratis/arc.go/execution"
 	"github.com/cratis/arc.go/metadata"
+	"github.com/cratis/arc.go/observability"
 	"github.com/cratis/arc.go/queries"
 	"github.com/cratis/arc.go/tenancy"
 	di "github.com/cratis/fundamentals.go/dependencyinjection"
@@ -24,6 +26,10 @@ import (
 // Options configures composition. Collaborators are borrowed and must support
 // concurrent calls. Configuration slices and pointed-to values are copied.
 type Options struct {
+	// Diagnostics is borrowed, bounded backend recording; nil disables it.
+	Diagnostics *observability.Recorder
+	// QueryHealth enables protected aggregate health; nil leaves it absent in every environment.
+	QueryHealth            *QueryHealthOptions
 	Namespace              string
 	Environment            string
 	Routes                 *metadata.Options
@@ -38,6 +44,7 @@ type Options struct {
 	DependencyCatalog      di.Catalog
 	Clock                  func() time.Time
 	CleanupTimeout         time.Duration
+	CommandOperations      commands.OperationOptions // Separate cooperative recovery budget.
 	ExposeExceptionDetails bool
 	Logger                 *slog.Logger
 	HTTP                   HTTPOptions
@@ -50,7 +57,8 @@ type Options struct {
 // Limits include opening and retired-but-unjoined operations, not just active streams.
 // Hub limits cover retained framework state, not allocations in application callbacks.
 type ObservableOptions struct {
-	// MaxObservations is the application-wide operation ceiling; default 1024.
+	// MaxObservations bounds application query owners and hub subscriptions; default 1024.
+	// Opt-in QueryHealth has a separate private-pipeline ceiling of the same size.
 	MaxObservations int
 	// MaximumWait is the maximum first-result wait budget; default five minutes.
 	MaximumWait time.Duration
@@ -121,6 +129,11 @@ type IntrospectionOptions struct {
 type IdentityOptions struct{ DetailsProvider string }
 
 func normalizeOptions(o Options) (Options, error) {
+	var healthErr error
+	o.QueryHealth, healthErr = copyQueryHealthOptions(o.QueryHealth)
+	if healthErr != nil {
+		return Options{}, healthErr
+	}
 	if o.Environment == "" {
 		o.Environment = "Production"
 	}
@@ -154,7 +167,7 @@ func normalizeOptions(o Options) (Options, error) {
 		c := cloneCatalog(metadata.Catalog{Version: metadata.Version, Commands: []metadata.Command{{Authorization: o.Authorization.Fallback}}})
 		o.Authorization.Fallback = c.Commands[0].Authorization
 	}
-	if o.OpenResources != nil && o.ScopeFactory != nil || o.CleanupTimeout < 0 || o.TenantResolver != nil && o.Tenancy != (tenancy.Options{}) {
+	if o.OpenResources != nil && o.ScopeFactory != nil || o.CleanupTimeout < 0 || o.CommandOperations.CompensationTimeout < 0 || o.TenantResolver != nil && o.Tenancy != (tenancy.Options{}) {
 		return Options{}, ErrInvalidOptions
 	}
 	if o.Clock == nil {

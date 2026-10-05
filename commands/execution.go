@@ -14,13 +14,14 @@ import (
 )
 
 type executionState struct {
-	mu         sync.Mutex
-	top        *frame
-	closed     bool
-	completing bool
-	values     map[*stateIdentity]any
-	report     CompletionReport
-	reports    uint64
+	mu                sync.Mutex
+	top               *frame
+	closed            bool
+	completing        bool
+	values            map[*stateIdentity]any
+	report            CompletionReport
+	reports           uint64
+	operationAttempts uint64
 }
 
 // Execution is a callback-scoped view of synchronous command ownership. It is not
@@ -125,6 +126,8 @@ func (b *boundPipeline) ValidateScoped(ctx context.Context, scope *execution.Sco
 	return NewResult(result.Details(), serialization.Optional[NoResponse]{}), err
 }
 func (b *boundPipeline) run(ctx context.Context, scope *execution.Scope, command any, validate bool, options []ExecuteOptions) (result Result[any], err error) {
+	ctx, attempt := beginDiagnostics(ctx, b, command, validate)
+	defer func() { finishDiagnostics(attempt, ctx, result, err) }()
 	b.mu.Lock()
 	if b.stopped {
 		b.mu.Unlock()
@@ -140,6 +143,20 @@ func (b *boundPipeline) run(ctx context.Context, scope *execution.Scope, command
 	defer func() { b.mu.Lock(); b.busy = false; close(b.done); b.mu.Unlock() }()
 	if err := b.invocation.owner.Check(ctx); err != nil {
 		return b.rejected(ctx, err, validate)
+	}
+	child, _ := b.pipeline.LookupCommand(command)
+	if b.frame.registration.operations || child.operations {
+		b.frame.owner.mu.Lock()
+		b.frame.owner.operationAttempts++
+		b.frame.owner.mu.Unlock()
+		result := FromError[any](contextID(ctx), ErrInvalidOperation)
+		// Forward refusal must be visible to persistence guards inside this
+		// callback, not just to callWith after the callback returns. Recovery
+		// uses per-callback attempts without contaminating the original failure.
+		if b.frame.operations == nil || !b.frame.operations.recovered {
+			b.record(result, ErrInvalidOperation)
+		}
+		return result, ErrInvalidOperation
 	}
 	b.frame.owner.mu.Lock()
 	completing := b.frame.owner.completing
@@ -170,6 +187,14 @@ func (b *boundPipeline) expire() error {
 }
 func (b *boundPipeline) rejected(ctx context.Context, err error, validate bool) (Result[any], error) {
 	result := FromError[any](contextID(ctx), err)
+	if b.frame.registration.operations {
+		b.frame.owner.mu.Lock()
+		if !b.frame.owner.closed {
+			b.frame.owner.operationAttempts++
+		}
+		b.frame.owner.mu.Unlock()
+		return result, err
+	}
 	if !validate || b.frame.snapshot.validationOnly {
 		b.record(result, err)
 	}

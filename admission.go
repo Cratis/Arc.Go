@@ -10,10 +10,13 @@ import (
 	"github.com/cratis/arc.go/correlation"
 	"github.com/cratis/arc.go/execution"
 	boundary "github.com/cratis/arc.go/internal/pipeline"
+	"github.com/cratis/arc.go/observability"
 	"github.com/cratis/arc.go/queries"
 )
 
 type admittedCommands struct{ a *Application }
+
+func (p admittedCommands) Diagnostics() *observability.Recorder { return p.a.options.Diagnostics }
 
 func (p admittedCommands) Lookup(name string) (commands.Registration, bool) {
 	return p.a.commands.Lookup(name)
@@ -27,12 +30,20 @@ func (p admittedCommands) Execute(ctx context.Context, c any, o ...commands.Exec
 func (p admittedCommands) ExecuteScoped(ctx context.Context, s *execution.Scope, c any, o ...commands.ExecuteOptions) (commands.Result[any], error) {
 	return p.run(ctx, s, c, o, true)
 }
-func (p admittedCommands) run(ctx context.Context, s *execution.Scope, c any, o []commands.ExecuteOptions, scoped bool) (commands.Result[any], error) {
+func (p admittedCommands) run(ctx context.Context, s *execution.Scope, c any, o []commands.ExecuteOptions, scoped bool) (result commands.Result[any], resultErr error) {
+	ctx, attempt := beginCommandDiagnostics(ctx, p, c, false)
+	var release func()
+	defer func() {
+		finishCommandDiagnostics(attempt, ctx, result, resultErr)
+		if release != nil {
+			release()
+		}
+	}()
 	work, release, err := p.a.admit(ctx)
 	if err != nil {
 		return commands.FromError[any](contextID(ctx), err), err
 	}
-	defer release()
+	ctx = work
 	if scoped {
 		return p.a.commands.ExecuteScoped(work, s, c, o...)
 	}
@@ -44,12 +55,20 @@ func (p admittedCommands) Validate(ctx context.Context, c any, o ...commands.Exe
 func (p admittedCommands) ValidateScoped(ctx context.Context, s *execution.Scope, c any, o ...commands.ExecuteOptions) (commands.Result[commands.NoResponse], error) {
 	return p.validate(ctx, s, c, o, true)
 }
-func (p admittedCommands) validate(ctx context.Context, s *execution.Scope, c any, o []commands.ExecuteOptions, scoped bool) (commands.Result[commands.NoResponse], error) {
+func (p admittedCommands) validate(ctx context.Context, s *execution.Scope, c any, o []commands.ExecuteOptions, scoped bool) (result commands.Result[commands.NoResponse], resultErr error) {
+	ctx, attempt := beginCommandDiagnostics(ctx, p, c, true)
+	var release func()
+	defer func() {
+		finishCommandDiagnostics(attempt, ctx, result, resultErr)
+		if release != nil {
+			release()
+		}
+	}()
 	work, release, err := p.a.admit(ctx)
 	if err != nil {
 		return commands.FromError[commands.NoResponse](contextID(ctx), err), err
 	}
-	defer release()
+	ctx = work
 	if scoped {
 		return p.a.commands.ValidateScoped(work, s, c, o...)
 	}
@@ -57,6 +76,8 @@ func (p admittedCommands) validate(ctx context.Context, s *execution.Scope, c an
 }
 
 type admittedQueries struct{ a *Application }
+
+func (p admittedQueries) Diagnostics() *observability.Recorder { return p.a.options.Diagnostics }
 
 func (p admittedQueries) Lookup(name queries.FullyQualifiedQueryName) (queries.Registration, bool) {
 	return p.a.queries.Lookup(name)
@@ -67,18 +88,36 @@ func (p admittedQueries) Perform(ctx context.Context, name queries.FullyQualifie
 func (p admittedQueries) PerformScoped(ctx context.Context, s *execution.Scope, name queries.FullyQualifiedQueryName, r queries.Request) (queries.Result[any], error) {
 	return p.run(ctx, s, name, r, true)
 }
-func (p admittedQueries) run(ctx context.Context, s *execution.Scope, name queries.FullyQualifiedQueryName, r queries.Request, scoped bool) (queries.Result[any], error) {
+func (p admittedQueries) run(ctx context.Context, s *execution.Scope, name queries.FullyQualifiedQueryName, r queries.Request, scoped bool) (result queries.Result[any], resultErr error) {
+	ctx, attempt := beginQueryDiagnostics(ctx, p, name, observability.SnapshotTransport, observability.Completed)
+	var release func()
+	defer func() {
+		finishQueryDiagnostics(attempt, ctx, result, resultErr)
+		if release != nil {
+			release()
+		}
+	}()
 	work, release, err := p.a.admit(ctx)
 	if err != nil {
 		return queries.FromError[any](contextID(ctx), err), err
 	}
-	defer release()
+	ctx = work
 	if scoped {
 		return p.a.queries.PerformScoped(work, s, name, r)
 	}
 	return p.a.queries.Perform(work, name, r)
 }
-func (p admittedQueries) Open(ctx context.Context, name queries.FullyQualifiedQueryName, r queries.Request) (*queries.Observation, queries.Result[any], error) {
+func (p admittedQueries) Open(ctx context.Context, name queries.FullyQualifiedQueryName, r queries.Request) (observation *queries.Observation, result queries.Result[any], resultErr error) {
+	ctx, attempt := beginQueryDiagnostics(ctx, p, name, observability.ObservableTransport, observability.Opening)
+	var releaseUnused func()
+	defer func() {
+		if attempt != nil {
+			attempt.FinishForwarded(boundary.Outcome(result.IsAuthorized(), result.HasExceptions(), resultErr != nil, ctx != nil && ctx.Err() != nil, result.Details().ValidationResults))
+		}
+		if releaseUnused != nil {
+			releaseUnused()
+		}
+	}()
 	// A transport may forward a cleanup-join notification. Compose it with the
 	// application lease rather than replacing it; failed opening cleanup can
 	// remain retained even when Open returns a nil observation.
@@ -96,11 +135,12 @@ func (p admittedQueries) Open(ctx context.Context, name queries.FullyQualifiedQu
 			notify()
 		}
 	})
-	defer lease.ReleaseUnused()
+	releaseUnused = lease.ReleaseUnused
 	capability, ok := p.a.queries.(queries.ObservablePipeline)
 	if !ok {
 		return nil, queries.FromError[any](contextID(ctx), queries.ErrObservableCapability), queries.ErrObservableCapability
 	}
+	ctx = work
 	return capability.Open(work, name, r)
 }
 func (p admittedQueries) CloseObservations(ctx context.Context) error {

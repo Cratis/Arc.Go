@@ -44,9 +44,10 @@ func osOwner() string { return os.Getenv("ARC_MONGODB_TEST_OWNER") }
 const providerImage = "mongo:8.0.15@sha256:f4d54619262ae3bc6a0a8efbebcef970b87b8ad70697479a75ce308a6f400158"
 
 type commandRecord struct {
-	mu       sync.Mutex
-	commands []event.CommandStartedEvent
-	started  func(context.Context, *event.CommandStartedEvent)
+	mu        sync.Mutex
+	commands  []event.CommandStartedEvent
+	started   func(context.Context, *event.CommandStartedEvent)
+	succeeded func(context.Context, *event.CommandSucceededEvent)
 }
 
 func (r *commandRecord) monitor() *event.CommandMonitor {
@@ -56,6 +57,13 @@ func (r *commandRecord) monitor() *event.CommandMonitor {
 		r.mu.Lock()
 		r.commands = append(r.commands, copy)
 		callback := r.started
+		r.mu.Unlock()
+		if callback != nil {
+			callback(ctx, command)
+		}
+	}, Succeeded: func(ctx context.Context, command *event.CommandSucceededEvent) {
+		r.mu.Lock()
+		callback := r.succeeded
 		r.mu.Unlock()
 		if callback != nil {
 			callback(ctx, command)

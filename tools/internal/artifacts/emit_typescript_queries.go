@@ -16,6 +16,7 @@ import (
 	"text/template"
 
 	"github.com/cratis/arc.go/metadata"
+	"github.com/cratis/arc.go/validation"
 )
 
 //go:embed templates/query.ts.tmpl
@@ -28,18 +29,19 @@ type tsQueryParameter struct {
 type tsQuerySort struct{ Name, WireName, Backing string }
 type tsQuery struct {
 	Name, Route, Identity, Roles, Data, Constructor, Base, Descriptor, HTTP string
-	ParametersName, Required, Actions, QueryActions                         string
-	Imports, Hooks                                                          []string
+	ParametersName, Required, Actions, QueryActions, Item                   string
+	Validator                                                               string
+	Imports, Hooks, Rules, EmptyAsMissing                                   []string
 	Parameters                                                              []tsQueryParameter
 	SortFields                                                              []tsQuerySort
-	Enumerable                                                              bool
+	Enumerable, Observable                                                  bool
 }
 
-// renderTypeScriptQueries coordinates a complete in-memory snapshot/model/command
+// renderTypeScriptQueries coordinates a complete in-memory query/model/command
 // family. It delegates transport and hooks to the locked Arc runtime, and never
 // publishes outputs or infers a provider's paging/sorting contract.
 func renderTypeScriptQueries(graph *Graph) ([]typescriptOutput, error) {
-	if graph == nil || graph.FormatVersion != GraphVersion {
+	if graph == nil || graph.FormatVersion != GraphVersion && graph.FormatVersion != ContractGraphVersion {
 		return nil, fmt.Errorf("unsupported query graph format")
 	}
 	if err := validateProfile(graph.Profile); err != nil {
@@ -55,6 +57,9 @@ func renderTypeScriptQueries(graph *Graph) ([]typescriptOutput, error) {
 		inputs[command.TypeKey] = true
 	}
 	for _, node := range graph.Types {
+		if node.TSIncluded != nil && !*node.TSIncluded {
+			continue
+		}
 		if inputs[node.Key] {
 			continue
 		}
@@ -141,7 +146,11 @@ func renderTypeScriptQueries(graph *Graph) ([]typescriptOutput, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", identity, err)
 		}
-		for _, name := range []string{view.Name, view.ParametersName} {
+		names := []string{view.Name, view.ParametersName}
+		if len(view.Rules) > 0 {
+			names = append(names, view.Name+"Validator")
+		}
+		for _, name := range names {
 			if name != "" {
 				if err := reserve(file, name, identity); err != nil {
 					return nil, err
@@ -183,13 +192,27 @@ func renderTypeScriptQueries(graph *Graph) ([]typescriptOutput, error) {
 
 func planQuery(query QueryDescriptor, file string, nodes map[string]TypeDescriptor, paths map[string]string, endpoints []metadata.Endpoint) (tsQuery, error) {
 	view := tsQuery{Name: query.Declaration.Name, Identity: tsQuote(query.Declaration.Identity()), Roles: tsQuoteList(query.Roles)}
-	if query.Delivery != "snapshot" {
+	if query.Delivery != "snapshot" && query.Delivery != "observable" {
 		return view, fmt.Errorf("unsupported query delivery %q", query.Delivery)
+	}
+	view.Observable = query.Delivery == "observable"
+	if view.Observable != query.Declaration.Observable {
+		return view, fmt.Errorf("query delivery disagrees with finalized observable declaration")
+	}
+	if view.Observable {
+		if query.PortableRules {
+			return view, fmt.Errorf("observable query validation rules require paired client semantics")
+		}
+		for _, field := range query.Parameters {
+			if len(field.Rules) > 0 {
+				return view, fmt.Errorf("observable query validation rules require paired client semantics")
+			}
+		}
 	}
 	result := query.Result
 	if result.Kind == "array" {
 		if result.Element == nil || result.Element.Nullable {
-			return view, fmt.Errorf("unsupported snapshot collection result")
+			return view, fmt.Errorf("unsupported %s collection result", query.Delivery)
 		}
 		view.Enumerable = true
 		result = *result.Element
@@ -198,11 +221,16 @@ func planQuery(query QueryDescriptor, file string, nodes map[string]TypeDescript
 	if result.Kind != "model" || !exists || model.Kind != "model" || result.Target != query.TypeKey || model.Name != query.Declaration.ReadModel {
 		return view, fmt.Errorf("snapshot result must match finalized model-owned wire data (no opaque provider or any)")
 	}
+	if view.Observable && view.Enumerable {
+		if identity := query.Declaration.ReadModelIdentityMember; identity != "" && identity != "id" {
+			return view, fmt.Errorf("observable collection identity metadata must select id; other identity layouts are unsupported")
+		}
+		if err := validateObservableIdentity(model); err != nil {
+			return view, err
+		}
+	}
 	if query.Paged && !view.Enumerable {
 		return view, fmt.Errorf("paged snapshot must have enumerable wire data")
-	}
-	if query.PortableRules {
-		return view, fmt.Errorf("query validation rules require paired client semantics")
 	}
 	if identity := query.Declaration.ReadModelIdentityMember; identity != "" {
 		found := false
@@ -237,10 +265,14 @@ func planQuery(query QueryDescriptor, file string, nodes map[string]TypeDescript
 		return view, fmt.Errorf("missing or inconsistent finalized query endpoint")
 	}
 	view.Route = tsQuote(route)
-	imports := &tsImports{requests: map[tsImport]bool{}, aliases: map[tsImport]string{}, own: view.Name, reserved: []string{view.Name + "Parameters", view.Name + "SortBy", view.Name + "SortByWithoutQuery"}}
-	base := imports.add("@cratis/arc/queries", "QueryFor", true)
+	imports := &tsImports{requests: map[tsImport]bool{}, aliases: map[tsImport]string{}, own: view.Name, reserved: []string{view.Name + "Parameters", view.Name + "Validator", view.Name + "SortBy", view.Name + "SortByWithoutQuery"}}
+	baseName := "QueryFor"
+	if view.Observable {
+		baseName = "ObservableQueryFor"
+	}
+	base := imports.add("@cratis/arc/queries", baseName, true)
 	descriptor := imports.add("@cratis/arc/reflection", "ParameterDescriptor", true)
-	var http, actions, queryActions tsImport
+	var http, actions, queryActions, validator tsImport
 	if preference != "" {
 		http = imports.add("@cratis/arc/queries", "QueryHttpMethod", true)
 	}
@@ -276,28 +308,15 @@ func planQuery(query QueryDescriptor, file string, nodes map[string]TypeDescript
 	}
 	if len(view.SortFields) > 0 {
 		actions = imports.add("@cratis/arc/queries", "SortingActions", true)
-		queryActions = imports.add("@cratis/arc/queries", "SortingActionsForQuery", true)
+		actionsName := "SortingActionsForQuery"
+		if view.Observable {
+			actionsName = "SortingActionsForObservableQuery"
+		}
+		queryActions = imports.add("@cratis/arc/queries", actionsName, true)
 	}
 	// Hook imports must be registered before the shared type/constructor planner
 	// resolves aliases, including collisions with locally named result models.
-	hookImports := map[string]tsImport{}
-	for _, name := range []string{"useQuery", "useSuspenseQuery", "QueryWhen"} {
-		hookImports[name] = imports.add("@cratis/arc.react/queries", name, true)
-	}
-	for _, name := range []string{"PerformQuery", "SetSorting"} {
-		hookImports[name] = imports.add("@cratis/arc.react/queries", name, false)
-	}
-	hookImports["QueryResultWithState"] = imports.add("@cratis/arc/queries", "QueryResultWithState", false)
-	if view.Enumerable {
-		for _, name := range []string{"useQueryWithPaging", "useSuspenseQueryWithPaging"} {
-			hookImports[name] = imports.add("@cratis/arc.react/queries", name, true)
-		}
-		for _, name := range []string{"SetPage", "SetPageSize"} {
-			hookImports[name] = imports.add("@cratis/arc.react/queries", name, false)
-		}
-		hookImports["Sorting"] = imports.add("@cratis/arc/queries", "Sorting", false)
-		hookImports["Paging"] = imports.add("@cratis/arc/queries", "Paging", true)
-	}
+	hookImports := queryHookImports(view, imports)
 	required := []string{}
 	for _, field := range query.Parameters {
 		// Arc 22.48.2 UrlHelpers interpolates keys into a RegExp without
@@ -305,11 +324,18 @@ func planQuery(query QueryDescriptor, file string, nodes map[string]TypeDescript
 		if strings.ContainsAny(field.Name, `\.^$*+?()[]{}|`) {
 			return view, fmt.Errorf("query parameter %q is incompatible with Arc 22.48.2 route parameter helper", field.Name)
 		}
-		if queryReserved(field.Name) {
+		if queryReserved(field.Name) || view.Observable && observableQueryReserved(field.Name) {
 			return view, fmt.Errorf("parameter %q collides with query runtime", field.Name)
 		}
-		if len(field.Rules) != 0 {
-			return view, fmt.Errorf("query validation rules require paired client semantics")
+		if len(field.Rules) > 0 && field.Type.Nullable && !field.Required {
+			view.EmptyAsMissing = append(view.EmptyAsMissing, tsQuote(field.Name))
+		}
+		for _, rule := range field.Rules {
+			line, err := queryRule(field, rule)
+			if err != nil {
+				return view, err
+			}
+			view.Rules = append(view.Rules, line)
 		}
 		if field.HasDefault {
 			if err := validateQueryDefault(field); err != nil {
@@ -329,6 +355,12 @@ func planQuery(query QueryDescriptor, file string, nodes map[string]TypeDescript
 			required = append(required, tsQuote(field.Name))
 		}
 	}
+	if query.PortableRules != (len(view.Rules) > 0) {
+		return view, fmt.Errorf("query portable rule metadata disagrees with parameter rules")
+	}
+	if len(view.Rules) > 0 {
+		validator = imports.add("@cratis/arc/queries", "QueryValidator", true)
+	}
 	key := "query:" + query.Declaration.Identity()
 	localPaths := map[string]string{}
 	for key, value := range paths {
@@ -337,18 +369,25 @@ func planQuery(query QueryDescriptor, file string, nodes map[string]TypeDescript
 	localPaths[key] = file
 	fields := append([]FieldDescriptor(nil), query.Parameters...)
 	fields = append(fields, FieldDescriptor{Name: "__arcResult", Type: query.Result})
+	if view.Observable && view.Enumerable {
+		fields = append(fields, FieldDescriptor{Name: "__arcItem", Type: *query.Result.Element})
+	}
 	planned, err := planModelUsingImports(TypeDescriptor{Key: key, Name: metadata.TypeName{Name: view.Name}, Kind: "model", Fields: fields}, nodes, localPaths, imports, false)
 	if err != nil {
 		return view, err
 	}
 	view.Imports, view.Base, view.Descriptor = planned.Imports, imports.aliases[base], imports.aliases[descriptor]
 	view.Actions, view.QueryActions = imports.aliases[actions], imports.aliases[queryActions]
+	view.Validator = imports.aliases[validator]
 	if preference != "" {
 		view.HTTP = imports.aliases[http] + "." + preference
 	}
-	response := planned.Properties[len(planned.Properties)-1]
+	response := planned.Properties[len(query.Parameters)]
 	view.Data, view.Constructor = response.Type, response.Constructor
-	for index, property := range planned.Properties[:len(planned.Properties)-1] {
+	if view.Observable && view.Enumerable {
+		view.Item = planned.Properties[len(query.Parameters)+1].Type
+	}
+	for index, property := range planned.Properties[:len(query.Parameters)] {
 		optional := ""
 		if !query.Parameters[index].Required {
 			optional = "?"
@@ -359,8 +398,41 @@ func planQuery(query QueryDescriptor, file string, nodes map[string]TypeDescript
 	if len(view.Parameters) > 0 {
 		view.ParametersName = view.Name + "Parameters"
 	}
-	view.Hooks = queryHooks(view, hookImports, imports)
+	if view.Observable {
+		view.Hooks = observableQueryHooks(view, hookImports, imports)
+	} else {
+		view.Hooks = queryHooks(view, hookImports, imports)
+	}
 	return view, nil
+}
+
+// queryRule admits only the snapshot string family with paired server/client
+// evidence. Compiler representation facts must survive either graph format:
+// NewPortable inspects the Go value, not ConceptValue or a custom wire codec.
+// Missing optional non-nullable Go strings become empty strings, while
+// the client sees undefined; defaults are also applied only on the server. Refuse
+// those shapes rather than silently changing the rules or the query arguments.
+// The generated validator copies nullable optional arguments and maps empty
+// strings to undefined, matching builtin GET/QUERY binding before portable rules.
+func queryRule(field FieldDescriptor, rule validation.RuleDescriptor) (string, error) {
+	if field.Type.Kind != "string" {
+		return "", fmt.Errorf("query parameter %q: rules require paired client semantics for scalar strings", field.Name)
+	}
+	if field.QueryRules == nil || field.QueryRules.GoKind != "string" || field.QueryRules.CustomCodec || field.QueryRules.PointerDepth > 1 {
+		return "", fmt.Errorf("query parameter %q: portable rules require proven Go string representation without custom codecs", field.Name)
+	}
+	if field.Binding != nil && (field.Binding.Reader != "builtin" || field.Binding.PreservePresence || !field.Binding.EmptyAsMissing || !field.Binding.NullAsMissing) {
+		return "", fmt.Errorf("query parameter %q: portable rules require builtin empty/null-as-missing binding", field.Name)
+	}
+	if field.HasDefault || !field.Required && !field.Type.Nullable {
+		return "", fmt.Errorf("query parameter %q: portable rules require required or nullable strings without server defaults", field.Name)
+	}
+	switch rule.Name {
+	case "notNull", "notEmpty", "minLength", "maxLength", "length":
+	default:
+		return "", fmt.Errorf("query parameter %q: unsupported client portable rule %q", field.Name, rule.Name)
+	}
+	return commandRule(field, rule)
 }
 
 func tsQuoteList(values []string) string {

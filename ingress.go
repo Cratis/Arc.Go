@@ -35,6 +35,8 @@ func headerValues(h http.Header, name string) []string {
 	return values
 }
 func (a *Application) serveIngress(w http.ResponseWriter, r *http.Request, observed *responseWriter) {
+	r, diagnostic := a.beginHTTPDiagnostics(r)
+	defer diagnostic.finish(r.Context())
 	text := ""
 	if values := headerValues(r.Header, a.options.HTTP.CorrelationHeader); len(values) == 1 {
 		text = values[0]
@@ -93,6 +95,10 @@ type httpReceiptKey struct{}
 // The ingress timestamp is ordinary metadata everywhere else, not a capability
 // to reuse that timestamp for unrelated backend operations.
 func httpPipelineContext(ctx context.Context) context.Context {
+	if diagnostic, _ := ctx.Value(httpDiagnosticsKey{}).(*httpDiagnostics); diagnostic != nil {
+		ctx = boundary.ForwardDiagnostics(ctx, diagnostic.attempt)
+		ctx = context.WithValue(ctx, httpDiagnosticsKey{}, (*httpDiagnostics)(nil))
+	}
 	received, ok := ctx.Value(httpReceiptKey{}).(time.Time)
 	ctx = context.WithValue(ctx, httpReceiptKey{}, nil)
 	if ok {
@@ -107,7 +113,7 @@ func (a *Application) prepareHeaders(w http.ResponseWriter, r *http.Request) {
 	if matched && r.Method == "QUERY" {
 		w.Header().Set("Cache-Control", "no-store")
 	}
-	if matched && strings.HasPrefix(e.Identity, "/.cratis/") {
+	if matched && (strings.HasPrefix(e.Identity, "/.cratis/") || e.Path == queryHealthPath) {
 		privateCache(w)
 		if e.Path == "/.cratis/me" {
 			expireLegacyCookie(w, r)
@@ -211,6 +217,7 @@ func (e *ingressReadError) ValidationResults() []validation.Result {
 }
 
 func (a *Application) publish(w http.ResponseWriter, r *http.Request, status int, value any) {
+	httpDiagnosticResult(r.Context(), value)
 	body, err := encode(r.Context(), value)
 	if err != nil || int64(len(body)) > a.options.HTTP.MaxResponseBytes {
 		value, status = publicationFailure(value)

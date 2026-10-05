@@ -1,18 +1,20 @@
 ---
-title: Generate adapters and snapshot proxies
-description: Generate typed Go registrations and supported TypeScript models, commands, and snapshot queries.
+title: Generate adapters and proxies
+description: Generate typed Go registrations and supported TypeScript models, commands, snapshot queries, and observable queries.
 ---
 
 Writing a registration closure for every command repeats information already in
 its method signature. The experimental `arc-gen` tool reads opted-in Go packages
-and writes command/snapshot adapters for you. An optional application profile also
-[generates TypeScript models, commands, and snapshot queries](typescript.md).
-Observable source and
-`ObservedCollection` generation require the separate tools lane to pin a fetchable
-runtime revision and add its own executable evidence; use
-[manual observable registration](../queries/observable-queries.md) meanwhile.
+and writes command, snapshot-query, and declared observable-source adapters for
+you. An optional application profile also
+[generates TypeScript models, commands, and queries](typescript.md), including
+bounded observable proxies. The tools module pins pushed runtime `78ebbf8` and
+released Fundamentals.Go `v0.2.0`; it needs no workspace or local replacement.
 Your business methods remain ordinary Go;
 the generated code uses the same public registrars and pipelines as manual wiring.
+To replace repeated service factory registrations, opt in to
+[constructor services](constructor-services.md). That generates a separate
+`RegisterServices` function without changing manual closures or `ArcBindings`.
 
 ## Put behavior on the model
 
@@ -52,7 +54,8 @@ func (Item) AllItems(ctx context.Context, args Arguments, items ItemQueries) ([]
 ```
 
 Mark `Item` with `//arc:readmodel`. The generator discovers exported namespace
-methods returning their owning model, including slices and pages. It treats the
+methods returning their owning model, including slices and pages, and recognized
+observable source declarations with owning-model emissions. It treats the
 first ordinary parameter as caller arguments and the remaining parameters as
 services. Service resolution cannot turn an argument field into a dependency.
 
@@ -64,6 +67,14 @@ func RecentItems(ctx context.Context, args Arguments, items ItemQueries) ([]Item
     return items.All(ctx, args.Prefix)
 }
 ```
+
+For observable behavior, return `observable.Source[O]`, `CurrentSource[O]`,
+`*State[O]`, or `*Subject[O]` with `error`. Emissions may be the owning model, its
+pointer, a list/array, value `queries.Page[M]`, or value
+`queries.ObservedCollection[M]`. The generated performer resolves dependencies
+only after admission and returns the source without opening it or taking over its
+lifecycle. Use [manual observable registration](../queries/observable-queries.md)
+for unsupported provider/source layouts.
 
 See the [directive and signature reference](reference.md) for authorization,
 private query selection, infrastructure parameters, and rejected signatures.

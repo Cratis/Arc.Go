@@ -15,6 +15,7 @@ import (
 	"github.com/cratis/arc.go/execution"
 	"github.com/cratis/arc.go/identity"
 	boundary "github.com/cratis/arc.go/internal/pipeline"
+	"github.com/cratis/arc.go/observability"
 	"github.com/cratis/arc.go/serialization"
 	"github.com/cratis/arc.go/tenancy"
 	"github.com/cratis/arc.go/validation"
@@ -25,6 +26,8 @@ import (
 // compiles declarations (never bypasses them); nil validation enables model/tag rules.
 // OpenResources and ScopeFactory are mutually exclusive. Cleanup is cooperative.
 type PipelineOptions struct {
+	// Diagnostics is borrowed, bounded backend recording; nil disables it.
+	Diagnostics            *observability.Recorder
 	OpenResources          execution.OpenResources
 	ScopeFactory           di.ScopeFactory
 	DependencyCatalog      di.Catalog
@@ -34,6 +37,7 @@ type PipelineOptions struct {
 	RequireTenant          bool
 	Clock                  func() time.Time
 	CleanupTimeout         time.Duration
+	Operations             OperationOptions
 	ExposeExceptionDetails bool
 	Logger                 *slog.Logger
 }
@@ -63,6 +67,7 @@ type pipeline struct {
 	terminal     []extension[DeferredCommitParticipant]
 	admissions   []ReturnAdmission
 	models       map[reflect.Type]readModelProvider
+	operations   map[reflect.Type]operationAdapter
 }
 
 func (p *pipeline) Lookup(name string) (Registration, bool) { r, ok := p.byName[name]; return r, ok }
@@ -83,26 +88,58 @@ func (p *pipeline) Validate(ctx context.Context, command any, options ...Execute
 	result, err := p.run(ctx, nil, command, true, nil, options)
 	return NewResult(result.Details(), serialization.Optional[NoResponse]{}), err
 }
-func (p *pipeline) ExecuteScoped(ctx context.Context, scope *execution.Scope, command any, options ...ExecuteOptions) (Result[any], error) {
+func (p *pipeline) ExecuteScoped(ctx context.Context, scope *execution.Scope, command any, options ...ExecuteOptions) (result Result[any], err error) {
+	ctx, attempt := beginDiagnostics(ctx, p, command, false)
+	defer func() { finishDiagnostics(attempt, ctx, result, err) }()
+	if bound := operationBoundaryFor(ctx, p); bound != nil {
+		child, _ := p.LookupCommand(command)
+		if bound.frame.registration.operations || child.operations {
+			return bound.run(ctx, scope, command, false, options)
+		}
+	}
 	if scope == nil {
 		return FromError[any](contextID(ctx), execution.ErrInvalidScope), execution.ErrInvalidScope
 	}
+	if ctx == nil {
+		attempt = nil // The rejecting run boundary owns a nil-context attempt.
+	}
 	return p.run(ctx, scope, command, false, nil, options)
 }
-func (p *pipeline) ValidateScoped(ctx context.Context, scope *execution.Scope, command any, options ...ExecuteOptions) (Result[NoResponse], error) {
+func (p *pipeline) ValidateScoped(ctx context.Context, scope *execution.Scope, command any, options ...ExecuteOptions) (result Result[NoResponse], err error) {
+	ctx, attempt := beginDiagnostics(ctx, p, command, true)
+	defer func() { finishDiagnostics(attempt, ctx, result, err) }()
+	if bound := operationBoundaryFor(ctx, p); bound != nil {
+		child, _ := p.LookupCommand(command)
+		if bound.frame.registration.operations || child.operations {
+			result, err := bound.run(ctx, scope, command, true, options)
+			return NewResult(result.Details(), serialization.Optional[NoResponse]{}), err
+		}
+	}
 	if scope == nil {
 		return FromError[NoResponse](contextID(ctx), execution.ErrInvalidScope), execution.ErrInvalidScope
 	}
-	result, err := p.run(ctx, scope, command, true, nil, options)
-	return NewResult(result.Details(), serialization.Optional[NoResponse]{}), err
+	if ctx == nil {
+		attempt = nil
+	}
+	untyped, err := p.run(ctx, scope, command, true, nil, options)
+	return NewResult(untyped.Details(), serialization.Optional[NoResponse]{}), err
 }
 
 // Execute checks a known response contract before application code. Unknown
 // contracts are checked against the actual response after execution; a mismatch
 // returns ErrResponseType and a failed envelope with no response.
-func Execute[R any](ctx context.Context, p Pipeline, command any, options ...ExecuteOptions) (Result[R], error) {
+func Execute[R any](ctx context.Context, p Pipeline, command any, options ...ExecuteOptions) (output Result[R], outputErr error) {
 	if nilValue(p) {
 		return FromError[R](contextID(ctx), ErrInvalidRegistration), ErrInvalidRegistration
+	}
+	ctx, attempt := beginDiagnostics(ctx, p, command, false)
+	defer func() { finishDiagnostics(attempt, ctx, output, outputErr) }()
+	if bound := operationBoundaryFor(ctx, p); bound != nil {
+		child, _ := bound.pipeline.LookupCommand(command)
+		if bound.frame.registration.operations || child.operations {
+			result, err := bound.run(ctx, bound.scope, command, false, options)
+			return NewResult(result.Details(), serialization.Optional[R]{}), err
+		}
 	}
 	registration, err := p.LookupCommand(command)
 	if err == nil {
@@ -116,6 +153,9 @@ func Execute[R any](ctx context.Context, p Pipeline, command any, options ...Exe
 			bound.record(FromError[any](contextID(ctx), err), err)
 		}
 		return FromError[R](contextID(ctx), err), err
+	}
+	if ctx == nil {
+		attempt = nil // No context token can cross dispatch; the callee owns rejection.
 	}
 	result, err := p.Execute(ctx, command, options...)
 	var response serialization.Optional[R]
@@ -137,20 +177,23 @@ func contextID(ctx context.Context) correlation.ID {
 }
 
 type frame struct {
-	pipeline      *pipeline
-	registration  Registration
-	ctx           context.Context
-	scope         *execution.Scope
-	snapshot      CommandContext
-	prepared      authorization.Prepared
-	policy        validation.Policy
-	result        Result[any]
-	err           error
-	owner         *executionState
-	parent        *frame
-	parentContext CommandContext
-	state         map[*stateIdentity]any // guarded by owner.mu
-	ended         bool                   // guarded by owner.mu
+	pipeline        *pipeline
+	registration    Registration
+	ctx             context.Context
+	scope           *execution.Scope
+	snapshot        CommandContext
+	prepared        authorization.Prepared
+	policy          validation.Policy
+	result          Result[any]
+	err             error
+	owner           *executionState
+	parent          *frame
+	parentContext   CommandContext
+	operations      *operationJournal
+	operationPhase  OperationFailureSource
+	operationCommit OperationCommitParticipant
+	state           map[*stateIdentity]any // guarded by owner.mu
+	ended           bool                   // guarded by owner.mu
 	// Nested fragments are guarded by owner.mu, independently for each frame.
 	nested    Result[NoResponse]
 	nestedErr error
@@ -158,7 +201,15 @@ type frame struct {
 }
 
 func (p *pipeline) run(ctx context.Context, borrowed *execution.Scope, command any, validationOnly bool, parent *frame, options []ExecuteOptions) (result Result[any], err error) {
+	ctx, attempt := beginDiagnostics(ctx, p, command, validationOnly)
+	defer func() { finishDiagnostics(attempt, ctx, result, err) }()
 	registration, err := p.LookupCommand(command)
+	if parent == nil && ctx != nil {
+		if bound, ok := ctx.Value(callbackBoundaryKey{}).(*boundPipeline); ok && bound.pipeline == p && (bound.frame.registration.operations || registration.operations) {
+			return bound.run(ctx, bound.scope, command, validationOnly, options)
+		}
+	}
+	ctx = boundary.ClearDiagnostics(ctx)
 	if err == nil && (ctx == nil || len(options) > 1) {
 		err = ErrInvalidRegistration
 	}
@@ -266,6 +317,9 @@ func (f *frame) final() Result[any] {
 	}
 	details := f.result.Details()
 	details.Completion = f.completionReport()
+	if f.operations != nil {
+		details.operations = &operationObservations{summary: f.operations.summary, outcomes: f.operations.outcomes}
+	}
 	return NewResult(details, response)
 }
 func (f *frame) merge(fragment Result[NoResponse], filter bool) {
@@ -286,6 +340,7 @@ func (f *frame) merge(fragment Result[NoResponse], filter bool) {
 		d.ExceptionStackTrace = ""
 	}
 	f.result = Merge(f.result, NewResult(d, serialization.Optional[NoResponse]{}))
+	f.captureOperationFailure()
 }
 func (f *frame) fail(err error, filter bool) {
 	if err == nil {
@@ -332,14 +387,24 @@ func (f *frame) callWith(ctx context.Context, call func(context.Context, *Invoca
 		inv := &Invocation{active: true, snapshot: snapshot, scope: view}
 		inv.owner = &Execution{state: f.owner, frame: f, invocation: inv}
 		inv.bound = &boundPipeline{pipeline: f.pipeline, frame: f, invocation: inv, scope: view}
+		f.owner.mu.Lock()
+		attemptsBefore := f.owner.operationAttempts
+		f.owner.mu.Unlock()
 		defer func() {
 			err = errors.Join(err, inv.bound.expire())
+			f.owner.mu.Lock()
+			newAttempts := f.owner.operationAttempts != attemptsBefore
+			f.owner.mu.Unlock()
+			if newAttempts {
+				err = errors.Join(err, ErrInvalidOperation)
+			}
 			inv.mu.Lock()
 			inv.active = false
 			f.snapshot.values = inv.snapshot.Values()
 			inv.mu.Unlock()
 		}()
 		ctx = context.WithValue(ctx, commandContextKey{}, snapshot)
+		ctx = context.WithValue(ctx, callbackBoundaryKey{}, inv.bound)
 		return boundary.Call(ctx, func(ctx context.Context) error { return call(ctx, inv) })
 	})
 }
@@ -355,18 +420,28 @@ func activate[T any](f *frame, entry extension[T]) (value T, err error) {
 	return value, err
 }
 func (f *frame) execute() {
+	if f.registration.operations && !operationScopesCompatible(f.pipeline.participants, f.pipeline.terminal) {
+		f.fail(ErrInvalidOperation, false)
+		return
+	}
 	f.contextValues()
 	if !f.result.IsSuccess() {
 		return
 	}
 	var entered []ExecutionScope
 	var terminal DeferredCommitParticipant
-	if !f.snapshot.validationOnly && f.parent == nil {
+	beginParticipants := func() {
+		if f.snapshot.validationOnly || f.parent != nil {
+			return
+		}
 		if len(f.pipeline.terminal) != 0 {
 			candidate, err := activate(f, f.pipeline.terminal[0])
 			f.fail(err, false)
 			if err == nil {
 				terminal = candidate
+				if f.registration.operations {
+					f.operationCommit = candidate.(OperationCommitParticipant)
+				}
 				f.fail(f.call(terminal.Begin), false)
 			}
 		}
@@ -386,6 +461,9 @@ func (f *frame) execute() {
 			}
 		}
 	}
+	if !f.registration.operations {
+		beginParticipants()
+	}
 	defer func() {
 		if f.parent != nil {
 			return
@@ -395,7 +473,10 @@ func (f *frame) execute() {
 			return
 		}
 		// Completion observes cancellation before getting its live cleanup context.
+		f.operationPhase = FailureScopeCompletion
 		f.fail(f.ctx.Err(), false)
+		f.captureOperationFailure()
+		defer f.recoverOperations()
 		cleanup, cancel, err := boundary.CleanupContext(f.ctx, f.pipeline.options.CleanupTimeout)
 		if err != nil {
 			f.fail(err, false)
@@ -414,10 +495,13 @@ func (f *frame) execute() {
 			}
 			f.fail(err, false)
 			f.mergeNested()
+			f.captureOperationFailure()
 		}
 		if !nilValue(terminal) {
 			f.fail(f.ctx.Err(), false)
 			f.completeTerminal(cleanup, terminal)
+			f.mergeNested()
+			f.captureOperationFailure()
 		}
 	}()
 	if !f.result.IsSuccess() {
@@ -476,6 +560,12 @@ func (f *frame) execute() {
 	f.validate()
 	if !f.result.IsSuccess() || f.snapshot.validationOnly {
 		return
+	}
+	if f.registration.operations {
+		beginParticipants()
+		if !f.result.IsSuccess() {
+			return
+		}
 	}
 	var prepared preparedCall
 	err = f.call(func(ctx context.Context, inv *Invocation) error {

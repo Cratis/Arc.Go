@@ -41,6 +41,8 @@
           href: backend/go/commands/command-context.md
         - name: Command filters
           href: backend/go/commands/command-filters.md
+        - name: Flat command operations
+          href: backend/go/commands/operations.md
         - name: Command execution scopes
           href: backend/go/commands/command-execution-scopes.md
         - name: Validate commands
@@ -87,10 +89,10 @@
           href: backend/go/queries/observable-emission-guards.md
         - name: Collection change streams
           href: backend/go/queries/change-stream.md
-    - name: Generate adapters and snapshot proxies
+    - name: Generate adapters and proxies
       href: backend/go/generation/index.md
       items:
-        - name: TypeScript snapshot proxies
+        - name: TypeScript proxies
           href: backend/go/generation/typescript.md
         - name: Directives and signatures
           href: backend/go/generation/reference.md

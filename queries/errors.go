@@ -74,7 +74,11 @@ func (e *SortingError) Unwrap() error { return errors.Join(ErrInvalidSorting, e.
 
 // ValidationResults reports a safe sorting finding.
 func (e *SortingError) ValidationResults() []validation.Result {
-	return []validation.Result{{Severity: validation.Error, Message: "The query sorting is invalid.", Members: []string{e.Field}, Reason: "malformedRequest"}}
+	message := "The query sorting is invalid."
+	if e.Cause == ErrInvalidSorting && (e.Field == "sortDirection" || e.Field == "sorting.direction") {
+		message = "The sort direction is not a recognized value."
+	}
+	return []validation.Result{{Severity: validation.Error, Message: message, Members: []string{e.Field}, Reason: "malformedRequest"}}
 }
 
 // ReadError distinguishes syntax errors (Malformed) from semantic reader findings.
@@ -85,9 +89,7 @@ type ReadError struct {
 }
 
 func (e *ReadError) Error() string { return "could not read query request" }
-func (e *ReadError) Unwrap() error {
-	if e.Malformed {
-		return errors.Join(ErrMalformedRequest, e.Cause)
-	}
-	return e.Cause
-}
+func (e *ReadError) Unwrap() error { return e.Cause }
+
+// Is exposes the malformed category without adding it to the diagnostic causes.
+func (e *ReadError) Is(target error) bool { return e.Malformed && target == ErrMalformedRequest }

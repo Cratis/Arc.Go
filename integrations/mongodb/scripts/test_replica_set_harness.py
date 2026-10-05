@@ -30,6 +30,22 @@ class HarnessTests(unittest.TestCase):
         output = json.dumps([self.container]) if args[1] == "inspect" else "diagnostics"
         return subprocess.CompletedProcess(args, 0, output, "")
 
+    def test_required_lane_runs_all_tagged_snapshot_and_observation_packages_once(self):
+        self.assertEqual(harness.provider_test_command(),
+                         ["go", "test", "-v", "-tags=integration", "-count=1", "-timeout=165s", "./..."])
+        module = Path(harness.__file__).resolve().parent.parent
+        for filename in ("observation_integration_test.go", "observation_lifecycle_integration_test.go",
+                         "observation_join_integration_test.go"):
+            source = (module / filename).read_text(encoding="utf-8")
+            self.assertTrue(source.startswith("//go:build integration\n"))
+            self.assertIn("func TestLiveObservation", source)
+            self.assertNotIn("t.Skip", source)
+
+    def test_diagnostic_filter_is_explicit_and_does_not_change_required_lane(self):
+        selected = harness.provider_test_command("^TestLiveObservationCursorLoss")
+        self.assertEqual(selected[-3:], ["-run", "^TestLiveObservationCursorLoss", "./..."])
+        self.assertNotIn("-run", harness.provider_test_command())
+
     def test_failure_logs_precede_exact_owned_volume_cleanup(self):
         with mock.patch.object(harness, "command", side_effect=self.invoke):
             harness.cleanup(self.path, self.state, True)

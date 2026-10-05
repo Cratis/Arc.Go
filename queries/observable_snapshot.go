@@ -48,7 +48,9 @@ func formatSeconds(d time.Duration) string {
 func (p *queryPipeline) observableSnapshot(ctx context.Context, name FullyQualifiedQueryName, request Request) (Result[any], error) {
 	q, _ := p.Lookup(name)
 	probe := boundary.IsObservationProbe(ctx)
-	o, result, err := p.openObservation(ctx, name, request, !q.enumerable && !probe)
+	// Perform owns the single logical attempt; admission must not start another.
+	// The owner's finish derives the verdict from the final merged result.
+	o, result, err := p.admitObservation(ctx, name, request, !q.enumerable && !probe, &openState{})
 	if o == nil {
 		return result, err
 	}
@@ -61,17 +63,22 @@ func (p *queryPipeline) observableSnapshot(ctx context.Context, name FullyQualif
 	} else {
 		result, err = o.snapshot(ctx, request.wait)
 	}
+	o.openingFailed(ctx, result, err) // Preserve the terminal verdict before cleanup cancellation.
 	if cleanupErr := o.cleanup(); cleanupErr != nil {
 		err = errors.Join(err, cleanupErr)
 		result = p.observableResult(ctx, name, result, cleanupErr)
 	}
 	return result, err
 }
-func (o *Observation) snapshot(ctx context.Context, wait WaitOptions) (Result[any], error) {
+func (o *Observation) snapshot(ctx context.Context, wait WaitOptions) (output Result[any], outputErr error) {
 	if err := o.begin(ctx); err != nil {
 		return o.pipeline.observableResult(ctx, o.metadata.name, o.admission, err), err
 	}
 	defer o.end()
+	defer func() {
+		outcome := boundary.Outcome(output.IsAuthorized(), output.HasExceptions(), outputErr != nil, ctx.Err() != nil || o.ctx.Err() != nil, output.details.ValidationResults)
+		o.consumptionFinished(ctx, outcome, outputErr)
+	}()
 	result := NotReady[any](o.metadata.correlationID)
 	work, cancel := context.WithCancel(o.ctx)
 	stop := context.AfterFunc(ctx, cancel)

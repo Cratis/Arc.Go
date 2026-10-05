@@ -134,6 +134,72 @@ func (*bsonValueSlice) MarshalBSONValue() (byte, []byte, error) {
 	return byte(bson.TypeNull), nil, errors.New("secret BSON hook")
 }
 
+type zeroerConcept int32
+
+func (zeroerConcept) ConceptValue() int32            { panic("must not execute") }
+func (v zeroerConcept) MarshalJSON() ([]byte, error) { return amount(v).MarshalJSON() }
+func (v *zeroerConcept) UnmarshalJSON(data []byte) error {
+	return (*amount)(v).UnmarshalJSON(data)
+}
+func (v zeroerConcept) MarshalText() ([]byte, error) { return amount(v).MarshalText() }
+func (v *zeroerConcept) UnmarshalText(data []byte) error {
+	return (*amount)(v).UnmarshalText(data)
+}
+func (zeroerConcept) IsZero() bool { bsonHookCalls++; return false }
+
+type zeroerScalar int32
+
+func (zeroerScalar) IsZero() bool { bsonHookCalls++; return false }
+
+type zeroerSlice []int32
+
+func (*zeroerSlice) IsZero() bool { bsonHookCalls++; return false }
+
+type zeroerMap map[string]int32
+
+func (zeroerMap) IsZero() bool { bsonHookCalls++; return false }
+
+type zeroerArray [1]int32
+
+func (zeroerArray) IsZero() bool { bsonHookCalls++; return false }
+
+type zeroerModel struct {
+	Field int32 `json:"field"`
+}
+
+func (*zeroerModel) IsZero() bool { bsonHookCalls++; return false }
+
+func TestBSONZeroersRejectedBeforeAllDiscoveryFastPaths(t *testing.T) {
+	bsonHookCalls = 0
+	if _, recognized, err := concepts.Underlying(reflect.TypeFor[zeroerConcept]()); err != nil || !recognized {
+		t.Fatalf("fixture not recognized as a concept: %v %v", recognized, err)
+	}
+	for _, typeOf := range []reflect.Type{
+		reflect.TypeFor[zeroerConcept](), reflect.TypeFor[*zeroerConcept](),
+		reflect.TypeFor[zeroerScalar](), reflect.TypeFor[zeroerSlice](), reflect.TypeFor[*zeroerSlice](),
+		reflect.TypeFor[zeroerMap](), reflect.TypeFor[zeroerArray](),
+		reflect.TypeFor[zeroerModel](), reflect.TypeFor[*zeroerModel](),
+		reflect.TypeFor[valueBox[zeroerConcept]](), reflect.TypeFor[valueBox[zeroerSlice]](),
+		reflect.TypeFor[valueBox[valueBox[zeroerModel]]](),
+	} {
+		t.Run(typeOf.String(), func(t *testing.T) {
+			if registry, err := mongodb.NewRegistry(typeOf); registry != nil || !errors.Is(err, mongodb.ErrUnsupportedModel) {
+				t.Fatalf("registry %v, error %v", registry, err)
+			}
+			if _, err := json.Marshal(mongodb.Find[valueBox[int32]]{Filter: bson.D{{Key: "x", Value: reflect.Zero(typeOf).Interface()}}}); !errors.Is(err, mongodb.ErrValue) {
+				t.Fatalf("zeroer filter = %v", err)
+			}
+			if bsonHookCalls != 0 {
+				t.Fatalf("discovery or encoding executed IsZero %d times", bsonHookCalls)
+			}
+		})
+	}
+	// Ordinary concepts still keep their required JSON/text conversions.
+	if _, err := mongodb.NewRegistry(reflect.TypeFor[valueBox[amount]]()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCachedSubtreeCannotBypassDepthLimit(t *testing.T) {
 	p64 := reflect.TypeFor[int32]()
 	for range 64 {

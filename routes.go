@@ -54,6 +54,15 @@ func (a *Application) compileRoutes(raw []rawHandler) error {
 			endpoints = append(endpoints, h)
 		}
 	}
+	if a.options.QueryHealth != nil {
+		methods := []string{"GET", "HEAD"}
+		if a.options.Routes.EnableQueryHTTPMethod {
+			methods = append(methods, "QUERY")
+		}
+		for _, method := range methods {
+			endpoints = append(endpoints, metadata.Endpoint{Identity: string(QueryHealthName), Method: method, Path: queryHealthPath})
+		}
+	}
 	for _, path := range frameworkPaths {
 		if path != "/.cratis/me" && access == discoveryUnavailable {
 			continue
@@ -75,7 +84,8 @@ func (a *Application) compileRoutes(raw []rawHandler) error {
 		}
 	}
 	for _, e := range endpoints {
-		if !strings.HasPrefix(e.Identity, "/.cratis/") && reservedPath(e.Path) {
+		healthEndpoint := a.options.QueryHealth != nil && e.Path == queryHealthPath && e.Identity == string(QueryHealthName)
+		if !strings.HasPrefix(e.Identity, "/.cratis/") && reservedPath(e.Path) && !healthEndpoint {
 			return ErrRouteConflict
 		}
 		for path := range a.routeTable {

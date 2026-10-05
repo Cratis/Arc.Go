@@ -1,0 +1,14 @@
+{
+  "formatVersion": 1,
+  "package": "example.test/consumer",
+  "interfaces": [
+    {"service": "IFoo", "implementation": "*Foo"},
+    {"service": "ISingleton", "implementation": "*Singleton"},
+    {"service": "ITick", "implementation": "*Tick"}
+  ],
+  "existing": [
+    {"key": "*Dependency", "lifetime": "singleton"},
+    {"key": "*External", "lifetime": "singleton"}
+  ],
+  "requireAllDependencies": true
+}

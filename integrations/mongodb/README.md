@@ -3,9 +3,8 @@
 This experimental module provides borrowed typed collection bindings, isolated
 BSON mappings and bounded authorized snapshot rendering through Arc's query
 pipeline. MongoDB 8.0.15 single-member replica-set/HTTP contracts have task-owned
-provider evidence. Real Chronicle sink compatibility remains unproved. Database
-invalidation sources have deterministic unit coverage only; live change-stream
-behavior remains unverified. No constructor connects
+provider evidence, including bounded database invalidation sources through Arc's
+existing renderer. Real Chronicle sink compatibility remains unproved. No constructor connects
 to MongoDB, starts workers, runs application codecs, or takes ownership of a client.
 
 ## API and ownership
@@ -63,9 +62,11 @@ Only `omitempty` is accepted, never on `_id`. Anonymous/promoted/inline fields,
 excluded or unexported fields, empty/duplicate/dotted/operator names, arbitrary
 maps, interfaces/polymorphism, custom model codecs, decimal/opaque types and
 `serialization.Optional` are rejected with `ErrUnsupportedModel`. BSON document
-and value marshal/unmarshal hooks are rejected on every type and pointer method
-set, including concepts and containers, without executing them; concepts retain
-their required JSON/text conversion. Shared cached subgraphs cannot bypass the
+and value marshal/unmarshal hooks and application `bson.Zeroer` (`IsZero`)
+implementations are rejected on every type and pointer method set, including
+concepts and containers, without executing them; concepts retain
+their required JSON/text conversion. Exact `time.Time` and Fundamentals `UUID`
+primitives retain their callback-free zero checks. Shared cached subgraphs cannot bypass the
 maximum depth. Unknown stored fields are ignored; duplicate document keys are
 rejected by ordinary materialization.
 
@@ -185,6 +186,36 @@ a request context as the shared watcher's lifetime, and never bind `Find` from
 HTTP-authored BSON. Its JSON methods use a validated base64 BSON-byte envelope,
 not a lossy interface-valued JSON predicate. Decode is failure-atomic.
 
+All filter boundaries, including opaque JSON detachment, reject cycles and paths
+beyond 64 graph levels (containers, pointers and interfaces each count). The
+pre-encoding graph budget is 16 MiB, charging one byte per visited value plus
+string/byte payloads and field names/tags; shared value subgraphs count on every visit.
+Static type inspection also charges visited types and exported field names/tags
+against that budget and bounds inspection depth to 64.
+An independent writer budget admits at most 16 MiB of encoded BSON before the
+driver's internal buffer grows. Observe also enforces `MaxFilterBytes` during
+encoding. JSON envelopes are bounded before base64 allocation and raw BSON is
+size/depth checked before decoding. Exceeding byte budgets returns `ErrLimit`;
+cycles (including recursive pointer types with nil values), excessive depth and
+unsupported opaque encoding hooks return `ErrValue`.
+Application JSON/text/BSON hooks (including concept conversion and `IsZero`) and opaque driver
+vectors are unsupported in filters, without executing those hooks. Exact known
+BSON/time primitives retain callback-free zero checks; named application wrappers
+do not inherit that exception. Exported BSON inline fields are unsupported in
+filter structs, including nonrecursive inlining, inline maps, nil pointers and
+nil/empty containers whose static element types contain inline fields. This
+conservative restriction prevents the driver's value-independent inline struct
+description from recursing before encoding or writer budgets can apply. It
+recognizes the pinned driver's exact `inline` tag tokens (including first-token
+and legacy bare tags), not JSON tags; unexported fields are ignored. Rejection
+returns `ErrValue` before encoding at MarshalJSON, Observe and renderer freeze
+boundaries. Use ordinary nested fields, scalars, BSON primitives, containers or
+validated raw BSON instead. Raw documents,
+arrays and code-with-scope are recursively validated, including exact nested
+lengths/terminators and array keys `0` through `n-1`; ordered duplicate document
+keys remain intact. Malformed raw values fail before driver normalization. These limits
+are Go-specific safety bounds, not a MongoDB or C# filter capability claim.
+
 Manually register `queries.RegisterObservable[M,A,mongodb.Find[M]]`, paired with
 `queries.WithRenderer[A,mongodb.Find[M],[]M]` for the **same collection binding**.
 The complete compiled
@@ -224,6 +255,16 @@ or resolved tenant databases do not. There is no global registry or client cache
 Without Arc query metadata, direct Open uses NotSet and an unnamed query key.
 Database selection is not tenant membership authorization.
 
+A stream retains only Open's cancellation channel and copied deadline, not the
+performer's context, query metadata or custom cancellation cause. When it first
+observes that channel closed, it records `context.DeadlineExceeded` at or after
+the copied deadline, otherwise `context.Canceled`. That classification stays
+fixed. Cancellation before a deadline but first observed after it therefore
+reports deadline exceeded; exact historical errors/custom causes cannot be
+reconstructed from the channel. Next's own supplied context still propagates
+its actual error. Joined Stream Close releases the copied cancellation state;
+a pending Close keeps it until the active Next joins.
+
 Zero options select: 32 databases, 1024 total subscribers, 64 subscribers per
 resolved database/collection/logical-query name, 16 queued markers, 64 KiB frozen
 filter, ten-second opening and five-second cursor-cleanup budgets. Negative
@@ -261,17 +302,40 @@ incremental membership/pages, and uses unbounded joined-observation channels.
 This checkpoint has none of that current/replay, single-result, join or automatic
 recovery parity. It retains no query scope for refetch callbacks.
 
+`stream_context_test.go` verifies metadata/context-method nonretention, first
+observation cancellation classification and continued/concurrent stream joins.
 `find_snapshot_test.go`, `watcher_test.go` and `observe_test.go` provide native BSON
 detachment, deterministic handoff/fanout/limits, cancellation/continued joining,
 terminal recovery and existing-Arc-renderer unit evidence. `watch_driver_test.go`
 records ordinary aggregate/getMore/killCursors and borrowed-client usability
-through the pinned driver's test-only wire deployment. These tests do **not** prove
-live MongoDB watch behavior, missed-update convergence, failover, sharding, real
-Chronicle release, browser reconnection or C# current/replay parity. Change streams
-require a supported replica set/sharded deployment, database watch permissions,
-and the existing primary/majority assumptions. Standalone watch operation is not
-supported. Live-provider verification is the next checkpoint, with no CI changes
-in this one.
+through the pinned driver's test-only wire deployment. The required
+`observation*_integration_test.go` profile adds real MongoDB 8.0.15 ordinary
+Aggregate change streams through actual Arc Open/Run and the registered renderer.
+Command/delivery barriers prove cursor-before-baseline and retained invalidations
+during initial rendering and blocked delivery. Every full candidate is compared
+with its equivalent authorized unary query: insert/update/replace/delete, filter
+entry/exit, off-page changes, reorder/refill, totals and fresh RowFilter. Independent
+principals/tenants/models/collections share only their database watch on the same
+borrowed client; distinct clients establish independent watches. Synthetic raw
+release precedes interception on each observable and unary candidate.
+
+Actual command monitoring checks one database aggregate per admitted generation,
+metadata projection, batch 64 and no UpdateLookup or resume options. Revoked
+membership/policy prevents candidate render I/O and sends terminal denial.
+Subscriber-local overflow, startup cancellation, canceled/continued cursor joins,
+cleanup-budget failure, drop/rename and injected CursorNotFound/history-loss
+responses are covered. After cleanup joins, fresh Open on the same owner/pipeline
+sends a full first Delta baseline followed by changes, compared with unary data.
+The cleanup join signal is a test-only seam, not a new public runtime API.
+
+Injected ChangeStreamHistoryLost is **not** natural small-oplog expiry; actual
+retention expiry remains unverified. These tests do not prove failover, sharding,
+real Chronicle release, browser reconnection or C# current/replay parity. Change
+streams require a supported replica set/sharded deployment, database watch
+permissions and the existing primary/majority assumptions. Standalone watch
+operation is not supported. There is no live connection migration or gap-free
+recovery promise. The existing Linux provider CI lane now includes observations;
+no new service, dependency or publication lane is added.
 
 ## Evidence and next steps
 
@@ -296,7 +360,7 @@ codec round trips, whole-result decode failure, synthetic raw release and decode
 identity collisions, isolated count/find/getMore faults, cancellation/killCursors,
 bounded/empty pages, denied no-I/O requests and borrowed-client usability. Outer
 operation cleanup failure clears data and paging through the pinned pushed Arc
-root `4bd7dca`. Count-to-page overflow uses bounded no-database fakes, not an
+root `d4fec76` (also retracting failed HTTP publication paging). Count-to-page overflow uses bounded no-database fakes, not an
 unrealistic live dataset. Cancellation preserves Arc's existing empty 500 HTTP
 response when its canceled context prevents encoding.
 
@@ -319,5 +383,6 @@ Linux Go 1.27 live contracts; publishing stays root-only.
 
 [Arc.Go#22](https://github.com/Cratis/Arc.Go/issues/22) remains Partial: synthetic
 release callbacks are not evidence of real Chronicle ciphertext layout, SDK
-release or compliance. Sharded/multi-member/failover profiles and live watch evidence remain outside this
-checkpoint.
+release or compliance. Sharded/multi-member/failover profiles, natural oplog expiry, joins, single/null,
+current/replay, backplane and generated opaque-provider proxies remain outside
+this checkpoint.

@@ -1,6 +1,6 @@
 # Contributing to Arc for Go
 
-Thank you for helping build the Cratis Arc framework for Go. This repository is in early development: it provides foundation contracts, command, snapshot and observable-query pipelines, HTTP/SSE/WebSocket hosting, `arctest` scenarios, an experimental model-bound adapter generator, and an optional Chronicle integration. Observable wire contracts have real-listener evidence; actual locked JavaScript/browser execution, generated observable adapters, database watches and full product parity remain unverified or unsupported. Discuss larger changes before implementation, and document only capabilities that exist and have been verified.
+Thank you for helping build the Cratis Arc framework for Go. This repository is in early development: it provides foundation contracts, command, snapshot and observable-query pipelines, manual flat command operations/recovery, HTTP/SSE/WebSocket hosting, `arctest` scenarios, an experimental model-bound adapter generator, and optional Chronicle and MongoDB integrations. Observable transports, generated adapters/proxies and a bounded mounted React profile have executable Go/locked Node evidence; MongoDB has bounded snapshot and source-only observation contracts. Browser behavior, broader provider profiles and full product parity remain unverified or unsupported. Consult the [parity map](Documentation/parity.md) for exact coverage and limits. Discuss larger changes before implementation, and document only capabilities that exist and have been verified.
 
 The [Cratis contribution guide](https://github.com/Cratis/.github/blob/main/contributing.md) and [code of conduct](https://github.com/Cratis/.github/blob/main/CODE_OF_CONDUCT.md) apply.
 
@@ -13,7 +13,7 @@ The [Cratis contribution guide](https://github.com/Cratis/.github/blob/main/cont
 
 ## Layout and setup
 
-The runtime is the root module, `github.com/cratis/arc.go`, with package `arc`. The supported nested modules are `tools/go.mod` (`github.com/cratis/arc.go/tools`), containing the `arc-gen` artifact generator, and `integrations/chronicle/go.mod` (`github.com/cratis/arc.go/integrations/chronicle`), containing the Chronicle integration and SDK adapter. The additional exact exception is `integrations/mongodb/go.mod` (`github.com/cratis/arc.go/integrations/mongodb`), providing borrowed bindings, BSON codecs and bounded snapshot rendering, not watches. Their tooling, Chronicle SDK, and MongoDB driver dependencies must not enter the runtime dependency graph. All nested modules pin fetchable runtime revisions and build independently with `GOWORK=off`.
+The runtime is the root module, `github.com/cratis/arc.go`, with package `arc`. The supported nested modules are `tools/go.mod` (`github.com/cratis/arc.go/tools`), containing the `arc-gen` artifact generator, and `integrations/chronicle/go.mod` (`github.com/cratis/arc.go/integrations/chronicle`), containing the Chronicle integration and SDK adapter. The additional exact exception is `integrations/mongodb/go.mod` (`github.com/cratis/arc.go/integrations/mongodb`), providing borrowed bindings, BSON codecs, bounded snapshot rendering and source-only database invalidation observations. Transparent resume, current/replay, single-result and joined observations remain unsupported. Their tooling, Chronicle SDK, and MongoDB driver dependencies must not enter the runtime dependency graph. All nested modules pin fetchable runtime revisions and build independently with `GOWORK=off`.
 
 Product documentation lives in `Documentation/`. Add packages and examples only as implementation needs them; use lowercase package directories, co-located `_test.go` files, and compiling `Example` tests for public usage. Root releases remain `vX.Y.Z`. Future nested-module releases need independent `tools/vX.Y.Z`, `integrations/chronicle/vX.Y.Z`, and `integrations/mongodb/vX.Y.Z` tags; their tagging and publication are deferred pending the pattern in [Fundamentals.Go#16](https://github.com/Cratis/Fundamentals.Go/issues/16).
 
@@ -37,7 +37,7 @@ golangci-lint run
 go mod tidy
 git diff --exit-code -- go.mod go.sum
 actionlint -color
-npx markdownlint-cli2 '*.md' 'Documentation/**/*.md' 'examples/**/*.md' 'ContractTests/fixtures/**/*.md' 'ContractTests/observables/*.md' '.github/ISSUE_TEMPLATE/*.md' '.github/pull_request_template.md' '!AGENTS.md' '!CLAUDE.md'
+npx markdownlint-cli2 '*.md' 'Documentation/**/*.md' 'examples/**/*.md' 'integrations/mongodb/**/*.md' 'ContractTests/fixtures/**/*.md' 'ContractTests/observables/*.md' 'ContractTests/httpconformance/*.md' '.github/ISSUE_TEMPLATE/*.md' '.github/pull_request_template.md' '!AGENTS.md' '!CLAUDE.md'
 ```
 
 Race detection requires a supported platform and a C compiler. Run govulncheck with Go 1.27:
@@ -47,13 +47,41 @@ go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 govulncheck ./...
 ```
 
-Repeat the Go build, vet, ordinary and race tests, lint, tidy-diff, and vulnerability checks from `tools/`, also with `GOWORK=off` and `GOTOOLCHAIN=local`. Use `golangci-lint run --config=../.golangci.yml` there. Regenerate the checked-in consumer adapters from `tools/` with `go run ./cmd/arc-gen -dir .. ./ContractTests/generatedconsumer`; verify them with the same command plus `-check` before the package pattern. Generator tests also compile and execute independent consumers against the pinned runtime version.
+Repeat the Go build, vet, lint, tidy-diff, and vulnerability checks from `tools/`, also with `GOWORK=off` and `GOTOOLCHAIN=local`. Use `golangci-lint run --config=../.golangci.yml` there. Run the `tools/` ordinary and race tests as two complementary halves, as CI does, so each half stays inside its timeout; the same anchored pattern selects one half with `-run` and the other with `-skip`:
+
+```sh
+heavy='TestOwnedPublication.*|TestCompetingObservable.*|TestObservableCollections.*|TestInvalidServiceImports.*|TestQueryRuleRepresentation.*'
+go test -count=1 -timeout=2m -run "^($heavy)\$" ./...
+go test -count=1 -timeout=2m -skip "^($heavy)\$" ./...
+go test -race -count=1 -timeout=3m -run "^($heavy)\$" ./...
+go test -race -count=1 -timeout=3m -skip "^($heavy)\$" ./...
+```
+
+Regenerate the checked-in consumer adapters from `tools/` with `go run ./cmd/arc-gen -dir .. ./ContractTests/generatedconsumer`; verify them with the same command plus `-check` before the package pattern. Generator tests also compile and execute independent consumers against the pinned runtime version.
 
 Format all Go source in all four modules with `gofmt`; no source files should appear in `gofmt -l` output. After `go mod tidy -diff`, also check `git status --short -- go.mod go.sum tools/go.mod tools/go.sum integrations/chronicle/go.mod integrations/chronicle/go.sum integrations/mongodb/go.mod integrations/mongodb/go.sum` for untracked manifests. Commit `go.sum` when dependencies require it. Do not add other nested modules, local `replace` directives, or personal `go.work` files: all four modules must build without sibling checkouts.
 
 Repeat these Go checks from `integrations/chronicle/` with `--config=../../.golangci.yml` for lint. CI also runs its tagged kernel contracts and taskboard sample against `cratis/chronicle:19.29.4-development`; set `CHRONICLE_INTEGRATION_CONNECTION_STRING` for those tests.
 
 Repeat the native build, vet, test, race, tidy-diff, verify, lint, and vulnerability gates from `integrations/mongodb/`, with `--config=../../.golangci.yml` for lint. Its ordinary tests require no database. Run `python3 scripts/check-module-boundaries.py` from the root to verify the exact manifest allowlist and resolved runtime dependency boundary. The independent Linux Go 1.27 live-provider lane runs `python3 integrations/mongodb/scripts/replica-set-tests.py --state-file "$PWD/.ai-work/keep/mongodb-provider-local-unique.json"` from the root with a fresh state path and Docker available. It owns one digest-pinned MongoDB 8.0.15 replica-set container, uses a Docker-assigned loopback port and external direct URI, budgets startup/tests/diagnostics-and-cleanup at 90/180/15 seconds, and removes only its verified container ID/token. Missing prerequisites/URI or failpoint support fail the required lane, not skip. Run `python3 -B -m unittest discover -s integrations/mongodb/scripts -p 'test_*.py' -v` and `python3 integrations/mongodb/scripts/check-doc-snippet.py` for offline harness/example regressions; the live job also lints integration-tagged contracts. Synthetic release tests do not prove real Chronicle sink layout or compliance.
+
+The observable-client lane requires exact Node 26.8.1/npm 12.0.2 prerequisites and the locked frontend dependencies. Run each stage separately from the root; the runtime stages own and join their fixture hosts:
+
+```sh
+node ContractTests/observables/frontend/run.mjs install
+node ContractTests/observables/frontend/run.mjs generate
+node ContractTests/observables/frontend/run.mjs generate-check
+node ContractTests/observables/frontend/run.mjs compile
+node ContractTests/observables/frontend/run.mjs compile-modern
+node ContractTests/observables/frontend/run.mjs fixture-build
+node ContractTests/observables/frontend/run.mjs generated-runtime
+node ContractTests/observables/frontend/run.mjs react-runtime
+node ContractTests/observables/frontend/run.mjs runtime
+```
+
+These run real client code in Node, including mounted generated hooks. They do not establish browser credentials/origins, DOM/StrictMode, the complete `<Arc>` wrapper, reconnect or full hook parity. See the [observable fixture coverage](ContractTests/observables/README.md).
+
+The separate [paired snapshot HTTP checkpoint](ContractTests/httpconformance/README.md) requires Python 3, exact .NET SDK `10.0.401` / runtime `10.0.12`, and Arc source revision `7c1e78075b737df64f69fddfaae83374f75e3612`. Its run instructions extract source outside the sibling checkout, restore all seven locked projects, build Release, verify exact provenance, prove generated activation, and execute every paired request. Native inventory/comparator/lifecycle tests run with the root tests without .NET. The paired result is bounded to 36 requests / 14 groups, with 34 strict matches and two exact successful ordinary-list page/size allowances; it is not a full HTTP or CI-matrix claim.
 
 Hosted CI also runs the ordinary build, vet, and tests on macOS and Windows. Workflow lint invokes ShellCheck when it is available. Foundation behavioral and wire-fixture tests run without external services. They are not HTTP integration tests; add explicitly bounded integration checks before claiming HTTP contract conformance. CodeQL runs separately in GitHub Actions.
 

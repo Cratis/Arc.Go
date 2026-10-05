@@ -140,7 +140,7 @@ Inside a handwritten `commands.Invoke` or `commands.Prepare` adapter, use `comma
 
 Missing/blank keys fail even for optional injection. A valid key with no model gives nil for optional reads and `dependencyUnavailable` for required reads. A present zero-valued model remains present. Successful reads, including absence, are cached per frame, model, key and coordinates; Provide and Handle reuse them, while child frames do not. Failures are never cached as absence.
 
-The SDK typed reader owns codecs, collection normalization and release. Kernel reads are not decrypted twice; passive reducer reads follow the SDK's local release contract. Snapshot progress is diagnostic, not protected-decision evidence. A materialized projection can lag. Validation filters may read models without starting transaction participants or running Provide/Handle.
+The SDK typed reader owns codecs, collection normalization and its admitted release boundaries. Do not generalize materialized keyed-read behavior to legacy watches, windows or local reducer notifications; their release ownership remains unresolved in Chronicle.Go #35. Snapshot progress is diagnostic, not protected-decision evidence. A materialized projection can lag. Validation filters may read models without starting transaction participants or running Provide/Handle.
 
 ## Make aggregate decisions
 
@@ -149,6 +149,8 @@ An aggregate directly embeds `*integration.AggregateRoot`. `DefineAggregate` acc
 History is loaded once per root, aggregate type, source and route. Empty history enrolls `NoMatchingEvent`; otherwise the check uses the last **loaded** position, including a real position zero. No later tail read replaces that expectation. `Apply` stages before folding local state; a failing fold poisons the transaction even if its caller ignores the error. `Failed(message, validation.Error)` blocks automatic commitment. Warnings and information do not independently block persistence.
 
 The default stream type is the aggregate's simple type name. `WithAggregateRoute` overrides routing; `ConfigureCommand.Sequence` selects the shared command sequence. History and dispatch must agree. Unknown generations and missing handlers fail explicitly. History is buffered, not a bounded-memory stream.
+
+Returned-event snapshots and aggregate history use the selected store's frozen SDK event descriptors, preserving explicit JSON names, configured naming and field codecs. Each historical event uses its exact registered ID and generation; register that historical shape and its aggregate handler. The adapter does not guess a current shape, use alternate-generation content or migrate locally. A decode failure returns the SDK error and prevents folding any of that history.
 
 Explicit `Commit` checks the root execution's `CheckRecordedFailures` guard before persistence. Already-recorded failures in this frame or an ancestor, including ignored nested authorization, validation and command-lookup failures, prevent commitment. Nested Validate remains advisory during Execute; the guard cannot predict failures that occur after commitment.
 
@@ -172,9 +174,126 @@ The imperative path is `bridge.Execute(ctx, sdk.DeliveryFrom(eventContext, deliv
 
 `LiveOnly` is the recommended explicit automation policy. SDK `OnceOnly` and replay authoring remain visible; replay exclusion is not deduplication. Use the stable delivery ID as an application idempotency input where necessary. Event `CausedBy` metadata never grants Arc roles. Per-event correlation and causation are preserved rather than cached on a batch scope.
 
+## Share a captured client with one provider
+
+Keep ordinary `chronicle.NewClient` and constructor/closure wiring when you do
+not need a service provider. A container is not required by Arc or its Chronicle
+adapter. When preparation collaborators need the same client that Arc handlers
+will resolve, capture its identity before building your immutable provider.
+Prepare it only after all bindings are registered, then create the adapter.
+
+The following setup excerpt comes from the compiled
+[shared-provider example](https://github.com/Cratis/Arc.Go/blob/develop/integrations/chronicle/sdk/composition_example_test.go).
+It runs inside an error-returning function with a named `err` result and a `ctx`.
+It assumes a registry with an unclassified event and a
+`RegisterSeederFactory[*exampleCompositionSeeder]` declaration. That example's
+seeder holds a borrowed `*chronicle.Client` and implements
+`Seed(*seeding.Builder) error`. Imports use `di` for Fundamentals'
+`dependencyinjection` package and `container` for its optional default container.
+Configure connection/authentication options at Capture for runtime use.
+
+<!-- shared-provider-sequence -->
+
+```go
+preparation, err := chronicle.CaptureClient(
+    chronicle.WithRegistry(registry),
+    chronicle.WithAppendOriginResolver(sdk.ResolveAppendOrigin),
+)
+if err != nil {
+    return err
+}
+var provider di.Provider
+defer func() {
+    // No work/observers in this setup example. Runtime users drain Arc first.
+    err = errors.Join(err, preparation.Client().Close())
+    if provider != nil {
+        err = errors.Join(err, provider.Close(ctx))
+    }
+}()
+var bindings container.Registry
+if err := di.BindValue(&bindings, preparation.Client()); err != nil {
+    return err
+}
+if err := di.BindFunc1(&bindings, di.Singleton, func(_ context.Context, client *chronicle.Client) (*exampleCompositionSeeder, error) {
+    return &exampleCompositionSeeder{client: client}, nil
+}); err != nil {
+    return err
+}
+provider, err = bindings.Build()
+if err != nil {
+    return err
+}
+client, err := services.PrepareClient(ctx, preparation, provider)
+if err != nil {
+    return err
+}
+adapter, err := sdk.New(client, sdk.Config{Store: "example", OwnClient: false})
+if err != nil {
+    return err
+}
+builder, err := arc.NewBuilder(arc.Options{ScopeFactory: provider, DependencyCatalog: provider})
+if err != nil {
+    return err
+}
+if err := adapter.Install(builder); err != nil {
+    return err
+}
+```
+
+`BindValue` borrows the exact captured pointer. `PrepareClient` returns that same
+pointer, and Arc borrows the same provider through both `ScopeFactory` and
+`DependencyCatalog`. Use singleton lifetimes for client-lifetime collaborators;
+preparation's scoped resources are disposed before preparation returns. The
+example then registers a handwritten typed command, builds and starts Arc
+without connecting. It prints `prepared without connecting`.
+
+Do not combine captured `services.WithServices` with an explicit provider passed
+to `PrepareClient`: those are conflicting preparation scope configurations.
+Before or during preparation, actual `sdk.New` returns `ErrNotPrepared` without
+poisoning the admitted preparation. A concurrent second preparation returns
+`ErrPreparationInProgress`. Preparation retains one completed outcome and does
+not rerun its callbacks. Closing the client from a preparation callback or its
+cleanup returns without self-wait, but publishes `ErrClosed`, not a usable
+integration. This is not permission to close from arbitrary SDK runtime callbacks.
+
+The no-transport fixtures use a real lazy gRPC connection to check zero dials,
+RPCs, streams and origin resolutions during Capture, Prepare, adapter creation,
+Install and Build. Preparation is **not** Connect, registration, observer
+attachment or catch-up. The kernel witness separately verifies shared handler
+identities, the captured resolver's actual callback context and exact nonzero
+command origin. A confirmed immediate append followed by an intentional handler
+failure retains the original error and a `Committed` completion, with persisted
+kernel readback; it cannot be rolled back by the later failure.
+
+This bounded consumer uses Chronicle SDK
+`v0.0.0-20261003210034-9e0c8d5ba5f1`, Arc `435a136792b6`, Fundamentals `v0.1.0`
+and Go 1.26 minimum. The SDK baseline includes fail-closed profile changes beyond
+two-phase construction. It does not establish classified decision, compliance,
+watch or replay safety. Legacy watch/window/local-reducer release ownership is
+still tracked by [Chronicle.Go #35](https://github.com/Cratis/Chronicle.Go/issues/35).
+
 ## Wire lifecycle and audit deliberately
 
-Construction and Build perform no network I/O. Start Arc admission, bind reactor command bridges, then call `integration.Start(ctx)` for configured `StartupNamespaces`. Begin HTTP serving only after required readiness succeeds. During shutdown, unregister/join reactors, drain Arc, then close the client. Default clients are borrowed. `OwnClient: true` transfers closure to an explicit, once-only `integration.Close()` call; it is not a late automatic Arc shutdown hook.
+Construction and Build perform no network I/O. Start Arc admission, bind reactor
+command bridges, then call `integration.Start(ctx)` for configured
+`StartupNamespaces`. Begin HTTP serving only after required readiness succeeds.
+Default clients and supplied providers are borrowed. `OwnClient: true` transfers
+client closure to an explicit, once-only `integration.Close()` call; it is not a
+late automatic Arc shutdown hook.
+
+For an application-owned client/provider, stop producers first, unregister and
+join any owned observers, then drain/join Arc with `app.Shutdown(ctx)`. Close the
+borrowed integration, close/join the client's runtime, join any outstanding
+`PrepareClient` call including its resource cleanup, and only then close the
+provider. Client cancellation alone is not a preparation join. A short Arc
+shutdown deadline leaves the application Stopping: retain the provider while
+admitted commands still hold resources, release/join them and call Shutdown
+again before provider disposal. The composition fixture needs no observer.
+
+Provider disposal does not close a `BindValue` client. The isolated no-transport
+ownership test disposes an idle provider first and then probes real transport to
+prove the SDK was not closed; this is an ownership test, **not** the normal
+shutdown order above.
 
 Authenticated principal subject and display name map to audit identity. Username requires an explicit trusted actor mapper; anonymous principals become Chronicle's canonical unknown actor. Tenant Default/NotSet maps to namespace `Default`; other tenants preserve their exact value.
 
@@ -195,4 +314,4 @@ python3 scripts/check-boundaries.py
 
 Integration-tagged tests fail when the endpoint variable is absent. They exercise HTTP commands, atomic rejection/readback, tenants, shared projection/query models, projection injection, aggregate competition, reactor-returned commands, failed observer partitions and ignored immediate-append rejection. Root and tools gates run separately; `./...` does not cross module boundaries.
 
-Protected decisions/enrollment tokens, watches, aggregate snapshots, historical-generation aggregate decoding, full compliance authoring and general operation compensation remain unsupported. None is implied by an ordinary injected model or a successful snapshot test.
+Protected decisions/enrollment tokens, watches, aggregate snapshots, automatic historical-generation migration, full compliance authoring and general operation compensation remain unsupported. None is implied by an ordinary injected model or a successful snapshot test.

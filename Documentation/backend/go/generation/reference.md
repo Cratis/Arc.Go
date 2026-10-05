@@ -3,8 +3,8 @@ title: Generator directives and signatures
 description: Supported arc-gen declarations, method shapes, dependency stages, and diagnostics.
 ---
 
-`arc-gen` is experimental tooling for typed command and snapshot-query adapters
-and a bounded [TypeScript snapshot-proxy profile](typescript.md).
+`arc-gen` is experimental tooling for typed command, snapshot-query, and declared
+observable-source adapters and a bounded [TypeScript proxy profile](typescript.md).
 It analyzes explicitly selected packages with `go/packages` and `go/types`; it
 never executes package initialization, constructors, or business methods.
 Start with [generating model-bound adapters](index.md) for the authoring workflow.
@@ -17,7 +17,8 @@ Start with [generating model-bound adapters](index.md) for the authoring workflo
 | `-dir` | Current directory | Directory for Go package loading |
 | `-tags` | Empty | Comma-separated build tags, passed to the Go loader |
 | `-check` | False | Return an error for missing, changed, or obsolete output without writing or recovery |
-| `-config` | None | Strict format-version 1 JSON application profile |
+| `-config` | None | Strict versioned JSON application profile; internal wire-contract analysis does not enable OpenAPI publication |
+| `-bindings-config` | Disabled | Separate strict version-1 JSON [constructor-service configuration](constructor-services.md#configuration-reference) |
 | `-typescript-out` | Disabled | Override profile `typescript.out` with an output root relative to the selected module |
 | `-emit-go` | True | Explicitly supplied value overrides profile `typescript.emitGo`; false is unsupported for mixed generation |
 
@@ -119,7 +120,18 @@ required; pointer syntax does not imply an optional DI registration.
 The primary convention is an exported method with an unnamed or blank **value**
 receiver on an `arc:readmodel` struct. It must return `(O, error)`, where `O` is the
 owning model, its pointer, a slice/array of either, or `queries.Page[M]` or
-`queries.Page[*M]`.
+`queries.Page[*M]`. Value `queries.ObservedCollection` uses collection data rather
+than exposing its change hints.
+
+Recognized observable declarations are `observable.Source[O]`,
+`observable.CurrentSource[O]`, `*observable.State[O]`, and
+`*observable.Subject[O]`, including aliases. `O` must have a supported owning-model
+shape above. Pointer Page/ObservedCollection wrappers, nested sources, foreign
+models, named collection definitions, and opaque provider emissions are rejected.
+The generated `queries.RegisterObservable` performer retains the declared source's
+CurrentSource capability through ordinary interface assignment; it does not open
+streams or add `WithEnumerable` just because emissions are collections. Unsupported
+emissions in recognized sources diagnose rather than disappearing from discovery.
 
 Unrelated return shapes and named/pointer receiver methods are not implicitly
 discovered. Explicit `arc:query` on a stateful or pointer receiver is an error.
@@ -153,14 +165,20 @@ artifact packages. Handwritten inputs must type-check without generated symbols.
 The generator validates all selected packages before writing. Each file replacement
 is atomic, but a multi-package write is not a filesystem transaction. Any write
 failure returns an error. After repairing the cause, rerun generation and `-check`.
-An owned output is removed when its selected package no longer contains artifacts.
+An owned output is removed when its selected package no longer needs generated
+artifact or opted-in service output.
 Files without the generator's ownership header, symlink outputs, and unselected
 packages are never overwritten or cleaned up.
 
-Variadics, unresolved generics, arbitrary multiple returns, streaming queries,
-provider-specific query renderers, service constructor discovery, standalone
-validator/policy discovery, operations, observable proxies, and proxy-only output
-are unsupported. Supported TypeScript models, commands, and snapshot queries are
-described in the [snapshot-proxy profile](typescript.md). Existing manually
+Variadics, unresolved generics, arbitrary multiple returns, channels, opaque
+provider-specific source emissions, implicit service discovery, standalone
+validator/policy discovery, operations, and proxy-only output are unsupported.
+Explicitly opted-in [constructor service generation](constructor-services.md)
+uses the shared Fundamentals planner and a separate `RegisterServices` entry point.
+Custom opaque MongoDB `Source[Find]` remains a manual-runtime surface until explicit
+emission metadata exists; no provider renderer or broader C# nullable-layout
+support is inferred. Supported TypeScript models, commands, snapshot queries, and
+observable queries, including stricter collection identity/nullability limits,
+are described in the [proxy profile](typescript.md). Existing manually
 registered model/concept validators remain supported.
 A read-model declaration does not register a Chronicle projection.

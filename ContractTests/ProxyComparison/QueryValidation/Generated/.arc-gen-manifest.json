@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "owner": "query-validation",
+  "scope": "237b3b481f147a352ff1922e36c748a581ff4ff9d9d53948efc50c864571c0a8",
+  "fingerprint": "0487d0ec5152e18a137868641882f1fd911007c42baed1d66c4a62e88a03cf15",
+  "files": [
+    {
+      "root": "go",
+      "path": "zz_arc_generated.go",
+      "hash": "fb7c73ce20057e6b3e7eec17d2257ba509789ab502b289bfd9530c4498e5a113"
+    },
+    {
+      "root": "ts",
+      "path": "Shop/Validation/Match.ts",
+      "hash": "2fdd0e794c9f0fbbe5757a6a449feb68742927952eb6007a303d646f889c6c17"
+    },
+    {
+      "root": "ts",
+      "path": "Shop/Validation/Search.ts",
+      "hash": "7a4b82693ecf3b2f1822d8391906d6b240d7d880e180e6a36a926e70bdd53af1"
+    },
+    {
+      "root": "ts",
+      "path": "Shop/Validation/index.ts",
+      "hash": "309b1b604580461708d75a56004c51b43e7c9644e8e72c4a2905fe667210bd2e"
+    }
+  ]
+}

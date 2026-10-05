@@ -1,0 +1,6 @@
+//arc:namespace Tasks
+package commands
+
+//arc:command
+type Register struct { Name string; Enabled bool }
+func (Register) Handle() error { return nil }

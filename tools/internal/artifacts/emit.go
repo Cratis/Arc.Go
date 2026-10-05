@@ -36,7 +36,7 @@ type emitter struct {
 	ctx, inv, value, args, prepared, bindings, supplied, builder, err, zero, scope string
 }
 
-func emit(a *analysis) ([]byte, error) {
+func emit(a *analysis, services ...*serviceBindingsPlan) ([]byte, error) {
 	e := &emitter{analysis: a, imports: map[string]string{}, names: map[string]bool{}}
 	for _, name := range a.pkg.Types.Scope().Names() {
 		e.names[name] = true
@@ -138,6 +138,9 @@ func emit(a *analysis) ([]byte, error) {
 		}
 	}
 	e.line("return nil\n}")
+	if len(services) > 0 {
+		e.emitServices(services[0])
+	}
 	var out bytes.Buffer
 	out.WriteString(Header)
 	out.WriteString("// Copyright (c) Cratis. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\n")
@@ -399,13 +402,27 @@ func (e *emitter) emitQuery(q query) {
 	if q.args != nil {
 		args = e.typ(q.args)
 	}
+	validator := ""
+	if e.analysis.graph != nil && e.analysis.graph.verifyEndpoints && q.descriptor.PortableRules {
+		validator = e.unique("arcValidator")
+		e.line("%s, %s := %s.NewPortable[%s]()", validator, e.err, e.imp(runtimePath+"/validation"), args)
+		e.line("if %s != nil { return %s }", e.err, e.err)
+	}
 	keys := e.manifest(q.call)
-	e.line("if %s := %s.Register[%s](%s, %q, %s.Invoke(func(%s %s.Context, %s *%s.Invocation, %s %s) (%s, error) {", e.err, queries, e.typ(q.model.typ), e.builder, q.d.name, queries, e.ctx, e.imp("context"), e.inv, queries, e.args, args, e.typ(q.call.output))
+	register := "Register[" + e.typ(q.model.typ) + "]"
+	var out string
+	if q.emission != nil {
+		register = "RegisterObservable[" + e.typ(q.model.typ) + ", " + args + ", " + e.typ(q.emission) + "]"
+		out = e.imp(runtimePath+"/observable") + ".Source[" + e.typ(q.emission) + "]"
+	} else {
+		out = e.typ(q.call.output)
+	}
+	e.line("if %s := %s.%s(%s, %q, %s.Invoke(func(%s %s.Context, %s *%s.Invocation, %s %s) (%s, error) {", e.err, queries, register, e.builder, q.d.name, queries, e.ctx, e.imp("context"), e.inv, queries, e.args, args, out)
 	call := q.call.decl.Name.Name
 	if q.call.decl.Recv != nil {
 		call = "(" + e.typ(q.model.typ) + "{})." + call
 	}
-	e.emitCall(q.call, call, e.typ(q.call.output), false, "")
+	e.emitCall(q.call, call, out, false, "")
 	e.line("}),")
 	if q.d.auth != nil {
 		e.line("%s.WithAuthorization[%s](%s),", queries, args, strings.TrimPrefix(e.auth(q.d.auth), "&"))
@@ -418,6 +435,9 @@ func (e *emitter) emitQuery(q query) {
 	}
 	if q.d.hasPath {
 		e.line("%s.WithPath[%s](%q),", queries, args, q.d.path)
+	}
+	if validator != "" {
+		e.line("%s.WithValidator[%s](%s),", queries, args, validator)
 	}
 	if keys != "" {
 		e.line("%s.WithDependencies[%s](%s...),", queries, args, keys)

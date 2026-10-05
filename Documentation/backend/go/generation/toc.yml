@@ -1,6 +1,8 @@
-- name: Generate adapters and snapshot proxies
+- name: Generate adapters and proxies
   href: index.md
-- name: TypeScript snapshot proxies
+- name: Constructor services
+  href: constructor-services.md
+- name: TypeScript proxies
   href: typescript.md
 - name: Directives and signatures
   href: reference.md
