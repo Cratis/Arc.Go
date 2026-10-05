@@ -108,13 +108,13 @@ func dispositionName(d commands.CommitDisposition) string {
 
 var errOperationFailed = errors.New("operation failed")
 
-type reserveSeat struct {
+type seatReservation struct {
 	Fail      bool
 	Immediate commands.CommitDisposition
 }
 
-func (reserveSeat) CommandOperation() {}
-func (o reserveSeat) Execute(ctx context.Context, p *operationProvider) error {
+func (seatReservation) CommandOperation() {}
+func (o seatReservation) Execute(ctx context.Context, p *operationProvider) error {
 	p.record("execute")
 	if o.Immediate != commands.NoPersistedWork {
 		_ = p.Append(ctx, o.Immediate)
@@ -124,17 +124,17 @@ func (o reserveSeat) Execute(ctx context.Context, p *operationProvider) error {
 	}
 	return nil
 }
-func (reserveSeat) Compensate(_ context.Context, p *operationProvider, failure commands.OperationFailure) error {
+func (seatReservation) Compensate(_ context.Context, p *operationProvider, failure commands.OperationFailure) error {
 	p.record("compensate:" + dispositionName(failure.Completion.Disposition))
 	return nil
 }
 
-type BookSeat struct {
+type OperationBooking struct {
 	ID        c.EventSourceID `json:"id"`
 	Deferred  bool            `json:"deferred"`
 	Invalid   bool            `json:"invalid"`
 	BeforeOps commands.CommitDisposition
-	Operation reserveSeat
+	Operation seatReservation
 	NoOps     bool
 }
 
@@ -151,11 +151,11 @@ func operationSetup(t *testing.T, p *operationProvider, observe bool) *arc.Appli
 	integration, err := c.New(options)
 	must(t, err)
 	must(t, integration.Install(builder))
-	must(t, commands.RegisterOperation[reserveSeat, *operationProvider](builder.Commands(), func(context.Context, *execution.Scope) (*operationProvider, error) {
+	must(t, commands.RegisterOperation[seatReservation, *operationProvider](builder.Commands(), func(context.Context, *execution.Scope) (*operationProvider, error) {
 		p.record("dependencies")
 		return p, nil
 	}))
-	must(t, commands.Register[BookSeat](builder, commands.Invoke(func(ctx context.Context, _ *commands.Invocation, command BookSeat) (commands.Outcome[commands.NoResponse], error) {
+	must(t, commands.Register[OperationBooking](builder, commands.Invoke(func(ctx context.Context, _ *commands.Invocation, command OperationBooking) (commands.Outcome[commands.NoResponse], error) {
 		p.record("handle")
 		if command.BeforeOps != commands.NoPersistedWork {
 			_ = p.Append(ctx, command.BeforeOps)
@@ -168,10 +168,10 @@ func operationSetup(t *testing.T, p *operationProvider, observe bool) *arc.Appli
 			effects = append(effects, command.Operation)
 		}
 		return commands.Effects[commands.NoResponse](effects...), nil
-	}), commands.WithOperations[BookSeat](), commands.WithValidator[BookSeat](validation.ValidatorFunc[BookSeat](func(context.Context, BookSeat) ([]validation.Result, error) {
+	}), commands.WithOperations[OperationBooking](), commands.WithValidator[OperationBooking](validation.ValidatorFunc[OperationBooking](func(context.Context, OperationBooking) ([]validation.Result, error) {
 		p.record("validate")
 		return nil, nil
-	})), commands.WithValidator[BookSeat](validation.ValidatorFunc[BookSeat](func(_ context.Context, command BookSeat) ([]validation.Result, error) {
+	})), commands.WithValidator[OperationBooking](validation.ValidatorFunc[OperationBooking](func(_ context.Context, command OperationBooking) ([]validation.Result, error) {
 		if command.Invalid {
 			return []validation.Result{{Severity: validation.Error, Message: "invalid"}}, nil
 		}
@@ -192,7 +192,7 @@ func recovery(t *testing.T, result commands.Result[any]) commands.RecoverySummar
 func TestOperationObservationIsOpenedAfterValidationAndBeforeBusinessCallbacks(t *testing.T) {
 	p := newOperationProvider(commands.Committed)
 	app := operationSetup(t, p, true)
-	result, err := app.Commands().Execute(t.Context(), BookSeat{ID: "a", Deferred: true})
+	result, err := app.Commands().Execute(t.Context(), OperationBooking{ID: "a", Deferred: true})
 	must(t, err)
 	if !result.IsSuccess() || result.Completion().Disposition != commands.Committed || recovery(t, result).Status != commands.RecoveryNotNeeded {
 		t.Fatal(result.Details(), result.Completion())
@@ -205,11 +205,11 @@ func TestOperationObservationIsOpenedAfterValidationAndBeforeBusinessCallbacks(t
 func TestOperationValidationFailureAndValidationOnlyNeverObserveOrBegin(t *testing.T) {
 	p := newOperationProvider(commands.Committed)
 	app := operationSetup(t, p, true)
-	result, err := app.Commands().Execute(t.Context(), BookSeat{ID: "a", Deferred: true, Invalid: true})
+	result, err := app.Commands().Execute(t.Context(), OperationBooking{ID: "a", Deferred: true, Invalid: true})
 	if result.IsSuccess() {
 		t.Fatal(result.Details(), err)
 	}
-	validated, err := app.Commands().Validate(t.Context(), BookSeat{ID: "a", Deferred: true})
+	validated, err := app.Commands().Validate(t.Context(), OperationBooking{ID: "a", Deferred: true})
 	if err != nil || !validated.IsSuccess() {
 		t.Fatal(validated.Details(), err)
 	}
@@ -224,22 +224,22 @@ func TestOperationCompletionDispositionsDriveRecovery(t *testing.T) {
 	for _, scenario := range []struct {
 		name     string
 		commit   commands.CommitDisposition
-		command  BookSeat
+		command  OperationBooking
 		want     commands.CommitDisposition
 		recovery commands.RecoveryStatus
 		steps    string
 	}{
-		{"no persisted work compensates", commands.Committed, BookSeat{ID: "a", Operation: reserveSeat{Fail: true}}, commands.NoPersistedWork, commands.RecoveryCompleted,
+		{"no persisted work compensates", commands.Committed, OperationBooking{ID: "a", Operation: seatReservation{Fail: true}}, commands.NoPersistedWork, commands.RecoveryCompleted,
 			"validate,subscribe,handle,dependencies,execute,unsubscribe,compensate:NoPersistedWork"},
-		{"rejected deferred commit compensates after the terminal step", commands.NotCommitted, BookSeat{ID: "a", Deferred: true}, commands.NotCommitted, commands.RecoveryCompleted,
+		{"rejected deferred commit compensates after the terminal step", commands.NotCommitted, OperationBooking{ID: "a", Deferred: true}, commands.NotCommitted, commands.RecoveryCompleted,
 			"validate,subscribe,handle,dependencies,begin,stage,execute,unsubscribe,commit,compensate:NotCommitted"},
-		{"confirmed immediate append suppresses compensation", commands.Committed, BookSeat{ID: "a", Operation: reserveSeat{Fail: true, Immediate: commands.Committed}}, commands.Committed, commands.RecoverySuppressed,
+		{"confirmed immediate append suppresses compensation", commands.Committed, OperationBooking{ID: "a", Operation: seatReservation{Fail: true, Immediate: commands.Committed}}, commands.Committed, commands.RecoverySuppressed,
 			"validate,subscribe,handle,dependencies,execute,append,unsubscribe"},
-		{"lost immediate acknowledgement is indeterminate", commands.Committed, BookSeat{ID: "a", Operation: reserveSeat{Fail: true, Immediate: commands.OutcomeUnknown}}, commands.OutcomeUnknown, commands.RecoveryIndeterminate,
+		{"lost immediate acknowledgement is indeterminate", commands.Committed, OperationBooking{ID: "a", Operation: seatReservation{Fail: true, Immediate: commands.OutcomeUnknown}}, commands.OutcomeUnknown, commands.RecoveryIndeterminate,
 			"validate,subscribe,handle,dependencies,execute,append,unsubscribe"},
-		{"confirmed immediate and rolled back deferred is mixed", commands.NotCommitted, BookSeat{ID: "a", Deferred: true, Operation: reserveSeat{Immediate: commands.Committed}}, commands.MixedCommit, commands.RecoveryIndeterminate,
+		{"confirmed immediate and rolled back deferred is mixed", commands.NotCommitted, OperationBooking{ID: "a", Deferred: true, Operation: seatReservation{Immediate: commands.Committed}}, commands.MixedCommit, commands.RecoveryIndeterminate,
 			"validate,subscribe,handle,dependencies,begin,stage,execute,append,unsubscribe,commit"},
-		{"unconfirmed deferred commit is never redispatched", commands.OutcomeUnknown, BookSeat{ID: "a", Deferred: true}, commands.OutcomeUnknown, commands.RecoveryIndeterminate,
+		{"unconfirmed deferred commit is never redispatched", commands.OutcomeUnknown, OperationBooking{ID: "a", Deferred: true}, commands.OutcomeUnknown, commands.RecoveryIndeterminate,
 			"validate,subscribe,handle,dependencies,begin,stage,execute,unsubscribe,commit"},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
@@ -276,7 +276,7 @@ func TestPreEntryImmediateHazardsRefuseOperationsBeforeEntry(t *testing.T) {
 		t.Run(dispositionName(scenario.immediate), func(t *testing.T) {
 			p := newOperationProvider(commands.Committed)
 			app := operationSetup(t, p, true)
-			result, err := app.Commands().Execute(t.Context(), BookSeat{ID: "a", Deferred: true, BeforeOps: scenario.immediate})
+			result, err := app.Commands().Execute(t.Context(), OperationBooking{ID: "a", Deferred: true, BeforeOps: scenario.immediate})
 			executed := p.count("execute") == 1
 			if scenario.refused {
 				if result.IsSuccess() || !errors.Is(err, commands.ErrInvalidOperation) || executed || p.count("commit") != 0 || p.count("stage") != 0 {
@@ -308,7 +308,7 @@ func TestPreEntryImmediateHazardsRefuseOperationsBeforeEntry(t *testing.T) {
 func TestOperationsWithoutAttributedObservationFailClosed(t *testing.T) {
 	p := newOperationProvider(commands.Committed)
 	app := operationSetup(t, p, false)
-	result, err := app.Commands().Execute(t.Context(), BookSeat{ID: "a", Deferred: true})
+	result, err := app.Commands().Execute(t.Context(), OperationBooking{ID: "a", Deferred: true})
 	if result.IsSuccess() || !errors.Is(err, commands.ErrInvalidOperation) || !errors.Is(err, c.ErrUnsupported) {
 		t.Fatal(result.Details(), err)
 	}
@@ -320,7 +320,7 @@ func TestOperationsWithoutAttributedObservationFailClosed(t *testing.T) {
 func TestEmptyOperationCommandsUseTheOrdinaryTerminalPath(t *testing.T) {
 	p := newOperationProvider(commands.Committed)
 	app := operationSetup(t, p, true)
-	result, err := app.Commands().Execute(t.Context(), BookSeat{ID: "a", Deferred: true, NoOps: true})
+	result, err := app.Commands().Execute(t.Context(), OperationBooking{ID: "a", Deferred: true, NoOps: true})
 	must(t, err)
 	if !result.IsSuccess() || result.Completion().Disposition != commands.Committed || p.count("execute") != 0 || p.count("commit") != 1 {
 		t.Fatal(result.Details(), p.steps())
@@ -342,7 +342,7 @@ func TestExplicitAggregateCommitIsRefusedInOperationCommands(t *testing.T) {
 			f := &fakeFactory{result: c.CommitResult{Report: commands.CompletionReport{Disposition: commands.Committed}}}
 			builder, factory := aggregateSetup(t, f, &historyReader{})
 			p := newOperationProvider(commands.Committed)
-			must(t, commands.RegisterOperation[reserveSeat, *operationProvider](builder.Commands(), func(context.Context, *execution.Scope) (*operationProvider, error) { return p, nil }))
+			must(t, commands.RegisterOperation[seatReservation, *operationProvider](builder.Commands(), func(context.Context, *execution.Scope) (*operationProvider, error) { return p, nil }))
 			var refusal error
 			must(t, commands.Register[ExplicitCommit](builder, commands.Invoke(func(ctx context.Context, inv *commands.Invocation, command ExplicitCommit) (commands.Operations, error) {
 				aggregate, err := factory.Get(ctx, inv)
@@ -359,7 +359,7 @@ func TestExplicitAggregateCommitIsRefusedInOperationCommands(t *testing.T) {
 				if command.Empty {
 					return commands.Operations{}, nil
 				}
-				return commands.NewOperations(reserveSeat{})
+				return commands.NewOperations(seatReservation{})
 			}), commands.WithOperations[ExplicitCommit]()))
 			result, err := start(t, builder).Commands().Execute(t.Context(), ExplicitCommit{ID: "a", Propagate: scenario.propagate, Empty: scenario.empty})
 			if !errors.Is(refusal, commands.ErrInvalidOperation) || result.IsSuccess() || !errors.Is(err, commands.ErrInvalidOperation) {
