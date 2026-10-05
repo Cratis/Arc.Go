@@ -3,7 +3,10 @@
 The request schema describes the built-in reader used by the bounded,
 argument-free, nonpageable snapshot projection for
 [Arc.Go#24](https://github.com/Cratis/Arc.Go/issues/24). It is not an application
-argument binder or proof of general HTTP acceptance.
+argument binder or proof of general HTTP acceptance. Queries with declared
+scalar arguments or pageable results extend the same schema with a described
+`arguments` object and sort-field list; `openapi_query_arguments_test.go` holds
+those structural and reader witnesses. The argument-free request schema is unchanged.
 
 ## Sorting activation
 

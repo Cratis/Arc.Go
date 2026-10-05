@@ -20,6 +20,7 @@ import (
 type gatedCancellation struct {
 	context.Context
 	registered chan struct{}
+	started    chan struct{}
 	release    chan struct{}
 	joined     chan struct{}
 }
@@ -31,6 +32,7 @@ func (*gatedCancellation) Value(any) any { return nil }
 func (c *gatedCancellation) AfterFunc(call func()) func() bool {
 	stop := context.AfterFunc(c.Context, func() {
 		defer close(c.joined)
+		close(c.started)
 		<-c.release
 		call()
 	})
@@ -41,8 +43,8 @@ func (c *gatedCancellation) AfterFunc(call func()) func() bool {
 func TestCanceledConsumerBeforeRunChildDoesNotDeliverSourceFailure(t *testing.T) {
 	consumer, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	gated := &gatedCancellation{Context: consumer, registered: make(chan struct{}), release: make(chan struct{}), joined: make(chan struct{})}
-	source := &cancelingSource{consumer: consumer}
+	gated := &gatedCancellation{Context: consumer, registered: make(chan struct{}), started: make(chan struct{}), release: make(chan struct{}), joined: make(chan struct{})}
+	source := &cancelingSource{consumer: consumer, forwardingStarted: gated.started}
 	builder, err := arc.NewBuilder(arc.Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -108,7 +110,10 @@ func TestCanceledConsumerBeforeRunChildDoesNotDeliverSourceFailure(t *testing.T)
 
 type clientfixtureItem struct{}
 
-type cancelingSource struct{ consumer context.Context }
+type cancelingSource struct {
+	consumer          context.Context
+	forwardingStarted <-chan struct{}
+}
 
 func (s *cancelingSource) Open(context.Context) (observable.Stream[clientfixtureItem], error) {
 	return s, nil
@@ -117,6 +122,10 @@ func (s *cancelingSource) Open(context.Context) (observable.Stream[clientfixture
 func (s *cancelingSource) Next(ctx context.Context) (clientfixtureItem, error) {
 	select {
 	case <-s.consumer.Done():
+		// Run may stop an AfterFunc that has not started yet. Ensure forwarding
+		// is running (but gated) before allowing Run to return and stop it, so
+		// the join assertion does not depend on which goroutine runs first.
+		<-s.forwardingStarted
 		return clientfixtureItem{}, s.consumer.Err()
 	case <-ctx.Done():
 		return clientfixtureItem{}, ctx.Err()

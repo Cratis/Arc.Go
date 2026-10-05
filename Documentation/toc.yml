@@ -46,6 +46,8 @@
           href: backend/go/commands/command-context.md
         - name: Command filters
           href: backend/go/commands/command-filters.md
+        - name: Protected decision reads
+          href: backend/go/commands/decision-reads.md
         - name: Flat command operations
           href: backend/go/commands/operations.md
         - name: Command execution scopes
@@ -109,6 +111,9 @@
           href: backend/go/generation/reference.md
     - name: Chronicle integration
       href: backend/go/chronicle/index.md
+      items:
+        - name: Chronicle decision reads
+          href: backend/go/chronicle/decision-reads.md
     - name: MongoDB snapshots
       href: backend/go/mongodb/index.md
       items:

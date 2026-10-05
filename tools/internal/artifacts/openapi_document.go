@@ -16,10 +16,18 @@ import (
 
 const openAPIDialect = "https://json-schema.org/draft/2020-12/schema"
 
-// openAPIDocument is a copy-owned internal serialization checkpoint, not a
-// publication-ready document or a replacement for the exact validation gate.
-// It never holds graph slices, caller schemas, compiler objects or a kin view.
-// The zero value is invalid. No generator calls this checkpoint.
+// openAPIGeneratedMember carries the arc-gen ownership marker. JSON has no
+// comments, so the marker that Go and TypeScript files keep on their first line
+// is a top-level specification extension here.
+const openAPIGeneratedMember = "x-cratis-generated"
+
+// openAPIGeneratedMarker is Header without its comment syntax.
+var openAPIGeneratedMarker = strings.TrimSuffix(strings.TrimPrefix(Header, "// "), "\n")
+
+// openAPIDocument is a copy-owned compact OpenAPI 3.1.1 document rendered from a
+// finalized Graph. It never holds graph slices, caller schemas, compiler
+// objects or a kin view. The zero value is invalid. arc-gen publishes it as a
+// file only; it is never served over HTTP.
 type openAPIDocument struct{ data []byte }
 
 func (d openAPIDocument) bytes() []byte { return bytes.Clone(d.data) }
@@ -36,8 +44,8 @@ type openAPIRenderer struct {
 // renderOpenAPI borrows a finalized graph for this synchronous call. Errors
 // return no document, including when one later artifact is unsupported. This
 // deliberately small profile refuses opaque schemas, specialized codecs,
-// authorization, query arguments/paging, framework routes and streams rather
-// than guessing at their contracts. Full validation/publication is a later seam.
+// authorization, non-scalar or presence-preserving query arguments, framework
+// routes and streams rather than guessing at their contracts.
 func renderOpenAPI(graph *Graph) (openAPIDocument, error) {
 	if err := admitOpenAPIGraph(graph); err != nil {
 		return openAPIDocument{}, err
@@ -100,7 +108,8 @@ func renderOpenAPI(graph *Graph) (openAPIDocument, error) {
 		"openapi": "3.1.1", "jsonSchemaDialect": openAPIDialect,
 		"info":    openAPIObject{"title": graph.Profile.OpenAPI.Title, "version": graph.Profile.OpenAPI.Version},
 		"servers": servers, "paths": paths, "components": openAPIObject{"schemas": r.components},
-		"x-cratis-profile": openAPIObject{"provenance": "application-profile-assertion", "coverage": "application-operations", "securityVerified": false, "schemaVerified": false, "query": "Cratis-aware consumer required"},
+		openAPIGeneratedMember: openAPIGeneratedMarker,
+		"x-cratis-profile":     openAPIObject{"provenance": "application-profile-assertion", "coverage": "application-operations", "securityVerified": false, "schemaVerified": false, "query": "Cratis-aware consumer required"},
 	}
 	data, err := json.Marshal(document)
 	if err != nil {

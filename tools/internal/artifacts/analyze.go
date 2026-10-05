@@ -63,6 +63,8 @@ type analysis struct {
 	queries         []query
 	exports         []*model
 	enums           []*model
+	validators      []validator
+	policies        []policy
 	graph           *Graph
 	staticNamespace bool
 	wireTypes       map[string]types.Type
@@ -73,7 +75,20 @@ func diagnostic(pkg *packages.Package, pos token.Pos, format string, args ...any
 }
 
 func analyze(pkg *packages.Package) (*analysis, error) {
-	return analyzeDeclarations(pkg, false)
+	a, err := analyzeDeclarations(pkg, false)
+	if err != nil {
+		return nil, err
+	}
+	if len(a.validators)+len(a.policies) > 0 && len(a.commands)+len(a.models) == 0 && !hasDerivedModels(a) {
+		var pos token.Pos
+		if len(a.validators) > 0 {
+			pos = a.validators[0].pos
+		} else {
+			pos = a.policies[0].pos
+		}
+		return nil, diagnostic(pkg, pos, "arc:validator and arc:policy are registered by RegisterArtifacts and need an arc:command, arc:readmodel or derived model in the same package")
+	}
+	return a, nil
 }
 
 // analyzeDeclarations can inspect handwritten declarations in an already generated
@@ -126,6 +141,12 @@ func analyzeDeclarations(pkg *packages.Package, allowGeneratedNames bool) (*anal
 					}
 					delete(docs, group)
 					if d.ignore {
+						continue
+					}
+					if d.kind == "validator" || d.kind == "policy" {
+						if err := a.addRegisteredType(ts, d); err != nil {
+							return nil, err
+						}
 						continue
 					}
 					if d.hasNamespace || d.kind != "command" && d.kind != "readmodel" && d.kind != "enum" && d.kind != "model" {
@@ -229,6 +250,12 @@ func analyzeDeclarations(pkg *packages.Package, allowGeneratedNames bool) (*anal
 			}
 			continue
 		}
+		if explicit && (d.kind == "validator" || d.kind == "policy") {
+			if err := a.addConstructor(decl, d); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		if explicit && (d.hasNamespace || d.kind != "" && d.kind != "query") {
 			return nil, diagnostic(pkg, decl.Pos(), "function directives require arc:query")
 		}
@@ -282,7 +309,10 @@ func analyzeDeclarations(pkg *packages.Package, allowGeneratedNames bool) (*anal
 			}
 		}
 	}
-	if !allowGeneratedNames && len(a.commands)+len(a.models) > 0 {
+	if err := a.checkRegistrationIdentities(); err != nil {
+		return nil, err
+	}
+	if !allowGeneratedNames && len(a.commands)+len(a.models)+len(a.validators)+len(a.policies) > 0 {
 		for _, name := range []string{"RegisterArtifacts", "ArcBindings"} {
 			if obj := pkg.Types.Scope().Lookup(name); obj != nil {
 				return nil, diagnostic(pkg, obj.Pos(), "%s is reserved for generated adapters; keep composition in another package", name)

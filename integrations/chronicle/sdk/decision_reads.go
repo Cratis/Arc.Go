@@ -12,9 +12,8 @@ import (
 	"github.com/cratis/chronicle.go/transactions"
 )
 
-// Staged provider primitives only. New does not register these as protected
-// command support. The root's admission/provenance contract must first be wired
-// and qualified at a fetchable checkpoint; this module keeps its existing pin.
+// decisionProvider holds the provider primitives behind EnableDecisions. New
+// does not register them; protected command support is an explicit opt-in.
 // A concrete SDK reader is intentional: arbitrary readers and ModelDocument's
 // LastHandled progress must never be promoted to optimistic evidence.
 type decisionProvider[T any] struct {
@@ -25,6 +24,19 @@ type decisionProvider[T any] struct {
 type decisionRead[T any] struct {
 	instance readmodels.Instance[T]
 	token    transactions.DecisionToken
+}
+
+// decisionEvidence is implemented only by SDK-issued reads, so application code
+// cannot hand the participant a token envelope of its own.
+type decisionEvidence interface {
+	decisionToken() transactions.DecisionToken
+}
+
+func (r *decisionRead[T]) decisionToken() transactions.DecisionToken {
+	if r == nil {
+		return transactions.DecisionToken{}
+	}
+	return r.token
 }
 
 func newDecisionProvider[T any](service *readmodels.Service, model readmodels.Model[T]) decisionProvider[T] {
@@ -99,6 +111,16 @@ func decisionParticipant(p *participant) error {
 // application-created token envelope. The SDK validates zero, target, lifetime,
 // permanent owner membership and scope conflicts on every enrollment.
 func enrollDecision[T any](ctx context.Context, p *participant, read *decisionRead[T]) error {
+	if read == nil {
+		return p.EnrollDecision(ctx, nil)
+	}
+	return p.EnrollDecision(ctx, read)
+}
+
+// EnrollDecision implements integration.DecisionParticipant. Only an SDK-issued
+// read is accepted; enrollment is against this participant's unit, never
+// transactions.FromContext, and repeated enrollment of one token is idempotent.
+func (p *participant) EnrollDecision(ctx context.Context, evidence any) error {
 	if ctx == nil {
 		return integration.ErrInvalid
 	}
@@ -108,8 +130,9 @@ func enrollDecision[T any](ctx context.Context, p *participant, read *decisionRe
 	if err := decisionParticipant(p); err != nil {
 		return err
 	}
-	if read == nil || read.token.IsZero() {
+	read, ok := evidence.(decisionEvidence)
+	if !ok || read.decisionToken().IsZero() {
 		return transactions.ErrInvalidDecision
 	}
-	return p.unit.Enroll(read.token)
+	return p.unit.Enroll(read.decisionToken())
 }

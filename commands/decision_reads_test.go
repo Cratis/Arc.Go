@@ -14,8 +14,18 @@ import (
 	"github.com/cratis/arc.go/execution"
 )
 
-// These tests drive the private frame mechanism, not protected-command pipeline
-// wiring. Provider objects here are test values, not Chronicle decision tokens.
+// These tests drive the frame mechanism directly. Provider objects here are test
+// values, not Chronicle decision tokens. Pipeline-level behavior is specified in
+// decision_pipeline_test.go.
+var testDecisionProvider = NewDecisionProvider()
+
+func decisionPipelineForTest() *pipeline {
+	return &pipeline{
+		decisionProviders: decisionProviderSet([]*DecisionProvider{testDecisionProvider}),
+		terminal:          []extension[DeferredCommitParticipant]{{name: "owner"}},
+	}
+}
+
 func decisionFrameForTest(t *testing.T, validation bool) *frame {
 	t.Helper()
 	scope, err := execution.OpenScope(t.Context(), nil)
@@ -27,17 +37,29 @@ func decisionFrameForTest(t *testing.T, validation bool) *frame {
 			t.Error(err)
 		}
 	})
-	f := &frame{ctx: t.Context(), scope: scope, registration: Registration{withoutModel: true}, snapshot: CommandContext{validationOnly: validation}}
+	f := &frame{ctx: t.Context(), scope: scope, pipeline: decisionPipelineForTest(),
+		registration: Registration{withoutModel: true, decisions: DecisionsProtected}, snapshot: CommandContext{validationOnly: validation}}
 	f.owner = &executionState{top: f}
 	return f
 }
 
-func decisionAdmissionForTest() decisionAdmission {
-	return decisionAdmission{protected: true, provider: true, owner: true}
+type testDecisionSource struct {
+	admit   func(context.Context) error
+	acquire func(context.Context) (any, error)
+	check   func(context.Context, any) error
+	enroll  func(context.Context, any) error
 }
-func decisionSourceForTest(acquired, enrolled *atomic.Int32) (decisionTarget, decisionSource) {
-	target := decisionTarget{provider: &decisionProviderIdentity{}, model: reflect.TypeFor[string](), store: "store", namespace: "tenant", key: "key"}
-	source := decisionSource{
+
+func (s testDecisionSource) Admit(ctx context.Context) error            { return s.admit(ctx) }
+func (s testDecisionSource) Acquire(ctx context.Context) (any, error)   { return s.acquire(ctx) }
+func (s testDecisionSource) Check(ctx context.Context, value any) error { return s.check(ctx, value) }
+func (s testDecisionSource) Enroll(ctx context.Context, value any) error {
+	return s.enroll(ctx, value)
+}
+
+func decisionSourceForTest(acquired, enrolled *atomic.Int32) (DecisionTarget, testDecisionSource) {
+	target := DecisionTarget{Provider: testDecisionProvider, Model: reflect.TypeFor[string](), Store: "store", Namespace: "tenant", Key: "key"}
+	source := testDecisionSource{
 		admit: func(context.Context) error { return nil },
 		acquire: func(context.Context) (any, error) {
 			acquired.Add(1)
@@ -45,7 +67,7 @@ func decisionSourceForTest(acquired, enrolled *atomic.Int32) (decisionTarget, de
 		},
 		check: func(_ context.Context, value any) error {
 			if _, ok := value.(*int); !ok {
-				return errDecisionRead
+				return ErrDecisionRead
 			}
 			return nil
 		},
@@ -60,37 +82,40 @@ func callDecisionFrame(t *testing.T, f *frame, call func(context.Context, *Invoc
 	}
 }
 
-func TestDecisionAdmissionRefusesBeforeProviderOrValidatorConstruction(t *testing.T) {
-	for _, name := range []string{"legacy", "unprotected", "conflicting", "provider", "owner", "model-validation", "validator", "operations"} {
+func TestDecisionAdmissionRefusesBeforeAnyProviderStage(t *testing.T) {
+	for _, name := range []string{"unmarked", "unprotected", "uncertified-provider", "no-pipeline", "no-owner", "model-validation", "validator", "operations", "invalid-target", "nil-source"} {
 		t.Run(name, func(t *testing.T) {
 			f := decisionFrameForTest(t, false)
-			admission := decisionAdmissionForTest()
+			var acquired, enrolled atomic.Int32
+			target, source := decisionSourceForTest(&acquired, &enrolled)
+			var src DecisionSource = source
+			wantProfile := true
 			switch name {
-			case "legacy":
-				admission.protected = false
+			case "unmarked":
+				f.registration.decisions = DecisionsUnmarked
 			case "unprotected":
-				admission.protected, admission.unprotected = false, true
-			case "conflicting":
-				admission.unprotected = true
-			case "provider":
-				admission.provider = false
-			case "owner":
-				admission.owner = false
+				f.registration.decisions = DecisionsUnprotected
+			case "uncertified-provider":
+				target.Provider = NewDecisionProvider()
+			case "no-pipeline":
+				f.pipeline = nil
+			case "no-owner":
+				f.pipeline.terminal = nil
 			case "model-validation":
 				f.registration.withoutModel = false
 			case "validator":
 				f.registration.validators = []validatorEntry{{}}
 			case "operations":
 				f.registration.operations = true
+			case "invalid-target":
+				target.Key, wantProfile = "", false
+			case "nil-source":
+				src, wantProfile = (*testDecisionSource)(nil), false
 			}
-			var acquired, enrolled atomic.Int32
-			target, source := decisionSourceForTest(&acquired, &enrolled)
 			callDecisionFrame(t, f, func(ctx context.Context, inv *Invocation) error {
-				if err := beginDecisionReads(ctx, inv, admission); !errors.Is(err, errDecisionRead) {
-					t.Fatalf("admission = %v", err)
-				}
-				if read, err := readDecision(ctx, inv, target, source); read != nil || !errors.Is(err, errDecisionRead) {
-					t.Fatalf("read after refused admission = %v, %v", read, err)
+				read, err := ReadDecision(ctx, inv, target, src)
+				if read != nil || !errors.Is(err, ErrDecisionRead) || errors.Is(err, ErrDecisionProfile) != wantProfile {
+					t.Fatalf("refused admission = %v, %v", read, err)
 				}
 				return nil
 			})
@@ -101,68 +126,194 @@ func TestDecisionAdmissionRefusesBeforeProviderOrValidatorConstruction(t *testin
 	}
 }
 
+func TestDecisionValidationOnlyNeedsNoOwnerAndNeverEnrolls(t *testing.T) {
+	f := decisionFrameForTest(t, true)
+	f.pipeline.terminal = nil
+	var acquired, enrolled atomic.Int32
+	target, source := decisionSourceForTest(&acquired, &enrolled)
+	callDecisionFrame(t, f, func(ctx context.Context, inv *Invocation) error {
+		read, err := ReadDecision(ctx, inv, target, source)
+		if err != nil {
+			return err
+		}
+		return VerifyDecision(ctx, inv, read)
+	})
+	if acquired.Load() != 1 || enrolled.Load() != 0 {
+		t.Fatal("validation-only read", acquired.Load(), enrolled.Load())
+	}
+}
+
+func TestCurrentDecisionProfileReportsTheFrameProfile(t *testing.T) {
+	for _, profile := range []DecisionProfile{DecisionsUnmarked, DecisionsProtected, DecisionsUnprotected} {
+		f := decisionFrameForTest(t, false)
+		f.registration.decisions = profile
+		var retained *Invocation
+		callDecisionFrame(t, f, func(ctx context.Context, inv *Invocation) error {
+			retained = inv
+			got, err := CurrentDecisionProfile(ctx, inv)
+			if err != nil || got != profile {
+				t.Fatalf("profile = %v, %v; want %v", got, err, profile)
+			}
+			return nil
+		})
+		if _, err := CurrentDecisionProfile(t.Context(), retained); !errors.Is(err, ErrExecutionClosed) {
+			t.Fatal("expired invocation reported a profile", err)
+		}
+	}
+	if _, err := CurrentDecisionProfile(t.Context(), nil); !errors.Is(err, ErrNoContext) {
+		t.Fatal("nil invocation", err)
+	}
+}
+
 func TestDecisionCacheSurvivesCallbacksButNotFramesOrValidation(t *testing.T) {
 	var acquired, enrolled atomic.Int32
 	target, source := decisionSourceForTest(&acquired, &enrolled)
-	var parentRead, validationRead *decisionRead
+	var parentRead, validationRead *DecisionRead
 	var expired *Invocation
 	parent := decisionFrameForTest(t, false)
 	callDecisionFrame(t, parent, func(ctx context.Context, inv *Invocation) error {
 		expired = inv
-		if err := beginDecisionReads(ctx, inv, decisionAdmissionForTest()); err != nil {
-			return err
-		}
 		var err error
-		parentRead, err = readDecision(ctx, inv, target, source)
+		parentRead, err = ReadDecision(ctx, inv, target, source)
 		return err
 	})
 	callDecisionFrame(t, parent, func(ctx context.Context, inv *Invocation) error {
-		if err := verifyDecision(ctx, expired, parentRead); !errors.Is(err, ErrExecutionClosed) {
+		if err := VerifyDecision(ctx, expired, parentRead); !errors.Is(err, ErrExecutionClosed) {
 			t.Fatalf("retained callback = %v", err)
 		}
-		got, err := readDecision(ctx, inv, target, source)
+		got, err := ReadDecision(ctx, inv, target, source)
 		if err != nil || got != parentRead {
 			t.Fatalf("second callback = %v, %v", got, err)
 		}
-		if err := verifyDecision(ctx, inv, got); err != nil {
-			return err
-		}
-		if err := beginDecisionReads(ctx, inv, decisionAdmissionForTest()); !errors.Is(err, errDecisionRead) {
-			t.Fatal("allowed provenance reset", err)
-		}
-		return nil
+		return VerifyDecision(ctx, inv, got)
 	})
 	for _, validating := range []bool{true, false} {
 		child := decisionFrameForTest(t, validating)
+		child.pipeline = parent.pipeline
 		// A bound nested frame shares the owner, never the parent's cache.
 		child.parent, child.owner = parent, parent.owner
 		parent.owner.top = child
 		callDecisionFrame(t, child, func(ctx context.Context, inv *Invocation) error {
-			admission := decisionAdmissionForTest()
-			admission.owner = !validating
-			if err := beginDecisionReads(ctx, inv, admission); err != nil {
-				return err
-			}
-			for _, foreign := range []*decisionRead{nil, {}, parentRead, validationRead} {
-				if err := verifyDecision(ctx, inv, foreign); !errors.Is(err, errDecisionRead) {
+			for _, foreign := range []*DecisionRead{nil, {}, parentRead, validationRead} {
+				if err := VerifyDecision(ctx, inv, foreign); !errors.Is(err, ErrDecisionRead) {
 					t.Fatal("foreign/null/zero read accepted", err)
 				}
 			}
-			got, err := readDecision(ctx, inv, target, source)
+			got, err := ReadDecision(ctx, inv, target, source)
 			if err != nil || got == parentRead || got == validationRead {
 				t.Fatalf("child read = %v, %v", got, err)
 			}
 			if validating {
 				validationRead = got
 			}
-			return verifyDecision(ctx, inv, got)
+			return VerifyDecision(ctx, inv, got)
 		})
 		child.ended, child.state = true, nil
 		parent.owner.top = parent
 	}
-	callDecisionFrame(t, parent, func(ctx context.Context, inv *Invocation) error { return verifyDecision(ctx, inv, parentRead) })
+	callDecisionFrame(t, parent, func(ctx context.Context, inv *Invocation) error { return VerifyDecision(ctx, inv, parentRead) })
 	if acquired.Load() != 3 || enrolled.Load() != 3 {
 		t.Fatalf("acquired = %d, enrolled = %d", acquired.Load(), enrolled.Load())
+	}
+}
+
+func TestOverwrittenDecisionHandleIsRefusedRegardlessOfEvidenceShape(t *testing.T) {
+	shared := new(int)
+	for _, tc := range []struct {
+		name  string
+		value any
+	}{
+		{"same-pointer", shared},
+		{"same-scalar", 1},
+		{"slice", []int{1}},
+		{"map", map[string]int{"one": 1}},
+		{"struct-with-slice", struct{ Values []int }{[]int{1}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := decisionFrameForTest(t, false)
+			var acquired, enrolled atomic.Int32
+			target, source := decisionSourceForTest(&acquired, &enrolled)
+			source.acquire = func(context.Context) (any, error) { return tc.value, nil }
+			source.check = func(context.Context, any) error { return nil }
+			callDecisionFrame(t, f, func(ctx context.Context, inv *Invocation) error {
+				first, err := ReadDecision(ctx, inv, target, source)
+				if err != nil {
+					return err
+				}
+				target.Key = "other"
+				second, err := ReadDecision(ctx, inv, target, source)
+				if err != nil {
+					return err
+				}
+				if err := VerifyDecision(ctx, inv, second); err != nil {
+					return err
+				}
+				*first = *second
+				if err := VerifyDecision(ctx, inv, first); !errors.Is(err, ErrDecisionRead) {
+					t.Fatalf("overwritten handle verified: %v", err)
+				}
+				return nil
+			})
+		})
+	}
+}
+
+func TestCachedDecisionReadRefusesOverwriteDuringProviderCallbacks(t *testing.T) {
+	for _, stage := range []string{"check", "enroll"} {
+		for _, replacement := range []string{"foreign", "zero"} {
+			t.Run(stage+"/"+replacement, func(t *testing.T) {
+				f := decisionFrameForTest(t, false)
+				var acquired, enrolled atomic.Int32
+				target, source := decisionSourceForTest(&acquired, &enrolled)
+				var read *DecisionRead
+				var overwrite DecisionRead
+				var armed bool
+				check := source.check
+				source.check = func(ctx context.Context, value any) error {
+					if armed && stage == "check" {
+						*read = overwrite
+					}
+					return check(ctx, value)
+				}
+				callDecisionFrame(t, f, func(ctx context.Context, inv *Invocation) error {
+					var err error
+					read, err = ReadDecision(ctx, inv, target, source)
+					if err != nil {
+						return err
+					}
+					if replacement == "foreign" {
+						other := target
+						other.Key = "other"
+						foreign, err := ReadDecision(ctx, inv, other, source)
+						if err != nil {
+							return err
+						}
+						overwrite = *foreign
+					}
+					before := enrolled.Load()
+					armed = true
+					if stage == "enroll" {
+						source.enroll = func(context.Context, any) error {
+							enrolled.Add(1)
+							*read = overwrite
+							return nil
+						}
+					}
+					got, err := ReadDecision(ctx, inv, target, source)
+					if got != nil || !errors.Is(err, ErrDecisionRead) {
+						t.Fatalf("overwritten during %s = %v, %v", stage, got, err)
+					}
+					want := before
+					if stage == "enroll" {
+						want++
+					}
+					if enrolled.Load() != want {
+						t.Fatalf("enrolled = %d, want %d", enrolled.Load(), want)
+					}
+					return nil
+				})
+			})
+		}
 	}
 }
 
@@ -171,24 +322,22 @@ func TestDecisionCacheSeparatesEveryTargetDimension(t *testing.T) {
 	var acquired, enrolled atomic.Int32
 	base, source := decisionSourceForTest(&acquired, &enrolled)
 	callDecisionFrame(t, f, func(ctx context.Context, inv *Invocation) error {
-		if err := beginDecisionReads(ctx, inv, decisionAdmissionForTest()); err != nil {
-			return err
-		}
 		for _, dimension := range []string{"base", "client", "model", "store", "namespace", "key"} {
 			target := base
 			switch dimension {
 			case "client":
-				target.provider = &decisionProviderIdentity{}
+				target.Provider = NewDecisionProvider()
+				f.pipeline.decisionProviders[target.Provider] = struct{}{}
 			case "model":
-				target.model = reflect.TypeFor[int]()
+				target.Model = reflect.TypeFor[int]()
 			case "store":
-				target.store = "other"
+				target.Store = "other"
 			case "namespace":
-				target.namespace = "other"
+				target.Namespace = "other"
 			case "key":
-				target.key = "other"
+				target.Key = "other"
 			}
-			if _, err := readDecision(ctx, inv, target, source); err != nil {
+			if _, err := ReadDecision(ctx, inv, target, source); err != nil {
 				return err
 			}
 		}
@@ -230,11 +379,8 @@ func TestDecisionFailuresNeverIssueAndAreNotRetried(t *testing.T) {
 				source.check = func(context.Context, any) error { return failure }
 			}
 			callDecisionFrame(t, f, func(ctx context.Context, inv *Invocation) error {
-				if err := beginDecisionReads(ctx, inv, decisionAdmissionForTest()); err != nil {
-					return err
-				}
 				for range 2 {
-					if read, err := readDecision(ctx, inv, target, source); read != nil || err == nil {
+					if read, err := ReadDecision(ctx, inv, target, source); read != nil || err == nil {
 						t.Fatalf("failed read = %v, %v", read, err)
 					}
 				}
@@ -259,14 +405,11 @@ func TestDecisionConcurrentReadsShareFoldAndCanceledWaiterDoesNotEnroll(t *testi
 		return new(int), nil
 	}
 	callDecisionFrame(t, f, func(ctx context.Context, inv *Invocation) error {
-		if err := beginDecisionReads(ctx, inv, decisionAdmissionForTest()); err != nil {
-			return err
-		}
 		var wg sync.WaitGroup
-		results := make(chan *decisionRead, 8)
+		results := make(chan *DecisionRead, 8)
 		for range 8 {
 			wg.Go(func() {
-				read, err := readDecision(ctx, inv, target, source)
+				read, err := ReadDecision(ctx, inv, target, source)
 				if err != nil {
 					t.Error(err)
 				}
@@ -276,13 +419,13 @@ func TestDecisionConcurrentReadsShareFoldAndCanceledWaiterDoesNotEnroll(t *testi
 		<-entered
 		canceled, cancel := context.WithCancel(ctx)
 		cancel()
-		if got, err := readDecision(canceled, inv, target, source); got != nil || !errors.Is(err, context.Canceled) {
+		if got, err := ReadDecision(canceled, inv, target, source); got != nil || !errors.Is(err, context.Canceled) {
 			t.Errorf("canceled waiter = %v, %v", got, err)
 		}
 		close(release)
 		wg.Wait()
 		close(results)
-		var first *decisionRead
+		var first *DecisionRead
 		for read := range results {
 			if first == nil {
 				first = read

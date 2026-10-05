@@ -19,6 +19,7 @@ There is no runtime source discovery or reflective invocation. Source directives
 - [Context and keys](command-context.md) supplies invocation metadata without an ambient dependency resolver.
 - [Filters](command-filters.md) contributes ordered verdicts.
 - [Response value handlers](response-value-handlers.md) consumes returned effect values; [response examples](response-examples.md) explains the explicit return grammar.
+- [Protected decision reads](decision-reads.md) guards read-model decisions against competing writes through a provider.
 - [Operations](operations.md) declares immediate inline work with commit-aware, best-effort compensation.
 - [Execution scopes](command-execution-scopes.md) participates in root completion before resources are disposed.
 

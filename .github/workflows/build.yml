@@ -158,7 +158,7 @@ jobs:
       # Top-level tests split from the rest so each half stays well inside the
       # per-run go test timeout. The same anchored pattern feeds -run and -skip,
       # so the two runs are complementary by construction.
-      TOOLS_HEAVY_TESTS: 'TestOwnedPublication.*|TestCompetingObservable.*|TestObservableCollections.*|TestInvalidServiceImports.*|TestQueryRuleRepresentation.*'
+      TOOLS_HEAVY_TESTS: 'TestOwnedPublication.*|TestCompetingObservable.*|TestObservableCollections.*|TestInvalidServiceImports.*|TestQueryRuleRepresentation.*|TestArtifact.*|TestArcGenCLI.*|TestOpenAPIQueryArgument.*'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -218,6 +218,8 @@ jobs:
       - run: go vet ./...
       - run: python3 scripts/check-boundaries.py
       - run: python3 ../../scripts/check-chronicle-snippet.py
+      - name: Test Chronicle snippet drift detection
+        run: python3 -B ../../scripts/test_check_chronicle_snippet.py
       - run: go test -count=1 -timeout=2m ./...
       - run: go test -race -count=1 -timeout=3m ./...
       - run: go mod tidy -diff
