@@ -5,7 +5,7 @@ description: Decide from a Chronicle read model inside a Go command and have a c
 
 A booking command reads a room, sees it is free and appends `RoomBooked`. Between the read and the commit another command books the same room, and both succeed. An ordinary injected read model can't prevent that, because it is a snapshot: it can lag the event log and it guards nothing.
 
-A Chronicle decision read closes that gap. It folds the instance from the event log for this command invocation and enrolls the read with the command's Chronicle transaction. When another append to that event source lands before the commit, Chronicle rejects the whole batch, and Arc reports a concurrency violation instead of persisting a decision made from stale state.
+A Chronicle decision read closes that gap. It folds the instance from the event log for this command invocation and enrolls the read with the command's Chronicle transaction. When another append of an event the read model depends on, for the same key, lands before the commit, Chronicle rejects the whole batch, and Arc reports a concurrency violation instead of persisting a decision made from stale state.
 
 This page shows the Chronicle provider. The profile, provenance and verification rules come from the root seam described in [Protected decision reads](../commands/decision-reads.md).
 
@@ -47,7 +47,7 @@ err = commands.Register(builder.Commands(),
 | Outcome | What you see |
 | --- | --- |
 | No competing append | The events commit; `Completion().Disposition` is `Committed`, or `NoPersistedWork` when the command only read. |
-| Another writer appended to a read event source | Chronicle rejects the complete batch, including events for other sources. The result is `NotCommitted` with a `concurrencyViolation` validation result. Read again and resubmit. |
+| Another writer appended an event the read model depends on, for the same key | Chronicle rejects the complete batch, including events for other sources. The result is `NotCommitted` with a `concurrencyViolation` validation result. Read again and resubmit. |
 | The commit acknowledgement is lost | The result is `OutcomeUnknown`. Arc never retries; reconcile against the event log before resubmitting. |
 
 Repeated reads of the same model and key share one fold and one enrollment per command frame, including reads from a command filter and from `Provide`.
@@ -62,12 +62,17 @@ Repeated reads of the same model and key share one fold and one enrollment per c
 | `WithUnprotectedDecisions` | Advisory snapshot from the ordinary read-model reader. `IsProtected()` is false and nothing is enrolled. |
 | Unmarked | Refused with `commands.ErrDecisionProfile`. |
 
-A protected read is refused before any fold, enrollment or `Handle`, wrapped in `commands.ErrDecisionRead`, when:
+Within an active protected invocation, refusals wrap `commands.ErrDecisionRead` and preserve their original causes for `errors.Is` and `errors.As`. A nil context or invocation returns `integration.ErrInvalid` as-is.
 
+Before acquisition (no fold or enrollment), the read is refused when:
+
+- its arguments are invalid (`integration.ErrInvalid`) or the integration cannot resolve the command's frozen routing;
 - the model is classified (`readmodels.WithPII` or any protection metadata), reducer-backed, joined, hierarchical or otherwise not admitted by Chronicle's decision catalog; `errors.As` exposes `*readmodels.DecisionReadRefused` with its reason;
-- the model is not registered with the client's store (`integration.ErrNotRegistered`);
-- the command routes to a sequence other than the event log (`integration.ErrUnsupported`);
-- the token is foreign, zero or stale: issued to another invocation, client, store or namespace, or after a reconnect or catalog change.
+- the model is not registered with the client's store (`integration.ErrNotRegistered`).
+
+After acquisition, checking or enrollment can refuse a foreign, zero or stale token: one issued to another invocation, client, store or namespace, or invalidated by a reconnect or catalog change. These checks run again before `Handle`; the SDK also verifies token lifetime before dispatching the commit.
+
+Custom transaction factories can refuse a non-event-log participant at enrollment with `integration.ErrUnsupported`, after the fold. The shipped `sdk.New` adapter always routes commands to the event log.
 
 If an application ignores a failed enrollment and still returns events, the integration rolls the transaction back instead of committing unguarded work.
 
@@ -83,4 +88,4 @@ If an application ignores a failed enrollment and still returns events, the inte
 
 ## Verify against a kernel
 
-`internal/integration/decisions_test.go` runs these contracts against `cratis/chronicle:19.29.4-development`: a committed booking and a stale-decision rejection, a competing append that rejects a two-source batch, a lost acknowledgement that stays unknown, a separate validation-only read and the profile, classified-model and unregistered-model refusals. Run it with the commands in [Verify independently](index.md#verify-independently).
+`internal/integration/decisions_test.go` runs these contracts against `cratis/chronicle:19.29.4-development`: a committed booking and a stale-decision rejection, a competing dependency-event append that rejects a two-source batch, an unrelated-event append to the same source that leaves the decision valid, a lost acknowledgement that stays unknown, a separate validation-only read and the profile, classified-model and unregistered-model refusals. Run it with the commands in [Verify independently](index.md#verify-independently).

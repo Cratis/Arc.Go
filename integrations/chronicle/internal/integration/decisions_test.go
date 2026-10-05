@@ -48,12 +48,14 @@ type GuestRoom struct {
 }
 
 // BookRoom decides from a protected read of Room. Compete appends a competing
-// booking directly after the read; LoseAck drops the commit acknowledgement.
+// booking directly after the read; Unrelated appends a nondependency event to
+// the same source; LoseAck drops the commit acknowledgement.
 type BookRoom struct {
-	ID      integration.EventSourceID `json:"id"`
-	Guest   string                    `json:"guest"`
-	Compete bool                      `json:"-"`
-	LoseAck bool                      `json:"-"`
+	ID        integration.EventSourceID `json:"id"`
+	Guest     string                    `json:"guest"`
+	Compete   bool                      `json:"-"`
+	Unrelated bool                      `json:"-"`
+	LoseAck   bool                      `json:"-"`
 }
 type InspectRoom struct {
 	ID integration.EventSourceID `json:"id"`
@@ -197,6 +199,11 @@ func roomApp(t *testing.T) *roomFixture {
 				require(t, err)
 				require(t, result.Err())
 			}
+			if c.Unrelated {
+				result, err := handle.EventLog().Append(f.ctx, events.SourceID(c.ID), LedgerEntered{Room: string(c.ID)})
+				require(t, err)
+				require(t, result.Err())
+			}
 			if c.LoseAck {
 				f.lost.Store(true)
 			}
@@ -336,6 +343,21 @@ func TestCompetingAppendRejectsTheWholeDecisionBatchAgainstTheKernel(t *testing.
 	}
 }
 
+func TestUnrelatedAppendDoesNotRejectTheDecisionBatchAgainstTheKernel(t *testing.T) {
+	f := roomApp(t)
+	result, err := f.app.Commands().Execute(f.ctx, BookRoom{ID: "203", Guest: "Ada", Unrelated: true})
+	if !result.IsSuccess() || err != nil || result.Completion().Disposition != commands.Committed {
+		t.Fatal(result.Details(), result.Completion(), err)
+	}
+	if got := f.guests(t, "203"); len(got) != 2 || len(f.guests(t, "ledger-203")) != 1 {
+		t.Fatal("unrelated append rejected the booking batch", got)
+	}
+	inspected, err := f.app.Commands().Execute(f.ctx, InspectRoom{ID: "203"})
+	if value, _ := inspected.Response(); !inspected.IsSuccess() || err != nil || value != "Ada" {
+		t.Fatal("unrelated event changed the decision model", inspected.Details(), value, err)
+	}
+}
+
 func TestLostDecisionCommitAcknowledgementStaysUnknownAgainstTheKernel(t *testing.T) {
 	f := roomApp(t)
 	result, err := f.app.Commands().Execute(f.ctx, BookRoom{ID: "303", Guest: "Ada", LoseAck: true})
@@ -387,7 +409,7 @@ func TestDecisionProfilesAndClassifiedModelsAgainstTheKernel(t *testing.T) {
 		t.Fatal(result.Completion())
 	}
 	result, err = f.app.Commands().Execute(f.ctx, InspectSuite{ID: "505"})
-	if result.IsSuccess() || !errors.Is(err, integration.ErrNotRegistered) {
+	if result.IsSuccess() || !errors.Is(err, integration.ErrNotRegistered) || !errors.Is(err, commands.ErrDecisionRead) {
 		t.Fatal("unregistered model was read", result.Details(), err)
 	}
 	result, err = f.app.Commands().Execute(f.ctx, GlanceRoom{ID: "505"})

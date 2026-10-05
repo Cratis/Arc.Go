@@ -5,6 +5,7 @@ package sdk
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"sync"
 
@@ -93,16 +94,27 @@ func (d *Decision[M]) DecisionReads() []*commands.DecisionRead {
 // read through commands.ReadDecision: classified, reducer-backed and otherwise
 // unsupported models are refused before any acquisition; the read is shared per
 // invocation and target; outside validation-only execution it is enrolled with
-// the command's Chronicle transaction, so a competing append rejects the whole
-// batch at commit. Validation-only execution reads separately and never enrolls.
+// the command's Chronicle transaction, so a competing append of a dependency
+// event for the same key rejects the whole batch at commit. Validation-only
+// execution reads separately and never enrolls.
 // For a command marked commands.WithUnprotectedDecisions it returns an advisory
 // snapshot from the ordinary read-model reader. An unmarked command is refused.
-// Every refusal of a protected read wraps commands.ErrDecisionRead.
+// Every refusal within an active protected invocation wraps commands.ErrDecisionRead.
+// A nil context or invocation returns integration.ErrInvalid as-is.
 //
 // The model must be registered with the client's store; otherwise it returns
 // integration.ErrNotRegistered.
-func ReadDecision[M any](ctx context.Context, inv *commands.Invocation, d *Decisions, model readmodels.Model[M], key readmodels.Key) (*Decision[M], error) {
-	if ctx == nil || inv == nil || d == nil || d.provider == nil || d.adapter == nil || key == "" {
+func ReadDecision[M any](ctx context.Context, inv *commands.Invocation, d *Decisions, model readmodels.Model[M], key readmodels.Key) (_ *Decision[M], err error) {
+	if ctx == nil || inv == nil {
+		return nil, integration.ErrInvalid
+	}
+	profile, profileErr := commands.CurrentDecisionProfile(ctx, inv)
+	defer func() {
+		if profile == commands.DecisionsProtected && err != nil && !errors.Is(err, commands.ErrDecisionRead) {
+			err = errors.Join(commands.ErrDecisionRead, err)
+		}
+	}()
+	if d == nil || d.provider == nil || d.adapter == nil || d.integration == nil || key == "" {
 		return nil, integration.ErrInvalid
 	}
 	typ := reflect.TypeFor[M]()
@@ -112,9 +124,8 @@ func ReadDecision[M any](ctx context.Context, inv *commands.Invocation, d *Decis
 	if descriptor, found := d.adapter.models.LookupType(typ); !found || descriptor.Identifier() != model.Identifier() {
 		return nil, integration.ErrNotRegistered
 	}
-	profile, err := commands.CurrentDecisionProfile(ctx, inv)
-	if err != nil {
-		return nil, err
+	if profileErr != nil {
+		return nil, profileErr
 	}
 	coordinates, err := d.integration.CoordinatesFor(ctx, inv)
 	if err != nil {
