@@ -218,15 +218,23 @@ func (p *queryPipeline) Open(ctx context.Context, name FullyQualifiedQueryName, 
 
 func (p *queryPipeline) openObservation(ctx context.Context, name FullyQualifiedQueryName, request Request, activate bool) (observation *Observation, output Result[any], outputErr error) {
 	ctx, attempt := beginDiagnostics(ctx, p, name, observability.ObservableTransport, observability.Opening)
-	var cleanupStarted, cancelledBeforeCleanup bool
+	var state openState
 	defer func() {
-		if cleanupStarted {
-			attempt.Finish(boundary.Outcome(output.IsAuthorized(), output.HasExceptions(), outputErr != nil, cancelledBeforeCleanup, output.details.ValidationResults))
+		if state.cleanupStarted {
+			attempt.Finish(boundary.Outcome(output.IsAuthorized(), output.HasExceptions(), outputErr != nil, state.cancelledBeforeCleanup, output.details.ValidationResults))
 		} else {
 			finishDiagnostics(attempt, ctx, output, outputErr)
 		}
 	}()
-	ctx = boundary.ClearDiagnostics(ctx)
+	return p.admitObservation(boundary.ClearDiagnostics(ctx), name, request, activate, &state)
+}
+
+// openState reports cleanup bookkeeping to the logical attempt's owner.
+type openState struct{ cleanupStarted, cancelledBeforeCleanup bool }
+
+// admitObservation performs admission without starting a diagnostics attempt.
+// Its caller owns the one logical attempt, so a nil context cannot double count.
+func (p *queryPipeline) admitObservation(ctx context.Context, name FullyQualifiedQueryName, request Request, activate bool, state *openState) (observation *Observation, output Result[any], outputErr error) {
 	diagnostic := p.observationDiagnostics(name)
 	result := NewResult[any](Details{Ready: true, Authorized: true}, serialization.Optional[any]{})
 	failure := func(err error) (*Observation, Result[any], error) {
@@ -339,7 +347,7 @@ func (p *queryPipeline) openObservation(ctx context.Context, name FullyQualified
 	o.mu.Unlock()
 	if err != nil || !verdictSuccess(result) {
 		o.openingFailed(ctx, result, err)
-		cleanupStarted, cancelledBeforeCleanup = true, ctx.Err() != nil
+		state.cleanupStarted, state.cancelledBeforeCleanup = true, ctx.Err() != nil
 		err = errors.Join(err, o.cleanup())
 		return failure(err)
 	}
@@ -370,7 +378,7 @@ func (o *Observation) Close(ctx context.Context) (closeErr error) {
 		return execution.ErrInvalidArgument
 	}
 	o.closingDiagnostics()
-	defer func() { o.closeDiagnostics(closeErr) }()
+	defer o.closeDiagnostics()
 	o.cancel()
 	o.mu.Lock()
 	o.closing = true
@@ -419,14 +427,14 @@ func (o *Observation) Close(ctx context.Context) (closeErr error) {
 		}
 		o.closeErr = errors.Join(o.closeErr, err)
 	}
-	o.mu.Lock()
-	o.closed = true
-	o.mu.Unlock()
 	o.pipeline.forget(o)
 	if o.release != nil {
 		o.release()
 		o.release = nil
 	}
+	// Only the serialized closer certifies the join, and only after every
+	// ownership release completed, using the authoritative stored result.
+	o.markClosed()
 	return o.closeErr
 }
 
