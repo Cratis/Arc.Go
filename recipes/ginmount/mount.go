@@ -36,7 +36,7 @@ type immediateWriter struct{ gin.ResponseWriter }
 
 func (w immediateWriter) WriteHeader(status int) {
 	w.ResponseWriter.WriteHeader(status)
-	w.ResponseWriter.WriteHeaderNow()
+	w.WriteHeaderNow()
 }
 
 func (w immediateWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
