@@ -5,6 +5,7 @@ package arc
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -130,12 +131,21 @@ func NewActionHandler[T any](action func(context.Context, T) (ActionResult, erro
 				return &commands.DecodeError{Cause: err}
 			}
 			if options.Validate != nil {
-				findings, err = options.Validate(ctx, input)
-				if err != nil {
-					return err
+				found, validateErr := options.Validate(ctx, input)
+				// Normalize before returning an infrastructure error so the
+				// configured severity policy still classifies the partial findings.
+				var severityErr error
+				findings, severityErr = actionFindings(found, options.TreatWarningsAsErrors, r)
+				if validateErr != nil {
+					if severityErr != nil {
+						return errors.Join(validateErr, severityErr)
+					}
+					return validateErr
+				}
+				if severityErr != nil {
+					return severityErr
 				}
 			}
-			findings = actionFindings(findings, options.TreatWarningsAsErrors, r)
 			if len(findings) != 0 || strings.HasSuffix(strings.ToLower(r.URL.Path), "/validate") {
 				return nil
 			}
@@ -143,7 +153,13 @@ func NewActionHandler[T any](action func(context.Context, T) (ActionResult, erro
 				return err
 			}
 			output, err = action(ctx, input)
-			findings = append(findings, actionFindings(output.ValidationResults, options.TreatWarningsAsErrors, r)...)
+			extra, severityErr := actionFindings(output.ValidationResults, options.TreatWarningsAsErrors, r)
+			if severityErr != nil {
+				// Fail closed: neither the response nor a private Raw handler is published.
+				output = ActionResult{}
+				return errors.Join(err, severityErr)
+			}
+			findings = append(findings, extra...)
 			if err == nil && output.Raw != nil && !nilValue(output.Response) {
 				return ErrInvalidOptions
 			}
@@ -171,7 +187,14 @@ func NewActionHandler[T any](action func(context.Context, T) (ActionResult, erro
 	}), nil
 }
 
-func actionFindings(findings []validation.Result, warnings bool, r *http.Request) []validation.Result {
+func actionFindings(findings []validation.Result, warnings bool, r *http.Request) ([]validation.Result, error) {
+	// Validate the whole set before filtering: an unsupported severity must never
+	// be silently dropped by a policy that would not have retained it.
+	for _, finding := range findings {
+		if finding.Severity < validation.Unknown || finding.Severity > validation.Error {
+			return nil, &validation.InvocationError{Cause: validation.ErrInvalidSeverity}
+		}
+	}
 	ignore := headerValues(r.Header, "X-Ignore-Warnings")
 	if len(ignore) == 1 && strings.EqualFold(strings.TrimSpace(ignore[0]), "true") {
 		warnings = false
@@ -182,5 +205,5 @@ func actionFindings(findings []validation.Result, warnings bool, r *http.Request
 			retained = append(retained, finding.Clone())
 		}
 	}
-	return retained
+	return retained, nil
 }

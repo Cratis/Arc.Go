@@ -105,20 +105,27 @@ func (o *Observation) closingDiagnostics() {
 	}
 }
 
-func (o *Observation) closeDiagnostics(err error) {
+// closeDiagnostics refreshes health retention for any Close caller. It never
+// certifies a join: a caller that timed out or lost the gate has no authority.
+func (o *Observation) closeDiagnostics() {
 	if o.diagnostic == nil && o.pipeline.healthLabels == nil {
 		return
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.retained = !o.closed
-	if !o.closed {
-		return
-	}
+}
+
+// markClosed is called only by the serialized closer after all ownership was
+// released. The stored cleanup result classifies the single Joined/Cleanup pair.
+func (o *Observation) markClosed() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.closed, o.retained = true, false
 	if d := o.diagnostic; d != nil && !o.diagnosticJoined {
 		o.diagnosticJoined = true
 		outcome := d.outcome
-		if err != nil && outcome != observability.Authorization {
+		if o.closeErr != nil && outcome != observability.Authorization {
 			outcome = observability.Error
 		}
 		d.record(observability.Joined, outcome, d.started)

@@ -48,7 +48,9 @@ func formatSeconds(d time.Duration) string {
 func (p *queryPipeline) observableSnapshot(ctx context.Context, name FullyQualifiedQueryName, request Request) (Result[any], error) {
 	q, _ := p.Lookup(name)
 	probe := boundary.IsObservationProbe(ctx)
-	o, result, err := p.openObservation(ctx, name, request, !q.enumerable && !probe)
+	// Perform owns the single logical attempt; admission must not start another.
+	// The owner's finish derives the verdict from the final merged result.
+	o, result, err := p.admitObservation(ctx, name, request, !q.enumerable && !probe, &openState{})
 	if o == nil {
 		return result, err
 	}
