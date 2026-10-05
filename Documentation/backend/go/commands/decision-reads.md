@@ -3,7 +3,7 @@ title: Protected decision reads
 description: Opt a command into invocation-owned, enrolled read-model decisions and supply them through the provider-neutral seam.
 ---
 
-A command that decides from a read model can lose a race: another command changes the same instance between the read and the write. A protected decision read prevents that. The read belongs to one command invocation and is enrolled with the provider's completion owner, so a competing write rejects the whole batch instead of committing a decision made from stale data.
+A command that decides from a read model can lose a race: another command changes the same instance between the read and the write. A protected decision read lets a provider guard against that. The read belongs to one command invocation and is enrolled with the provider's completion owner. The provider must reject the whole batch on a competing write; Arc's root module checks provenance but cannot enforce a database transaction.
 
 The `commands` package owns the profile, the cache and the provenance checks. A provider integration such as Chronicle supplies the evidence, and you never handle provider tokens directly. The root package imports no provider.
 
@@ -55,14 +55,14 @@ In practice the provider integration wraps `ReadDecision` in a typed API, and it
 
 `ReadDecision` shares one acquisition per command frame and target. Concurrent callers wait for the same fold; the first caller's context owns it, and a canceled waiter doesn't cancel it. A failed acquisition is cached for the frame and never retried. Every call checks the evidence again and enrolls it again with the current owner. Every target field (provider, model type, store, namespace and key) is part of the cache key.
 
-Nested commands and validation-only runs get their own cache. A `Validate` run never enrolls and doesn't need an owner.
+Nested commands and validation-only runs get their own cache. A `Validate` run never enrolls or uses the owner, although building a protected-command pipeline still requires one.
 
 ## Foreign, nil and expired reads are refused before effects
 
 After `Provide` and before `Handle`, Arc verifies every read carried by a payload that implements `DecisionEvidence` (`*DecisionRead` does). It refuses:
 
 - a nil or zero `DecisionRead`, or, for a protected command, evidence that carries no reads;
-- a `DecisionRead` whose evidence was replaced after issue, for example by copying another read over it;
+- a `DecisionRead` overwritten with another issued read, even when both contain equal or non-comparable provider evidence;
 - a read issued to another invocation, another command, a validation-only run or another pipeline;
 - a read the provider's `Check` no longer accepts;
 - a read used after its callback expired, or under a changed principal or correlation.

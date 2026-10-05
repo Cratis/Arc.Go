@@ -62,16 +62,15 @@ type DecisionEvidence interface{ DecisionReads() []*DecisionRead }
 // value is never accepted. It is borrowed, invocation-owned evidence: verify it
 // with VerifyDecision before relying on it in another callback.
 type DecisionRead struct {
-	value any // opaque provider-issued read, never an Arc-manufactured token
-	check func(context.Context, any) error
+	issue *issuedRead
 }
 
 // Value returns the provider's opaque evidence. It is not a proof by itself.
 func (r *DecisionRead) Value() any {
-	if r == nil {
+	if r == nil || r.issue == nil {
 		return nil
 	}
-	return r.value
+	return r.issue.value
 }
 
 // DecisionReads implements DecisionEvidence. A nil read yields one nil entry,
@@ -93,13 +92,13 @@ type decisionTarget struct {
 type decisionPending struct {
 	done  chan struct{}
 	read  *DecisionRead
-	issue issuedRead
+	issue *issuedRead
 	err   error
 }
 type decisionReads struct {
 	mode   decisionMode
 	reads  map[decisionTarget]*decisionPending
-	issued map[*DecisionRead]issuedRead
+	issued map[*DecisionRead]*issuedRead
 }
 
 // issuedRead is the immutable issuance record for one handle. Verification uses
@@ -108,19 +107,6 @@ type decisionReads struct {
 type issuedRead struct {
 	value any
 	check func(context.Context, any) error
-}
-
-// sameEvidence reports whether a handle still carries the evidence it was issued
-// with. Evidence that is not comparable cannot be told apart and is accepted;
-// the stored record is still the only checker invoked.
-func sameEvidence(a, b any) bool {
-	if reflect.TypeOf(a) != reflect.TypeOf(b) {
-		return false
-	}
-	if v := reflect.ValueOf(a); v.IsValid() && !v.Comparable() {
-		return true
-	}
-	return a == b
 }
 
 var decisionState = NewStateKey[*decisionReads]()
@@ -156,7 +142,7 @@ func decisionsFor(e *Execution, provider *DecisionProvider) (*decisionReads, err
 	if f.snapshot.validationOnly {
 		mode = decisionValidation
 	}
-	state := &decisionReads{mode: mode, reads: make(map[decisionTarget]*decisionPending), issued: make(map[*DecisionRead]issuedRead)}
+	state := &decisionReads{mode: mode, reads: make(map[decisionTarget]*decisionPending), issued: make(map[*DecisionRead]*issuedRead)}
 	f.state[decisionState.identity] = stateValue[*decisionReads]{state}
 	return state, nil
 }
@@ -235,8 +221,8 @@ func ReadDecision(ctx context.Context, inv *Invocation, target DecisionTarget, s
 				if err != nil || current != state {
 					return ErrDecisionRead
 				}
-				pending.issue = issuedRead{value: value, check: source.Check}
-				pending.read = &DecisionRead{value: value, check: source.Check}
+				pending.issue = &issuedRead{value: value, check: source.Check}
+				pending.read = &DecisionRead{issue: pending.issue}
 				return nil
 			})
 		})
@@ -293,14 +279,14 @@ func ReadDecision(ctx context.Context, inv *Invocation, target DecisionTarget, s
 // wraps ErrDecisionRead.
 func VerifyDecision(ctx context.Context, inv *Invocation, read *DecisionRead) (err error) {
 	defer func() { err = decisionFailure(err) }()
-	var issue issuedRead
+	var issue *issuedRead
 	verify := func(e *Execution) error {
 		state, err := currentDecisionReads(e)
 		if err != nil || read == nil {
 			return ErrDecisionRead
 		}
 		recorded, issued := state.issued[read]
-		if !issued || !sameEvidence(read.value, recorded.value) {
+		if !issued || read.issue != recorded {
 			return ErrDecisionRead
 		}
 		issue = recorded

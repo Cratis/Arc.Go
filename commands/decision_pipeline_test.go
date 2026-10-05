@@ -181,7 +181,7 @@ func TestProtectedDecisionBuildRequiresCertifiedProviderAndOwner(t *testing.T) {
 	}
 }
 
-func TestAddDecisionProviderRefusesNilDuplicateAndFrozen(t *testing.T) {
+func TestAddDecisionProviderRefusesNilZeroDuplicateAndFrozen(t *testing.T) {
 	var r commands.Registry
 	provider := commands.NewDecisionProvider()
 	if err := r.AddDecisionProvider(nil); !errors.Is(err, commands.ErrInvalidRegistration) {
@@ -189,6 +189,9 @@ func TestAddDecisionProviderRefusesNilDuplicateAndFrozen(t *testing.T) {
 	}
 	if err := (*commands.Registry)(nil).AddDecisionProvider(provider); !errors.Is(err, commands.ErrInvalidRegistration) {
 		t.Fatal("nil registry", err)
+	}
+	if err := r.AddDecisionProvider(&commands.DecisionProvider{}); !errors.Is(err, commands.ErrInvalidRegistration) {
+		t.Fatal("zero provider", err)
 	}
 	must(t, r.AddDecisionProvider(provider))
 	if err := r.AddDecisionProvider(provider); !errors.Is(err, commands.ErrDuplicate) {

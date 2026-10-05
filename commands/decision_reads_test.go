@@ -217,6 +217,47 @@ func TestDecisionCacheSurvivesCallbacksButNotFramesOrValidation(t *testing.T) {
 	}
 }
 
+func TestOverwrittenDecisionHandleIsRefusedRegardlessOfEvidenceShape(t *testing.T) {
+	shared := new(int)
+	for _, tc := range []struct {
+		name  string
+		value any
+	}{
+		{"same-pointer", shared},
+		{"same-scalar", 1},
+		{"slice", []int{1}},
+		{"map", map[string]int{"one": 1}},
+		{"struct-with-slice", struct{ Values []int }{[]int{1}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := decisionFrameForTest(t, false)
+			var acquired, enrolled atomic.Int32
+			target, source := decisionSourceForTest(&acquired, &enrolled)
+			source.acquire = func(context.Context) (any, error) { return tc.value, nil }
+			source.check = func(context.Context, any) error { return nil }
+			callDecisionFrame(t, f, func(ctx context.Context, inv *Invocation) error {
+				first, err := ReadDecision(ctx, inv, target, source)
+				if err != nil {
+					return err
+				}
+				target.Key = "other"
+				second, err := ReadDecision(ctx, inv, target, source)
+				if err != nil {
+					return err
+				}
+				if err := VerifyDecision(ctx, inv, second); err != nil {
+					return err
+				}
+				*first = *second
+				if err := VerifyDecision(ctx, inv, first); !errors.Is(err, ErrDecisionRead) {
+					t.Fatalf("overwritten handle verified: %v", err)
+				}
+				return nil
+			})
+		})
+	}
+}
+
 func TestDecisionCacheSeparatesEveryTargetDimension(t *testing.T) {
 	f := decisionFrameForTest(t, false)
 	var acquired, enrolled atomic.Int32

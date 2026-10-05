@@ -77,18 +77,18 @@ func checkDecisionRegistration(r Registration) error {
 // nil are invalid. Identity is by pointer: two providers never share reads even
 // when their store and namespace names match. It carries no capability itself;
 // it is certified only for a registry it was added to.
-type DecisionProvider struct{ _ byte }
+type DecisionProvider struct{ valid bool }
 
 // NewDecisionProvider allocates an independent provider identity.
-func NewDecisionProvider() *DecisionProvider { return &DecisionProvider{} }
+func NewDecisionProvider() *DecisionProvider { return &DecisionProvider{valid: true} }
 
 // AddDecisionProvider certifies a provider identity for protected commands built
 // from this registry. Registration is composition, not a runtime boolean: a read
 // whose target names any other provider is refused. Nil returns
-// ErrInvalidRegistration, a repeated provider ErrDuplicate and a frozen registry
+// ErrInvalidRegistration (as does a zero provider), a repeated provider ErrDuplicate and a frozen registry
 // ErrFrozen. It activates nothing.
 func (r *Registry) AddDecisionProvider(provider *DecisionProvider) error {
-	if r == nil || provider == nil {
+	if r == nil || provider == nil || !provider.valid {
 		return ErrInvalidRegistration
 	}
 	if r.frozen {
