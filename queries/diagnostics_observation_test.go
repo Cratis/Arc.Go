@@ -194,3 +194,32 @@ func TestObservationOpeningPanicDoesNotBecomeCancellationDuringCleanup(t *testin
 		t.Fatal(recorder.Snapshot())
 	}
 }
+
+func TestObservationDiagnosticsCountAcknowledgedDeltaDeliveries(t *testing.T) {
+	for _, failSecond := range []bool{false, true} {
+		recorder := diagnosticRecorder(t)
+		p := observationPipeline(t, deltaRegistry(t), queries.PipelineOptions{Diagnostics: recorder, EnableQueryHealth: true})
+		o, _, err := p.Open(t.Context(), "DeltaItem.All", queries.Request{})
+		mustRegister(t, err)
+		frames := 0
+		err = o.Run(t.Context(), queries.ObservationOptions{TransferMode: queries.Delta}, func(queries.Result[any]) error {
+			frames++
+			if failSecond && frames == 2 {
+				return errors.New("SECRET rejected delivery")
+			}
+			return nil
+		})
+		want := uint64(2) // Baseline and one change-set-only update; the middle candidate is suppressed.
+		if failSecond {
+			want = 1
+		}
+		if (err != nil) != failSecond {
+			t.Fatal(err)
+		}
+		health := p.(queries.HealthReporter).QueryHealth()
+		if len(health) != 1 || health[0].Delivered != want || diagnosticCount(recorder, observability.Delivered, observability.Success) != want {
+			t.Fatal(failSecond, health, recorder.Snapshot())
+		}
+		mustRegister(t, o.Close(t.Context()))
+	}
+}

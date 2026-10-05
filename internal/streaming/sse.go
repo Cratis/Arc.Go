@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -59,7 +60,7 @@ func (w *SSEWriter) Start() error {
 	h := w.writer.Header()
 	h.Del("Content-Length")
 	h.Set("Content-Type", "text/event-stream; charset=utf-8")
-	if h.Get("Cache-Control") != "no-store" {
+	if cache := h.Get("Cache-Control"); !strings.Contains(cache, "no-store") && !strings.Contains(cache, "private") {
 		h.Set("Cache-Control", "no-cache")
 	}
 	h.Set("X-Accel-Buffering", "no")

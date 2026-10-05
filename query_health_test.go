@@ -18,6 +18,7 @@ import (
 	"github.com/cratis/arc.go/authentication"
 	"github.com/cratis/arc.go/execution"
 	"github.com/cratis/arc.go/identity"
+	"github.com/cratis/arc.go/metadata"
 	"github.com/cratis/arc.go/queries"
 )
 
@@ -236,6 +237,56 @@ func TestQueryHealthHubSubscriptionsEnforceRolesAndExposeOnlyAggregates(t *testi
 		}
 		if err := client.response.Body.Close(); err != nil {
 			t.Fatal(err)
+		}
+	}
+}
+
+func TestQueryHealthStreamsKeepPrivateNoStoreCaching(t *testing.T) {
+	for _, method := range []string{"GET", "QUERY"} {
+		t.Run(method, func(t *testing.T) {
+			b, err := arc.NewBuilder(arc.Options{QueryHealth: &arc.QueryHealthOptions{Roles: []string{"diagnostics"}}, Authentication: []authentication.Handler{authentication.HandlerFunc(healthAuthentication)}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, server := startSSEServer(t, b, false)
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			r, err := http.NewRequestWithContext(ctx, method, server.URL+healthPath, strings.NewReader("{}"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			r.Header.Set("Accept", "text/event-stream")
+			r.Header.Set("X-Test-Role", "diagnostics")
+			response, err := server.Client().Do(r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = response.Body.Close() }()
+			if response.StatusCode != 200 || !strings.HasPrefix(response.Header.Get("Content-Type"), "text/event-stream") || response.Header.Get("Cache-Control") != "no-store, private" {
+				t.Fatal(response.StatusCode, response.Header)
+			}
+		})
+	}
+}
+
+func TestQueryHealthQueryMethodFollowsRouteOptions(t *testing.T) {
+	routes := metadata.DefaultOptions()
+	routes.EnableQueryHTTPMethod = false
+	b, err := arc.NewBuilder(arc.Options{Routes: &routes, QueryHealth: &arc.QueryHealthOptions{Roles: []string{"diagnostics"}}, Authentication: []authentication.Handler{authentication.HandlerFunc(healthAuthentication)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := buildStarted(t, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for method, want := range map[string]int{"GET": 200, "QUERY": 405} {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(method, healthPath, strings.NewReader("{}"))
+		r.Header.Set("X-Test-Role", "diagnostics")
+		a.ServeHTTP(w, r)
+		if w.Code != want {
+			t.Fatal(method, w.Code, w.Body.String())
 		}
 	}
 }

@@ -55,7 +55,11 @@ func (a *Application) compileRoutes(raw []rawHandler) error {
 		}
 	}
 	if a.options.QueryHealth != nil {
-		for _, method := range []string{"GET", "HEAD", "QUERY"} {
+		methods := []string{"GET", "HEAD"}
+		if a.options.Routes.EnableQueryHTTPMethod {
+			methods = append(methods, "QUERY")
+		}
+		for _, method := range methods {
 			endpoints = append(endpoints, metadata.Endpoint{Identity: string(QueryHealthName), Method: method, Path: queryHealthPath})
 		}
 	}

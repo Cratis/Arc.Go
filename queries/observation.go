@@ -611,6 +611,7 @@ func (o *Observation) Run(ctx context.Context, options ObservationOptions, deliv
 		if verdict == Suppress && err == nil {
 			continue
 		}
+		accepted := result // Delta transfer removes Data, so acknowledge the accepted candidate.
 		var hints collectionHints
 		if observed, ok := value.(observedCollection); ok {
 			hints = observed.collectionHints()
@@ -640,7 +641,7 @@ func (o *Observation) Run(ctx context.Context, options ObservationOptions, deliv
 		if verdict == DenyAndTerminate || err != nil {
 			return err
 		}
-		o.acknowledged(result)
+		o.acknowledged(accepted)
 		o.first = false
 	}
 }
