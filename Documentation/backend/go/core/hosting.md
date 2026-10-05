@@ -35,6 +35,33 @@ rewriting Arc paths. The external host owns its listener, server timeouts and
 server shutdown. Coordinate that shutdown with `app.Shutdown(cleanupCtx)` using a
 fresh cleanup budget. Unstarted/stopping applications return empty 503.
 
+Start HTTP server shutdown and Arc shutdown together, then wait for both.
+`http.Server.Shutdown` waits for active handlers, including SSE streams; Arc
+shutdown cancels those observations. Waiting for HTTP to finish first can hang
+until the cleanup deadline when a stream is active.
+
+The compiled [host shutdown recipe](../../../../recipes/internal/fixture/lifecycle.go)
+uses separate fresh cleanup budgets and joins both outcomes. This excerpt requires
+`context`, `errors`, `net/http`, `time`, and `arc "github.com/cratis/arc.go"` imports:
+
+```go
+// ShutdownHost stops HTTP admission and Arc observations concurrently, then
+// joins both. Each has a fresh five-second cleanup budget, not the canceled
+// signal or request context. Business callbacks must honor cancellation.
+func ShutdownHost(app *arc.Application, server *http.Server) error {
+    httpContext, cancelHTTP := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancelHTTP()
+    arcContext, cancelArc := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancelArc()
+    httpStopped := make(chan error, 1)
+    go func() {
+        httpStopped <- server.Shutdown(httpContext)
+    }()
+    arcError := app.Shutdown(arcContext)
+    return errors.Join(arcError, <-httpStopped)
+}
+```
+
 Use `builder.Handle(pattern, handler)` for small raw endpoints. Patterns use
 ServeMux syntax. Catch-all and subtree handlers can overlap Arc paths, so you can
 serve a SPA fallback. Arc's exact routes retain priority, including their 405
@@ -77,7 +104,9 @@ if err := builder.Handle("/", newStaticSite(site)); err != nil {
 
 The example calls `app.Start` explicitly, starts an external `httptest.Server`,
 then shuts down and joins that server before `app.Shutdown` with a fresh bounded
-cleanup context. In your host, retain the same ownership order.
+cleanup context. This example has no observable streams. That sequential cleanup
+is only safe when no observable streams are active; otherwise use the coordinated
+[embedded-host shutdown](#embed-a-handler) above.
 
 ### The example's URL and file contract
 
