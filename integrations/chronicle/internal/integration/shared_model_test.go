@@ -118,11 +118,11 @@ func TestOneModelProjectsAndServesArcNamespaceQuery(t *testing.T) {
 func awaitInventoryOrKnownStall(t *testing.T, ctx context.Context, store *chronicle.EventStore, model readmodels.Model[sharedmodel.Inventory], reader *readmodels.Reader[sharedmodel.Inventory], want sharedmodel.Inventory, position *events.SequenceNumber, namespace string) {
 	t.Helper()
 	materialized, waitElapsed := awaitInventory(t, ctx, reader, want)
-	if err := ctx.Err(); err != nil {
-		t.Fatal("test context exhausted while waiting for projected inventory:", err)
-	}
 	if materialized {
 		return
+	}
+	if err := ctx.Err(); err != nil {
+		t.Fatal("test context exhausted while waiting for projected inventory:", err)
 	}
 	failure := "projection did not materialize"
 	if namespace != "TenantB" || position == nil {
