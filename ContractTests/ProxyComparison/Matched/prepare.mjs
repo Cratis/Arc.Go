@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { directory, run } from '../helpers.mjs';
 
-export async function prepare({ observable = false } = {}) {
+export async function prepare() {
     const root = resolve(directory, '../..');
     const scratch = process.env.AI_WORK_OUTPUT || join(root, '.ai-work/proxy-comparison');
     await mkdir(scratch, { recursive: true });
@@ -18,7 +18,8 @@ export async function prepare({ observable = false } = {}) {
     await writeFile(join(consumer, 'input.go'), await readFile(join(directory, 'Matched/input.go.txt')));
     await writeFile(join(consumer, 'profile.json'), JSON.stringify({ formatVersion: 1, name: 'matched',
         clientHttp: { 'ProxyComparison.Listing.All': 'Get' }, typescript: { out: 'web' } }));
-    if (observable) await writeFile(join(consumer, 'observable.go'), await readFile(join(directory, 'Matched/observable.go.txt')));
+    // Observe completes the C# source: identity-less Listing, like C#'s JSON fallback.
+    await writeFile(join(consumer, 'observable.go'), await readFile(join(directory, 'Matched/observable.go.txt')));
     return { consumer, tools, go: process.env.GO || 'go' };
 }
 

@@ -324,18 +324,137 @@
       "reason": "Exact import split/order only; runtime bindings and all model declarations remain unchanged."
     },
     {
-      "file": "ProxyComparison/index.ts",
-      "fragment": "export:./Observe",
-      "csharp": "export * from \"./Observe\" ;",
-      "go": null,
-      "reason": "Blocked subset only: Observe cannot be generated for the unchanged identity-free Listing; its barrel export is absent. This is not observable parity."
+      "file": "ProxyComparison/Observe.ts",
+      "fragment": "Observe:GetAccessor:requiredRequestParameters",
+      "csharp": "get requiredRequestParameters ( ) : string [ ] { return [ \"id\" , ] ; }",
+      "go": "get requiredRequestParameters ( ) : string [ ] { return [ \"id\" ] ; }",
+      "reason": "Array trailing-comma formatting only; id remains the sole required Guid argument."
     },
     {
-      "file": "ProxyComparison/index.ts",
-      "fragment": "order",
-      "csharp": "[\"export:./All\",\"export:./Detail\",\"export:./Listing\",\"export:./Notice\",\"export:./Observe\",\"export:./Register\",\"export:./Status\",\"export:./UrgentNotice\"]",
-      "go": "[\"export:./All\",\"export:./Detail\",\"export:./Listing\",\"export:./Notice\",\"export:./Register\",\"export:./Status\",\"export:./UrgentNotice\"]",
-      "reason": "Blocked subset only: Observe cannot be generated for the unchanged identity-free Listing; its barrel export is absent. This is not observable parity."
+      "file": "ProxyComparison/Observe.ts",
+      "fragment": "Observe:order",
+      "csharp": "[\"PropertyDeclaration:route\",\"PropertyDeclaration:queryName\",\"PropertyDeclaration:treatWarningsAsErrors\",\"PropertyDeclaration:roles\",\"PropertyDeclaration:defaultValue\",\"PropertyDeclaration:_sortBy\",\"static:PropertyDeclaration:_sortBy\",\"Constructor:constructor\",\"GetAccessor:requiredRequestParameters\",\"PropertyDeclaration:parameterDescriptors\",\"PropertyDeclaration:id\",\"GetAccessor:sortBy\",\"static:GetAccessor:sortBy\",\"static:MethodDeclaration:use\",\"static:MethodDeclaration:useWithPaging\",\"static:MethodDeclaration:useSuspense\",\"static:MethodDeclaration:useSuspenseWithPaging\",\"static:MethodDeclaration:useChangeStream\",\"static:MethodDeclaration:when\"]",
+      "go": "[\"PropertyDeclaration:route\",\"PropertyDeclaration:queryName\",\"PropertyDeclaration:treatWarningsAsErrors\",\"PropertyDeclaration:roles\",\"PropertyDeclaration:defaultValue\",\"PropertyDeclaration:_sortBy\",\"static:PropertyDeclaration:_sortBy\",\"Constructor:constructor\",\"GetAccessor:requiredRequestParameters\",\"PropertyDeclaration:parameterDescriptors\",\"PropertyDeclaration:id\",\"GetAccessor:sortBy\",\"static:GetAccessor:sortBy\",\"static:MethodDeclaration:use\",\"static:MethodDeclaration:useSuspense\",\"static:MethodDeclaration:useWithPaging\",\"static:MethodDeclaration:useSuspenseWithPaging\",\"static:MethodDeclaration:useChangeStream\",\"static:MethodDeclaration:when\"]",
+      "reason": "Only the useSuspense and useWithPaging static methods exchange declaration order; their complete bodies and tuple signatures compare unchanged."
+    },
+    {
+      "file": "ProxyComparison/Observe.ts",
+      "fragment": "Observe:static:PropertyDeclaration:_sortBy",
+      "csharp": "private static readonly _sortBy : ObserveSortByWithoutQuery = new ObserveSortByWithoutQuery ( ) ;",
+      "go": "private static readonly _sortBy = new ObserveSortByWithoutQuery ( ) ;",
+      "reason": "The static sort-helper initializer infers the same private type rather than spelling its annotation."
+    },
+    {
+      "file": "ProxyComparison/Observe.ts",
+      "fragment": "ObserveSortBy:Constructor:constructor",
+      "csharp": "constructor ( readonly query : Observe ) { this . _id = new SortingActionsForObservableQuery < Listing [ ] > ( \"id\" , query ) ; }",
+      "go": "constructor ( readonly query : Observe ) { this . _field0 = new SortingActionsForObservableQuery < Listing [ ] > ( \"name\" , query ) ; this . _field1 = new SortingActionsForObservableQuery < Listing [ ] > ( \"status\" , query ) ; }",
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/Observe.ts",
+      "fragment": "ObserveSortBy:GetAccessor:id",
+      "csharp": "get id ( ) : SortingActionsForObservableQuery < Listing [ ] > { return this . _id ; }",
+      "go": null,
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/Observe.ts",
+      "fragment": "ObserveSortBy:GetAccessor:name",
+      "csharp": null,
+      "go": "get name ( ) : SortingActionsForObservableQuery < Listing [ ] > { return this . _field0 ; }",
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/Observe.ts",
+      "fragment": "ObserveSortBy:GetAccessor:status",
+      "csharp": null,
+      "go": "get status ( ) : SortingActionsForObservableQuery < Listing [ ] > { return this . _field1 ; }",
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/Observe.ts",
+      "fragment": "ObserveSortBy:PropertyDeclaration:_field0",
+      "csharp": null,
+      "go": "private readonly _field0 : SortingActionsForObservableQuery < Listing [ ] > ;",
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/Observe.ts",
+      "fragment": "ObserveSortBy:PropertyDeclaration:_field1",
+      "csharp": null,
+      "go": "private readonly _field1 : SortingActionsForObservableQuery < Listing [ ] > ;",
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/Observe.ts",
+      "fragment": "ObserveSortBy:PropertyDeclaration:_id",
+      "csharp": "private _id : SortingActionsForObservableQuery < Listing [ ] > ;",
+      "go": null,
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/Observe.ts",
+      "fragment": "ObserveSortBy:order",
+      "csharp": "[\"PropertyDeclaration:_id\",\"Constructor:constructor\",\"GetAccessor:id\"]",
+      "go": "[\"PropertyDeclaration:_field0\",\"PropertyDeclaration:_field1\",\"Constructor:constructor\",\"GetAccessor:name\",\"GetAccessor:status\"]",
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/Observe.ts",
+      "fragment": "ObserveSortByWithoutQuery:GetAccessor:id",
+      "csharp": "get id ( ) : SortingActions { return this . _id ; }",
+      "go": null,
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/Observe.ts",
+      "fragment": "ObserveSortByWithoutQuery:GetAccessor:name",
+      "csharp": null,
+      "go": "get name ( ) : SortingActions { return this . _field0 ; }",
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/Observe.ts",
+      "fragment": "ObserveSortByWithoutQuery:GetAccessor:status",
+      "csharp": null,
+      "go": "get status ( ) : SortingActions { return this . _field1 ; }",
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/Observe.ts",
+      "fragment": "ObserveSortByWithoutQuery:PropertyDeclaration:_field0",
+      "csharp": null,
+      "go": "private readonly _field0 = new SortingActions ( \"name\" ) ;",
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/Observe.ts",
+      "fragment": "ObserveSortByWithoutQuery:PropertyDeclaration:_field1",
+      "csharp": null,
+      "go": "private readonly _field1 = new SortingActions ( \"status\" ) ;",
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/Observe.ts",
+      "fragment": "ObserveSortByWithoutQuery:PropertyDeclaration:_id",
+      "csharp": "private _id : SortingActions = new SortingActions ( \"id\" ) ;",
+      "go": null,
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/Observe.ts",
+      "fragment": "ObserveSortByWithoutQuery:order",
+      "csharp": "[\"PropertyDeclaration:_id\",\"GetAccessor:id\"]",
+      "go": "[\"PropertyDeclaration:_field0\",\"GetAccessor:name\",\"PropertyDeclaration:_field1\",\"GetAccessor:status\"]",
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/Observe.ts",
+      "fragment": "imports",
+      "csharp": "import { ObservableQueryFor , QueryResultWithState , Sorting , SortingActions , SortingActionsForObservableQuery , Paging , ChangeSet } from \"@cratis/arc/queries\" ; import { useObservableQuery , useObservableQueryWithPaging , useSuspenseObservableQuery , useSuspenseObservableQueryWithPaging , useChangeStream , SetSorting , SetPage , SetPageSize , ObservableQueryWhen } from \"@cratis/arc.react/queries\" ; import { ParameterDescriptor } from \"@cratis/arc/reflection\" ; import { Guid } from \"@cratis/fundamentals\" ; import { Listing } from \"./Listing\" ;",
+      "go": "import { Listing } from \"./Listing\" ; import { ObservableQueryWhen } from \"@cratis/arc.react/queries\" ; import type { SetPage } from \"@cratis/arc.react/queries\" ; import type { SetPageSize } from \"@cratis/arc.react/queries\" ; import type { SetSorting } from \"@cratis/arc.react/queries\" ; import { useChangeStream } from \"@cratis/arc.react/queries\" ; import { useObservableQuery } from \"@cratis/arc.react/queries\" ; import { useObservableQueryWithPaging } from \"@cratis/arc.react/queries\" ; import { useSuspenseObservableQuery } from \"@cratis/arc.react/queries\" ; import { useSuspenseObservableQueryWithPaging } from \"@cratis/arc.react/queries\" ; import type { ChangeSet } from \"@cratis/arc/queries\" ; import { ObservableQueryFor } from \"@cratis/arc/queries\" ; import { Paging } from \"@cratis/arc/queries\" ; import type { QueryResultWithState } from \"@cratis/arc/queries\" ; import type { Sorting } from \"@cratis/arc/queries\" ; import { SortingActions } from \"@cratis/arc/queries\" ; import { SortingActionsForObservableQuery } from \"@cratis/arc/queries\" ; import { ParameterDescriptor } from \"@cratis/arc/reflection\" ; import { Guid } from \"@cratis/fundamentals\" ;",
+      "reason": "Exact import split/order and type-only bindings; the imported names and modules are otherwise identical."
     }
   ]
 }

@@ -2,10 +2,9 @@
 
 This test-only directory establishes the pinned C# reference for
 [Arc.Go issue 20](https://github.com/Cratis/Arc.Go/issues/20).
-The production Go CLI is compared with the pinned C# captures for an **eight-file
-subset**: models, enum, command, snapshot query and barrel. The complete fixture
-is blocked: Go rejects the identity-free `Listing` observable collection before
-publication. Paired HTTP servers and rendered React hook tests are not covered.
+The production Go CLI is compared with all **nine** pinned C# captures: models,
+enum, command, snapshot query, observable query and barrel. Paired HTTP servers
+and rendered React hook tests are not covered here.
 
 ## Authority and attribution
 
@@ -45,7 +44,7 @@ npm test
 To deliberately replace the primary capture after reviewing changed inputs,
 run `npm run reference:capture` instead of the check. Both modes require a
 successful invocation of the pinned restored executable and exactly nine C# output
-files. Check mode additionally generates and compares the admitted Go subset. Only the C# timestamp is normalized; body hashes are validated and every
+files. Check mode additionally generates and compares the Go output. Only the C# timestamp is normalized; body hashes are validated and every
 other byte is retained. Generation failure cannot fall back to old snapshots.
 Set `AI_WORK_OUTPUT` to a task-owned scratch directory when running the generator;
 otherwise small outputs are retained under the repository's ignored `.ai-work/`.
@@ -69,7 +68,8 @@ are changed.
 
 ## Go golden comparison
 
-`npm test` generates Go output from `Matched/input.go.txt` using the production
+`npm test` generates Go output from `Matched/input.go.txt` and
+`Matched/observable.go.txt` using the production
 `tools/cmd/arc-gen` executable and verifies it with the CLI's `-check` mode. The
 scratch consumer uses the existing tools module's fetchable runtime pin, with
 `GOWORK=off`, no `replace`, and no extra committed module. `All` uses `Page[Listing]`
@@ -85,21 +85,27 @@ tokens remain compared. No file or API family is blanket-ignored.
 
 Every nonmatching fragment requires exactly one file-specific allowance with
 exact C# and Go token strings and a reason. Missing, duplicate, unused and stale
-allowances fail. The 48 entries cover import split/order and type-only bindings,
+allowances fail. The 65 entries cover import split/order and type-only bindings,
 private storage spelling, inferred private/validator types, declaration order,
-one trailing comma, exact comments, explicit GET selection, additive command
-identity and hydration metadata, the approved sorting correction, and the blocked
-barrel export. Regression tests mutate every emitted fragment and add an unknown
-field/file. The live Go output also compiles strictly against the real locked
-client declarations with `skipLibCheck: false`.
+trailing commas, exact comments, explicit GET selection, additive command
+identity and hydration metadata, and the approved sorting correction in `All`
+and `Observe`. The barrel compares without an allowance. Regression tests mutate
+every emitted fragment and add an unknown field/file. The live Go output also
+compiles strictly against the real locked client declarations with
+`skipLibCheck: false`.
 
-`Matched/observable.go.txt` completes the equivalent C# source. The negative test
-requires the production CLI's identity diagnostic and verifies no Go/TypeScript
-partial output. C# `Listing` has only `name`, `detail`, `notice` and `status`, but
-Go observable collections require a top-level, unambiguous conventional `ID`/`Id`
-wire member. Adding an artificial identity would change the reference contract;
-changing the generator is outside this comparison lane. `Observe.ts` is therefore
-**not paired**, and its absent barrel export is documented only for this partial
-subset, not accepted as full parity. Issue 20 remains open until that discrepancy
-is resolved. CI runs the frozen-reference comparison without requiring .NET;
+## Identity-less observable collections
+
+C# `Listing` has only `name`, `detail`, `notice` and `status`, and C# generates
+`Observe.ts` for it. Arc `7c1e780` supports that shape end to end:
+`ChangeSetComputor.cs` falls back to JSON-hash deltas without an `Id` property,
+`useObservableQuery.ts` removes items by JSON when they carry no `id`,
+`reconcileQueryData.ts` reconciles by position, and `useChangeStream.ts` keys by
+full JSON unless a `getKey` is supplied. arc-gen therefore admits an observable
+collection element with no conventional `ID`/`Id` member and no serialized `id`
+property. It still rejects competing or non-direct identity members and a
+serialized `id` without `ID`/`Id`, where client and server keys would differ.
+No artificial identity was added and no C# capture was changed.
+
+CI runs the frozen-reference comparison without requiring .NET;
 `reference:check` additionally executes the pinned C# generator locally.

@@ -1,13 +1,12 @@
 // Copyright (c) Cratis. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { access, readFile, readdir, symlink, writeFile } from 'node:fs/promises';
+import { readFile, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import ts from 'typescript';
 import { compare, compareFragments, fragments, pairedFiles } from './compare.mjs';
-import { generate, prepare } from './Matched/prepare.mjs';
+import { generate } from './Matched/prepare.mjs';
 import { directory } from './helpers.mjs';
 
 const output = await generate();
@@ -44,19 +43,6 @@ test('comments and trailing tokens are not blanket-normalized away', () => {
     const commented = Buffer.from(original.toString().replace('id!', '// extra\n id!') + '// trailing\n');
     assert.notDeepEqual(fragments(original, 'go'), fragments(commented, 'go'));
     assert.notDeepEqual(fragments(original, 'go'), fragments(Buffer.from(original.toString().replace('id!', 'other!')), 'go'));
-});
-
-test('complete identity-free C# equivalent Observe fails explicitly without partial publication', async () => {
-    const { consumer, tools, go } = await prepare({ observable: true });
-    const before = await readFile(join(consumer, 'input.go'));
-    const result = spawnSync(go, ['run', './cmd/arc-gen', '-dir', consumer, '-config', join(consumer, 'profile.json'), '.'],
-        { cwd: tools, encoding: 'utf8', timeout: 60000, maxBuffer: 10 * 1024 * 1024 });
-    assert.equal(result.error, undefined, result.error?.message);
-    assert.equal(result.status, 1, result.stdout + result.stderr);
-    assert.match(result.stderr, /observable collection requires one unambiguous conventional identity member ID\/Id, including JSON-hidden and embedded members/);
-    assert.deepEqual(await readFile(join(consumer, 'input.go')), before);
-    await assert.rejects(() => access(join(consumer, 'web')), { code: 'ENOENT' });
-    assert.deepEqual((await readdir(consumer)).sort(), ['go.mod', 'go.sum', 'input.go', 'observable.go', 'profile.json']);
 });
 
 test('live Go output compiles strictly against the pinned real client packages', async () => {

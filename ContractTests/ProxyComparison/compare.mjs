@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import ts from 'typescript';
 import { directory, filesIn, stableBytes } from './helpers.mjs';
 
-export const pairedFiles = ['All', 'Detail', 'Listing', 'Notice', 'Register', 'Status', 'UrgentNotice', 'index']
+export const pairedFiles = ['All', 'Detail', 'Listing', 'Notice', 'Observe', 'Register', 'Status', 'UrgentNotice', 'index']
     .map(name => `ProxyComparison/${name}.ts`);
 const csharpBanner = '/*---------------------------------------------------------------------------------------------\n *  **DO NOT EDIT** - This file is an automatically generated file.\n *--------------------------------------------------------------------------------------------*/';
 const prologueComments = ['/* eslint-disable sort-imports */', '/* eslint-disable @typescript-eslint/no-empty-interface */',
@@ -93,8 +93,7 @@ export function compareFragments(file, csharp, go, allowances) {
 }
 
 export async function compare(output) {
-    // Observe is intentionally NOT treated as an allowed missing output. This is
-    // the eight-file admitted subset; the full nine-file fixture remains blocked.
+    // The complete nine-file C# fixture; no output may be missing or added.
     assert.deepEqual(await filesIn(output), ['.arc-gen-manifest.json', ...pairedFiles]);
     const ledger = JSON.parse(await readFile(join(directory, 'Matched/allowances.json')));
     assert.equal(ledger.formatVersion, 1);
@@ -110,5 +109,5 @@ export async function compare(output) {
         assert.equal(createHash('sha256').update(bytes).digest('hex'), provenance.snapshots[file], `C# snapshot changed: ${file}`);
         count += compareFragments(file, fragments(bytes, 'csharp'), fragments(await readFile(join(output, file)), 'go'), ledger.allowances);
     }
-    console.log(`Go/C# admitted subset: ${pairedFiles.length} files compared, ${count} exact fragment allowances; Observe remains blocked.`);
+    console.log(`Go/C# fixture: ${pairedFiles.length} files compared, ${count} exact fragment allowances.`);
 }
