@@ -105,6 +105,12 @@ func emit(a *analysis, services ...*serviceBindingsPlan) ([]byte, error) {
 		}
 		e.line("); %s != nil { return %s }", e.err, e.err)
 	}
+	for _, v := range a.validators {
+		e.emitValidator(v)
+	}
+	for _, p := range a.policies {
+		e.emitPolicy(p)
+	}
 	for _, m := range a.models {
 		e.emitModel(m)
 	}
@@ -208,6 +214,16 @@ func (e *emitter) collectDependencies() {
 	}
 	for _, q := range e.analysis.queries {
 		collect(q.call)
+	}
+	for _, v := range e.analysis.validators {
+		if v.constructor != nil {
+			collect(v.constructor.call)
+		}
+	}
+	for _, p := range e.analysis.policies {
+		if p.constructor != nil {
+			collect(p.constructor.call)
+		}
 	}
 	keys := make([]string, 0, len(all))
 	for key := range all {

@@ -102,8 +102,11 @@ repair the pinned serializer's null-write behavior.
 
 Arbitrary interfaces, opaque codecs, unresolved dynamic responses, unsupported
 rules/defaults/derived providers, rich dictionaries, eager constructor cycles,
-nullable collection elements, query validators, channels, and unsupported observable
-or opaque provider emissions fail instead of degrading to `any`. Primitive query
+nullable collection elements, unsupported query validation, channels, and unsupported observable
+or opaque provider emissions fail instead of degrading to `any`. Snapshot query string
+rules support `notNull`, `notEmpty`, `minLength`, `maxLength`, and `length`; they
+register server validation and emit matching client validators. Observable-query
+validation and unproved rule shapes are rejected. Primitive query
 defaults are checked against the original Go grammar and target width, and remain
 server-side defaults.
 Query parameter names containing regex metacharacters are rejected for Arc 22.48.2
