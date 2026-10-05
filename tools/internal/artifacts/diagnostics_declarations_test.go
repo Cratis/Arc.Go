@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -41,6 +42,26 @@ func TestDeclarationDiagnostics(t *testing.T) {
 	}
 }
 
+func TestDeclarationDiagnosticsAllowManualCommands(t *testing.T) {
+	loaded := loadDiagnosticFixtures(t, "", "./testdata/diagnostics/manualcommands", "./testdata/diagnostics/unselectedcommands")
+	if len(loaded) != 2 {
+		t.Fatalf("fixture packages = %d, want 2", len(loaded))
+	}
+	for _, pkg := range loaded {
+		t.Run(pkg.Name, func(t *testing.T) {
+			var findings []goanalysis.Diagnostic
+			_, err := DeclarationAnalyzer.Run(&goanalysis.Pass{
+				Analyzer: DeclarationAnalyzer, Fset: pkg.Fset, Files: pkg.Syntax,
+				Pkg: pkg.Types, TypesInfo: pkg.TypesInfo, TypesSizes: pkg.TypesSizes,
+				Report: func(finding goanalysis.Diagnostic) { findings = append(findings, finding) },
+			})
+			if err != nil || len(findings) != 0 {
+				t.Fatalf("manual command findings = %+v, error = %v", findings, err)
+			}
+		})
+	}
+}
+
 func assertDeclarationDiagnostics(t *testing.T, pkg *packages.Package, findings []goanalysis.Diagnostic, tagged bool) {
 	t.Helper()
 	type expectedDiagnostic struct{ code, reference string }
@@ -66,7 +87,12 @@ func assertDeclarationDiagnostics(t *testing.T, pkg *packages.Package, findings 
 			counts[code]++
 		}
 	}
-	wantCounts := map[string]int{"ARC0001": 4, "ARC0002": 2, "ARC0003": 1, "ARC0004": 2, "ARC0005": 3, "ARC0006": 3, "ARC0014": 3, "ARC0019": 2}
+	wantCounts := map[string]int{"ARC0001": 12, "ARC0002": 3, "ARC0003": 1, "ARC0004": 2, "ARC0005": 3, "ARC0006": 3, "ARC0014": 3, "ARC0019": 2}
+	for _, path := range pkg.CompiledGoFiles {
+		if filepath.Base(path) == "generic_methods.go" {
+			wantCounts["ARC0014"]++
+		}
+	}
 	for code, want := range wantCounts {
 		if tagged {
 			want++

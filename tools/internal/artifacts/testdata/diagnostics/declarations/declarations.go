@@ -25,6 +25,17 @@ func AliasBadQuery() (Wrong, error) { return Wrong{}, nil } // want ARC0001 Alia
 func (Model) GoodQuery() (qry.Page[ModelAlias], error)        { return qry.Page[ModelAlias]{}, nil }
 func (Model) GoodObservable() (obs.Source[ModelAlias], error) { return nil, nil }
 func (Model) UnrelatedHelper() (Wrong, error)                 { return Wrong{}, nil }
+func (Model) UnrelatedNoError() Wrong                         { return Wrong{} }
+func (Model) UnrelatedBadError() (Wrong, int)                 { return Wrong{}, 0 }
+
+func (Model) NoError() Model                       { return Model{} }              // want ARC0001 NoError
+func (Model) SliceNoError() []Model                { return nil }                  // want ARC0001 SliceNoError
+func (Model) PageNoError() qry.Page[Model]         { return qry.Page[Model]{} }    // want ARC0001 PageNoError
+func (Model) AliasNoError() ModelAlias             { return Model{} }              // want ARC0001 AliasNoError
+func (Model) BadError() (Model, int)               { return Model{}, 0 }           // want ARC0001 BadError
+func (Model) SliceBadError() ([]Model, int)        { return nil, 0 }               // want ARC0001 SliceBadError
+func (Model) PageBadError() (qry.Page[Model], int) { return qry.Page[Model]{}, 0 } // want ARC0001 PageBadError
+func (Model) AliasBadError() (ModelAlias, int)     { return Model{}, 0 }           // want ARC0001 AliasBadError
 
 //arc:query model=Model
 func GenericQuery[T any]() (Model, error) { return Model{}, nil } // want ARC0014 GenericQuery

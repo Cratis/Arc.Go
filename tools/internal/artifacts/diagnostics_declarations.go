@@ -37,7 +37,7 @@ type diagnosticDeclaration struct {
 	model   string
 }
 
-// diagnosticDirectives reads only the declaration markers needed by these rules.
+// diagnosticDirectives records artifact selection without validating admission.
 // Deliberately do not call parseDirectives: contradictory authorization and
 // generic query declarations must be reportable before arc-gen rejects them.
 func diagnosticDirectives(group *ast.CommentGroup) diagnosticDeclaration {
@@ -51,9 +51,10 @@ func diagnosticDirectives(group *ast.CommentGroup) diagnosticDeclaration {
 			continue
 		}
 		switch words[0] {
-		case "arc:command", "arc:readmodel", "arc:validator":
+		case "arc:command", "arc:readmodel", "arc:validator", "arc:model", "arc:enum", "arc:policy", "arc:derived":
 			d.kind = strings.TrimPrefix(words[0], "arc:")
 		case "arc:query":
+			d.kind = "query"
 			d.query = true
 			for _, word := range words[1:] {
 				if value, ok := strings.CutPrefix(word, "model="); ok {
@@ -71,6 +72,9 @@ func runDeclarationDiagnostics(pass *goanalysis.Pass) (any, error) {
 	declarations := map[types.Type]diagnosticDeclaration{}
 	methods := map[types.Type]map[string]*ast.FuncDecl{}
 	var functions []*ast.FuncDecl
+	generatorSelected := false
+	manuallyRegistered := diagnosticManualCommands(pass)
+	responseHandler := diagnosticResponseHandler(pass.Pkg)
 	report := func(node ast.Node, code, message string) {
 		pass.Report(goanalysis.Diagnostic{Pos: node.Pos(), End: node.End(), Category: code, Message: code + ": " + message})
 	}
@@ -91,6 +95,7 @@ func runDeclarationDiagnostics(pass *goanalysis.Pass) (any, error) {
 						group = decl.Doc
 					}
 					d := diagnosticDirectives(group)
+					generatorSelected = generatorSelected || d.kind != "" && !d.ignored
 					// An alias is a reference, not a second model declaration.
 					if ts.Assign.IsValid() {
 						continue
@@ -102,6 +107,8 @@ func runDeclarationDiagnostics(pass *goanalysis.Pass) (any, error) {
 					}
 				}
 			case *ast.FuncDecl:
+				d := diagnosticDirectives(decl.Doc)
+				generatorSelected = generatorSelected || d.kind != "" && !d.ignored
 				functions = append(functions, decl)
 				if decl.Recv == nil {
 					continue
@@ -165,8 +172,9 @@ func runDeclarationDiagnostics(pass *goanalysis.Pass) (any, error) {
 					} else if provide := methods[t]["Provide"]; provide != nil {
 						reportUnusedPreparation(pass, handle, provide, report)
 					}
-				} else if d.kind == "" && handle != nil && commandLikeType(t) {
-					report(ts.Name, "ARC0002", "type has exported data and Handle but no arc:command; add the directive or use arc:ignore for a non-command")
+				} else if generatorSelected && d.kind == "" && handle != nil && commandLikeType(t) &&
+					!manuallyRegistered[t] && !diagnosticCommandHelper(t, responseHandler) {
+					report(ts.Name, "ARC0002", "type has exported data and Handle in a generator-selected package; add arc:command for generated registration, use commands.Register[T] for manual registration, or arc:ignore for a non-command")
 				}
 			}
 		}
@@ -232,7 +240,7 @@ func runDeclarationDiagnostics(pass *goanalysis.Pass) (any, error) {
 		shape := sourceError == nil && output != nil && modelShape(modelType, output)
 		// Implicit discovery deliberately ignores unrelated returns, unlike
 		// C# static-method discovery. Explicit queries still diagnose them.
-		if d.query && (!validResults || !shape) || source && (!validResults || !shape) {
+		if (d.query || source || shape) && (!validResults || !shape) {
 			report(decl.Name, "ARC0001", "query must return (owning-model shape, error), optionally in an admitted observable source")
 		}
 		if shape && (sig.TypeParams().Len() > 0 || sig.RecvTypeParams().Len() > 0) {
@@ -259,6 +267,42 @@ func diagnosticBaseType(t types.Type) types.Type {
 		return types.Unalias(pointer.Elem())
 	}
 	return t
+}
+
+// A typed Register reference establishes manual registration intent, including
+// aliases and inferred type arguments. Spelling-only lookalikes do not count.
+func diagnosticManualCommands(pass *goanalysis.Pass) map[types.Type]bool {
+	registered := map[types.Type]bool{}
+	for identifier, instance := range pass.TypesInfo.Instances {
+		function, ok := pass.TypesInfo.Uses[identifier].(*types.Func)
+		if !ok || function.Pkg() == nil || function.Pkg().Path() != "github.com/cratis/arc.go/commands" || function.Name() != "Register" || instance.TypeArgs.Len() != 1 {
+			continue
+		}
+		registered[diagnosticDeclarationType(instance.TypeArgs.At(0))] = true
+	}
+	return registered
+}
+
+func diagnosticResponseHandler(pkg *types.Package) *types.Interface {
+	for _, imported := range pkg.Imports() {
+		if imported.Path() == "github.com/cratis/arc.go/commands" {
+			if object := imported.Scope().Lookup("ResponseValueHandler"); object != nil {
+				contract, _ := object.Type().Underlying().(*types.Interface)
+				return contract
+			}
+		}
+	}
+	return nil
+}
+
+func diagnosticCommandHelper(t types.Type, responseHandler *types.Interface) bool {
+	if named, ok := t.(*types.Named); ok {
+		name := named.Obj().Name()
+		if strings.HasSuffix(name, "Helper") || strings.HasSuffix(name, "Helpers") || strings.HasSuffix(name, "Extensions") {
+			return true
+		}
+	}
+	return responseHandler != nil && (types.Implements(t, responseHandler) || types.Implements(types.NewPointer(t), responseHandler))
 }
 
 func commandLikeType(t types.Type) bool {

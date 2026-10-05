@@ -34,6 +34,8 @@ func TestArcVetCommandContracts(t *testing.T) {
 		findings int
 	}{
 		{name: "clean", args: []string{fixture + "negative"}},
+		{name: "manual_registration", args: []string{fixture + "manualcommands"}},
+		{name: "unselected_command", args: []string{fixture + "unselectedcommands"}},
 		{name: "diagnostics", args: []string{fixture + "queries"}, wantExit: 3, contains: "ARC0015: query argument", findings: 6},
 		{name: "build_tags", args: []string{fixture + "queries"}, tags: "arcdiagnostics", wantExit: 3, contains: "tagged.go:", findings: 7},
 		{name: "invalid_concept", args: []string{fixture + "invalidconcept"}, wantExit: 1, contains: "missing-codec"},
@@ -76,7 +78,7 @@ func TestArcVetCommandContracts(t *testing.T) {
 					}
 				}
 			}
-			if test.name == "clean" && len(output) != 0 {
+			if test.wantExit == 0 && test.findings == 0 && len(output) != 0 {
 				t.Fatalf("unexpected clean-package output: %s", output)
 			}
 		})

@@ -38,13 +38,13 @@ matching a framework type's spelling or structure is not enough.
 
 | Code | C# analyzer | Go meaning and recovery |
 | --- | --- | --- |
-| ARC0001 | `ReadModelAnalyzer.cs` | An explicit query, or implicitly discovered recognized observable source, has an invalid result signature or owning-model shape. Return `(O, error)` with an admitted model/source shape. Unrelated implicit helper returns remain outside Go discovery. |
-| ARC0002 | `CommandAnalyzer.cs` | A struct with exported nonembedded data and a declared `Handle` lacks an artifact directive. Add `arc:command`, rename the method or use `arc:ignore` on a non-command. Empty service receivers do not trigger the heuristic. |
+| ARC0001 | `ReadModelAnalyzer.cs` | An explicit query, or implicit method returning its owning-model shape or a recognized observable source, has an invalid result signature or owning-model shape. Return `(O, error)` with an admitted model/source shape. Unrelated implicit helper returns remain outside Go discovery. |
+| ARC0002 | `CommandAnalyzer.cs` | In a package with artifact-selection directives, a struct with exported nonembedded data and a declared `Handle` lacks an artifact directive or typed `commands.Register[T]` reference. Choose `arc:command` for generated registration or `commands.Register[T](builder, commands.Handle(T.Handle))` for manual registration; do not register through both paths. Use `arc:ignore` on a non-command. Packages without artifact-selection directives, other selected artifacts, empty service receivers, `Helper`/`Helpers`/`Extensions` suffixes and implementations of `commands.ResponseValueHandler` do not trigger the heuristic. |
 | ARC0003 | `CommandAnalyzer.cs` | A non-command receiver declares `Handle` taking an opted-in command. Move handling onto the command. Package-level functions are not handler methods. |
 | ARC0004 | `CommandAnalyzer.cs` | An opted-in command lacks a directly declared exported `Handle`. Lowercase, promoted and ignored methods do not count. |
 | ARC0005 | `CommandProvideAnalyzer.cs` | `Provide` returns a payload that no `Handle` parameter consumes by exact Go type identity, including the payload of `commands.Preparation[P]`. Return a control-only result or add the payload parameter. Unlike C#, assignability alone is insufficient; multiple exact matches remain an arc-gen error. |
 | ARC0006 | `InjectedReadModelAnalyzer.cs` | Command `Handle`/`Provide` or an `arc:validator` constructor takes an opted-in read model by value. Consider explicit absence handling, or deliberately retain required-dependency failure. A pointer avoids this warning but does not make an ordinary DI dependency optional: your resolver must implement the intended missing-model behavior. |
-| ARC0014 | `ReadModelAnalyzer.cs` | An explicit generic function or implicitly discovered generic-receiver method returns its owning query shape. Use a concrete declaration or move/ignore a composition helper. Go has no generic methods with independent method type parameters. |
+| ARC0014 | `ReadModelAnalyzer.cs` | An explicit generic function or implicitly discovered generic-receiver method returns its owning query shape. Use a concrete declaration or move/ignore a composition helper. From Go 1.27, this also reports discovered query methods with independent method type parameters. |
 | ARC0015 | `QueryParameterConceptTypeAnalyzer.cs` | An admitted query directly converts an exported primitive argument field to a Fundamentals concept. Declare the field as the concept if its validation and presence semantics fit the input. This is a bounded syntax check, not dataflow analysis; see the [ARC0015 command reference](https://github.com/Cratis/Arc.Go/blob/develop/tools/cmd/arc-vet/README.md#arc0015-primitive-argument-converted-to-a-concept). |
 | ARC0019 | `AuthorizationAttributeAnalyzer.cs` | The same opted-in model/query declaration has both `arc:allow-anonymous` and `arc:authorize` (bare, roles or policy). Keep one level. A query's anonymous override of model-level authorization is valid. |
 
@@ -55,8 +55,9 @@ handwritten declarations to pass shared generator admission before inspecting
 query bodies. Unrelated malformed directives remain generator errors.
 
 `arc:ignore` excludes a declaration from these new convention checks; it is not
-a runtime authorization bypass. The declaration rules do not inspect arbitrary
-manual registration callbacks, runtime blank-field metadata tags or Chronicle
+a runtime authorization bypass. ARC0002 recognizes typed `commands.Register[T]` references in the package,
+including aliases, but the declaration rules do not inspect arbitrary manual
+registration callbacks, runtime blank-field metadata tags or Chronicle
 projection definitions. Imported opted-in command/read-model identities are
 transported by Go analysis facts for the selected build, so imported aliases do
 not lose their meaning. Constructors are checked only when explicitly marked
