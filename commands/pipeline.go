@@ -68,6 +68,8 @@ type pipeline struct {
 	admissions   []ReturnAdmission
 	models       map[reflect.Type]readModelProvider
 	operations   map[reflect.Type]operationAdapter
+	// decisionProviders is the frozen set certified by AddDecisionProvider.
+	decisionProviders map[*DecisionProvider]struct{}
 }
 
 func (p *pipeline) Lookup(name string) (Registration, bool) { r, ok := p.byName[name]; return r, ok }
@@ -584,6 +586,11 @@ func (f *frame) execute() {
 		f.merge(prepared.control, true)
 	}
 	if prepared.stop || !f.result.IsSuccess() {
+		return
+	}
+	// Foreign, nil and expired decision reads are refused before Handle's effects.
+	f.fail(f.verifyProvided(prepared.payload), false)
+	if !f.result.IsSuccess() {
 		return
 	}
 	err = f.prepared.Check(f.ctx)

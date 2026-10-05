@@ -39,20 +39,17 @@ func TestDecisionFailuresCannotBeAllowedByValidationSeverity(t *testing.T) {
 				}
 			}
 			callDecisionFrame(t, f, func(ctx context.Context, inv *Invocation) error {
-				if err := beginDecisionReads(ctx, inv, decisionAdmissionForTest()); err != nil {
-					return err
-				}
-				read, err := readDecision(ctx, inv, target, source)
+				read, err := ReadDecision(ctx, inv, target, source)
 				if stage == "provided" {
 					if err != nil {
 						return err
 					}
 					issued = true
-					err = verifyDecision(ctx, inv, read)
+					err = VerifyDecision(ctx, inv, read)
 				} else if read != nil {
 					t.Error("refused read delivered a value")
 				}
-				if !errors.Is(err, cause) || !errors.Is(err, errDecisionRead) || len(boundary.Classify(err).Exceptions) == 0 {
+				if !errors.Is(err, cause) || !errors.Is(err, ErrDecisionRead) || len(boundary.Classify(err).Exceptions) == 0 {
 					t.Fatalf("filterable acquisition failure: %v", err)
 				}
 				return nil

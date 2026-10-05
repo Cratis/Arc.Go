@@ -16,6 +16,7 @@ type preparedCall struct {
 	control    Result[NoResponse]
 	hasControl bool
 	stop       bool
+	payload    any // Provide's value, verified for decision evidence before handle
 	handle     func(context.Context, *Invocation) (any, error)
 }
 type adapter struct {
@@ -118,7 +119,7 @@ func Prepare[C, P, O any](provide func(context.Context, *Invocation, C) (Prepara
 		if !p.valid {
 			return preparedCall{}, ErrInvalidPreparation
 		}
-		return preparedCall{control: p.control, hasControl: true, stop: p.stop, handle: func(ctx context.Context, inv *Invocation) (any, error) { return handle(ctx, inv, c, p.value) }}, nil
+		return preparedCall{control: p.control, hasControl: true, stop: p.stop, payload: p.value, handle: func(ctx context.Context, inv *Invocation) (any, error) { return handle(ctx, inv, c, p.value) }}, nil
 	}
 	return Handler[C, O]{adapter: a}
 }

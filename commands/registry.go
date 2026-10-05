@@ -37,6 +37,8 @@ type Registry struct {
 	models        map[reflect.Type][]readModelProvider
 	buildChecks   []func(BuildView) error
 	operations    map[reflect.Type]operationAdapter
+	// decisionProviders are certified identities; see AddDecisionProvider.
+	decisionProviders []*DecisionProvider
 }
 type extension[T any] struct {
 	name       string
@@ -204,6 +206,9 @@ func (r *Registry) Build(options PipelineOptions) (Pipeline, error) {
 	for _, entry := range r.registrations {
 		view.commandTypes[entry.commandType] = true
 	}
+	if err := r.checkDecisionSupport(); err != nil {
+		return nil, err
+	}
 	for _, check := range r.buildChecks {
 		if err := check(view); err != nil {
 			return nil, err
@@ -212,6 +217,7 @@ func (r *Registry) Build(options PipelineOptions) (Pipeline, error) {
 	p := &pipeline{options: options, byType: make(map[reflect.Type]Registration), byName: make(map[string]Registration), providers: append([]extension[ContextValuesProvider](nil), r.providers...), keys: append([]extension[KeyResolver](nil), r.keys...), filters: append([]extension[Filter](nil), r.filters...), authFilters: append([]extension[AuthorizationFilter](nil), r.authFilters...), responses: append([]extension[ResponseValueHandler](nil), r.responses...), participants: append([]extension[ExecutionScope](nil), r.participants...)}
 	p.terminal = append([]extension[DeferredCommitParticipant](nil), r.terminal...)
 	p.admissions = append([]ReturnAdmission(nil), r.admissions...)
+	p.decisionProviders = decisionProviderSet(r.decisionProviders)
 	p.models = r.readModelProviders()
 	p.operations = make(map[reflect.Type]operationAdapter, len(r.operations))
 	for typ, adapter := range r.operations {
