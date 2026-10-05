@@ -46,7 +46,8 @@ export async function startHost(evidence, {
     const child = spawn(executable, args, { stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env } });
     const exited = new Promise((resolve, reject) => {
         child.once('error', reject);
-        child.once('exit', (code, signal) => resolve({ code, signal }));
+        // 'exit' can precede the final stdout report; 'close' joins stdio too.
+        child.once('close', (code, signal) => resolve({ code, signal }));
     });
     exited.catch(() => {});
     const reports = new Bus();
