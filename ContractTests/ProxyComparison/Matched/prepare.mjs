@@ -25,9 +25,10 @@ export async function prepare() {
 
 export async function generate() {
     const { consumer, tools, go } = await prepare();
-    run(go, ['run', './cmd/arc-gen', '-dir', consumer, '-config', join(consumer, 'profile.json'), '.'], tools);
+    const env = { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local' };
+    run(go, ['run', './cmd/arc-gen', '-dir', consumer, '-config', join(consumer, 'profile.json'), '.'], tools, env);
     // -check is production CLI verification, not a comparison with hand-written Go output.
-    run(go, ['run', './cmd/arc-gen', '-dir', consumer, '-config', join(consumer, 'profile.json'), '-check', '.'], tools);
+    run(go, ['run', './cmd/arc-gen', '-dir', consumer, '-config', join(consumer, 'profile.json'), '-check', '.'], tools, env);
     return join(consumer, 'web');
 }
 

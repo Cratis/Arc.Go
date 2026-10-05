@@ -9,8 +9,8 @@ import { join } from 'node:path';
 export const directory = import.meta.dirname;
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
-export function run(command, args, cwd = directory) {
-    const child = spawnSync(command, args, { cwd, encoding: 'utf8', timeout: 60000, maxBuffer: 10 * 1024 * 1024 });
+export function run(command, args, cwd = directory, env = process.env) {
+    const child = spawnSync(command, args, { cwd, env, encoding: 'utf8', timeout: 60000, maxBuffer: 10 * 1024 * 1024 });
     assert.equal(child.error, undefined, child.error?.message);
     assert.equal(child.status, 0, `${command} ${args.join(' ')}\n${child.stdout}\n${child.stderr}`);
     return child.stdout;

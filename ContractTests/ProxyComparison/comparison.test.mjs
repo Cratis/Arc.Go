@@ -7,13 +7,22 @@ import test from 'node:test';
 import ts from 'typescript';
 import { compare, compareFragments, fragments, pairedFiles } from './compare.mjs';
 import { generate } from './Matched/prepare.mjs';
-import { directory } from './helpers.mjs';
+import { directory, run } from './helpers.mjs';
 
 const output = await generate();
 const ledger = JSON.parse(await readFile(join(directory, 'Matched/allowances.json')));
 
 test('production arc-gen output compares file-by-file against untouched pinned C# captures', async () => {
     await compare(output);
+});
+
+test('generation and check ignore inherited workspace and toolchain overrides', async () => {
+    const generated = run(process.execPath, [join(directory, 'Matched/prepare.mjs')], directory, {
+        ...process.env,
+        GOWORK: join(output, 'missing.go.work'),
+        GOTOOLCHAIN: 'invalid-toolchain'
+    }).trim();
+    await compare(generated);
 });
 
 test('every API fragment and every exact allowance rejects a new difference', async () => {
