@@ -219,14 +219,28 @@ func TestGeneratedRegistrationsOccupyTheManualIdentities(t *testing.T) {
 }
 
 func TestGeneratedScopedRegistrationsDeclareDependencyKeys(t *testing.T) {
-	builder, err := arc.NewBuilder(arc.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := RegisterArtifacts(builder); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := builder.Build(); err == nil {
-		t.Fatal("Build accepted scoped validator and policy keys without a scope factory or bindings")
+	rules := func(context.Context, *execution.Scope) (ownerRules, error) { return allowList{"known": true}, nil }
+	log := func(context.Context, *execution.Scope) (auditLog, error) { return &counter{}, nil }
+	for _, tc := range []struct {
+		name     string
+		bindings ArcBindings
+		want     error
+	}{
+		{"missing ownerRules", ArcBindings{ResolveAuditLog: log}, validation.ErrInvalidRegistration},
+		{"missing auditLog", ArcBindings{ResolveOwnerRules: rules}, authorization.ErrInvalidConfiguration},
+		{"both keys supplied", ArcBindings{ResolveOwnerRules: rules, ResolveAuditLog: log}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			builder, err := arc.NewBuilder(arc.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := RegisterArtifacts(builder, tc.bindings); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := builder.Build(); !errors.Is(err, tc.want) {
+				t.Fatalf("Build error = %v, want %v", err, tc.want)
+			}
+		})
 	}
 }

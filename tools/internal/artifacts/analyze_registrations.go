@@ -180,7 +180,18 @@ func (a *analysis) nameable(t types.Type, seen map[types.Type]bool) bool {
 		return true
 	}
 	seen[t] = true
-	switch t := types.Unalias(t).(type) {
+	switch t := t.(type) {
+	case *types.Alias:
+		if obj := t.Obj(); obj.Pkg() != nil && obj.Pkg() != a.pkg.Types && !obj.Exported() {
+			return false
+		}
+		for i := range t.TypeArgs().Len() {
+			if !a.nameable(t.TypeArgs().At(i), seen) {
+				return false
+			}
+		}
+		// The emitter names the alias, not its possibly inaccessible target.
+		return true
 	case *types.Named:
 		if obj := t.Obj(); obj.Pkg() != nil && obj.Pkg() != a.pkg.Types && !obj.Exported() {
 			return false
@@ -216,9 +227,13 @@ func (a *analysis) nameable(t types.Type, seen map[types.Type]bool) bool {
 func (a *analysis) checkRegistrationIdentities() error {
 	key := func(t types.Type) string { return types.TypeString(t, nil) }
 	sort.SliceStable(a.validators, func(i, j int) bool { return key(a.validators[i].model) < key(a.validators[j].model) })
-	for i := 1; i < len(a.validators); i++ {
-		if types.Identical(a.validators[i-1].model, a.validators[i].model) {
-			return diagnostic(a.pkg, a.validators[i].pos, "duplicate arc:validator for %s; %s already validates it", key(a.validators[i].model), a.validators[i-1].name)
+	for i, current := range a.validators {
+		// Display names determine emission order, not identity: aliases of the
+		// same type need not be adjacent in that order.
+		for _, previous := range a.validators[:i] {
+			if types.Identical(previous.model, current.model) {
+				return diagnostic(a.pkg, current.pos, "duplicate arc:validator for %s; %s already validates it", key(current.model), previous.name)
+			}
 		}
 	}
 	sort.SliceStable(a.policies, func(i, j int) bool { return a.policies[i].name < a.policies[j].name })

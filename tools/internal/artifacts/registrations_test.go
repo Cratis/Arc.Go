@@ -52,6 +52,89 @@ func TestValidatorAndPolicyDirectivesMatchManualRegistrationInAnExternalConsumer
 	}
 }
 
+func TestValidatorModelsCanUseExportedAliasesInAnExternalConsumer(t *testing.T) {
+	dir := consumer(t)
+	put(t, filepath.Join(dir, "models", "models.go"), `package models
+type hidden struct{ Name string }
+type Model = hidden
+type hiddenGeneric[T any] struct{ Value T }
+type GenericModel[T any] = hiddenGeneric[T]
+`)
+	put(t, filepath.Join(dir, "artifacts.go"), `package consumer
+import (
+	"context"
+	"example.test/consumer/models"
+	"github.com/cratis/arc.go/validation"
+)
+//arc:command
+//arc:allow-anonymous
+type cmd struct{ Model models.Model; Generic models.GenericModel[string] }
+func (cmd) Handle() error { return nil }
+//arc:validator
+type modelValidator struct{}
+func (modelValidator) Validate(context.Context, models.Model) ([]validation.Result, error) {
+	return []validation.Result{{Severity: validation.Error, Message: "Alias validated"}}, nil
+}
+//arc:validator
+type genericValidator struct{}
+func (genericValidator) Validate(context.Context, models.GenericModel[string]) ([]validation.Result, error) {
+	return []validation.Result{{Severity: validation.Error, Message: "Generic alias validated"}}, nil
+}
+`)
+	generate(t, Config{Dir: dir})
+	for _, want := range []string{"Register[arcgenmodels.Model]", "Register[arcgenmodels.GenericModel[string]]"} {
+		if !bytes.Contains(get(t, filepath.Join(dir, Filename)), []byte(want)) {
+			t.Fatalf("generated adapter does not preserve accessible alias %q", want)
+		}
+	}
+	put(t, filepath.Join(dir, "consumer_test.go"), `package consumer
+import (
+	"context"
+	"reflect"
+	"testing"
+	"example.test/consumer/models"
+	arc "github.com/cratis/arc.go"
+	"github.com/cratis/arc.go/commands"
+	"github.com/cratis/arc.go/metadata"
+	"github.com/cratis/arc.go/validation"
+)
+func TestGeneratedAliasesMatchManualRegistration(t *testing.T) {
+	var results [][]validation.Result
+	for _, generated := range []bool{false, true} {
+		builder, err := arc.NewBuilder(arc.Options{})
+		if err != nil { t.Fatal(err) }
+		if generated {
+			if err := RegisterArtifacts(builder); err != nil { t.Fatal(err) }
+		} else {
+			if err := commands.Register[cmd](builder,
+				commands.Invoke(func(_ context.Context, _ *commands.Invocation, value cmd) (commands.NoResponse, error) { return commands.NoResponse{}, value.Handle() }),
+				commands.WithAuthorization[cmd](metadata.Authorization{AllowAnonymous: true})); err != nil { t.Fatal(err) }
+			if err := validation.Register[models.Model](builder.Validators(), modelValidator{}); err != nil { t.Fatal(err) }
+			if err := validation.Register[models.GenericModel[string]](builder.Validators(), genericValidator{}); err != nil { t.Fatal(err) }
+		}
+		app, err := builder.Build()
+		if err != nil { t.Fatal(err) }
+		if err := app.Start(t.Context()); err != nil { t.Fatal(err) }
+		t.Cleanup(func() { if err := app.Shutdown(context.Background()); err != nil { t.Error(err) } })
+		result, err := app.Commands().Execute(t.Context(), cmd{})
+		if err != nil { t.Fatal(err) }
+		results = append(results, result.Details().ValidationResults)
+	}
+	if len(results[0]) != 2 || !reflect.DeepEqual(results[0], results[1]) {
+		t.Fatalf("manual and generated alias validation differ: %v", results)
+	}
+}
+`)
+	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "test", "-mod=mod", "-count=1", "-timeout=30s", "./...")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=local")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("generated alias consumer did not match manual registration: %v\n%s", err, output)
+	}
+}
+
 // registrationDiagnosticCases are rejected declarations; each runs in its own
 // package of one module so a single load covers every case.
 var registrationDiagnosticCases = map[string]struct{ source, want string }{
@@ -101,6 +184,18 @@ type v struct{}
 func (v) Validate(context.Context, cmd) ([]validation.Result, error) { return nil, nil }
 //arc:validator
 func newV() v { return v{} }`, "duplicate arc:validator for"},
+	"duplicatealiasedvalidator": {`type Z struct{}
+type A = Z
+type M struct{}
+//arc:validator
+type aliasValidator struct{}
+func (aliasValidator) Validate(context.Context, A) ([]validation.Result, error) { return nil, nil }
+//arc:validator
+type middleValidator struct{}
+func (middleValidator) Validate(context.Context, M) ([]validation.Result, error) { return nil, nil }
+//arc:validator
+type originalValidator struct{}
+func (originalValidator) Validate(context.Context, Z) ([]validation.Result, error) { return nil, nil }`, "duplicate arc:validator for example.test/consumer/duplicatealiasedvalidator.Z; aliasValidator already validates it"},
 	"conceptvalue": {`//arc:validator concept=yes
 type v struct{}`, "concept must be true or false"},
 	"combined": {`//arc:validator
