@@ -157,7 +157,7 @@ func awaitReactorOutcome(t *testing.T, ctx, poll context.Context, store *chronic
 	if position == nil {
 		t.Fatal("append omitted position")
 	}
-	wait, cancel := context.WithTimeout(poll, 15*time.Second)
+	wait, cancel := context.WithTimeoutCause(poll, 15*time.Second, errObserverWaitElapsed)
 	defer cancel()
 	ticker := time.NewTicker(25 * time.Millisecond)
 	defer ticker.Stop()
@@ -171,22 +171,43 @@ func awaitReactorOutcome(t *testing.T, ctx, poll context.Context, store *chronic
 		}
 		select {
 		case <-wait.Done():
-			diagnoseReactorStall(t, ctx, store, deliveries, source, *position, failure)
+			if err := poll.Err(); err != nil {
+				t.Fatal("test context exhausted while waiting for reactor outcome:", err)
+			}
+			if err := ctx.Err(); err != nil {
+				t.Fatal("test context exhausted while waiting for reactor outcome:", err)
+			}
+			diagnoseReactorStall(t, ctx, store, deliveries, source, *position, observerWaitElapsed(wait), failure)
 			return
 		case <-ticker.C:
 		}
 	}
 }
 
-func diagnoseReactorStall(t *testing.T, parent context.Context, store *chronicle.EventStore, deliveries *reactorDeliveries, source events.SourceID, position events.SequenceNumber, failure string) {
+func diagnoseReactorStall(t *testing.T, parent context.Context, store *chronicle.EventStore, deliveries *reactorDeliveries, source events.SourceID, position events.SequenceNumber, waitElapsed bool, failure string) {
+	t.Helper()
+	stall, evidence := observeStall(t, parent, store, "arc-create", events.EventLog, position, deliveries.count(source), waitElapsed, failure)
+	evidence = fmt.Sprintf("source=%s %s", source, evidence)
+	if stall.matchesChronicle4548() {
+		knownKernelDefectObserved(t, chronicle4548+": reactor stranded behind the event-log tail; re-enable with "+reactorStrandIssue, failure, evidence)
+		return
+	}
+	t.Fatal(failure, evidence)
+}
+
+// observeStall reads the kernel state of an observer that did not reach the
+// event at position and fails the test when that state is unreadable. delivered
+// is the client-side invocation count, zero for observers with no client hook.
+// waitElapsed records whether the full observation window elapsed.
+func observeStall(t *testing.T, parent context.Context, store *chronicle.EventStore, observerID observation.ID, sequence events.SequenceID, position events.SequenceNumber, delivered int, waitElapsed bool, failure string) (reactorStall, string) {
 	t.Helper()
 	read, cancel := context.WithTimeout(context.WithoutCancel(parent), 5*time.Second)
 	defer cancel()
-	info, err := store.Observers().Get(read, "arc-create", events.EventLog)
+	info, err := store.Observers().Get(read, observerID, sequence)
 	if err != nil || info == nil {
 		t.Fatal(failure, "; observer unavailable:", err)
 	}
-	partitions, err := store.Observers().FailedPartitions(read, "arc-create")
+	partitions, err := store.Observers().FailedPartitions(read, observerID)
 	if err != nil {
 		t.Fatal(failure, "; failed partitions unavailable:", err)
 	}
@@ -197,16 +218,11 @@ func diagnoseReactorStall(t *testing.T, parent context.Context, store *chronicle
 		}
 	}
 	stall := reactorStall{
-		Position: uint64(position), Delivered: deliveries.count(source), UnresolvedFailures: unresolved,
+		WaitElapsed: waitElapsed, Position: uint64(position), Delivered: delivered, UnresolvedFailures: unresolved,
 		Active: info.RunningState() == observation.Active, Subscribed: info.IsSubscribed(),
 		LastHandled: uint64(info.LastHandled()), Tail: uint64(info.Tail()),
 	}
-	evidence := fmt.Sprintf("source=%s %+v next=%d handled=%d", source, stall, info.Next(), info.HandledEventCount())
-	if stall.matchesChronicle4548() {
-		knownKernelDefectObserved(t, chronicle4548+": reactor stranded behind the event-log tail; re-enable with "+reactorStrandIssue, failure, evidence)
-		return
-	}
-	t.Fatal(failure, evidence)
+	return stall, fmt.Sprintf("observer=%s %+v next=%d handled=%d", observerID, stall, info.Next(), info.HandledEventCount())
 }
 
 // failureClient uses the public kernel OAuth/contract APIs, not SDK internal test helpers.
