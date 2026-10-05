@@ -16,6 +16,9 @@ import (
 	"github.com/cratis/arc.go/queries"
 	"github.com/cratis/arc.go/recipes/internal/fixture"
 	"github.com/cratis/arc.go/recipes/structvalidation"
+	"github.com/cratis/arc.go/validation"
+
+	"github.com/go-playground/validator/v10"
 )
 
 const (
@@ -24,14 +27,14 @@ const (
 )
 
 type Label struct {
-	Value string `json:"value" rules:"min=2"`
+	Value string `json:"value" playground:"min=2"`
 }
 
 // OpenAccount mixes Arc's portable required tag with go-playground rules.
 type OpenAccount struct {
-	Name   string  `json:"name" validate:"required" rules:"max=10"`
-	Email  string  `json:"email" rules:"required,email"`
-	Labels []Label `json:"labels" rules:"dive"`
+	Name   string  `json:"name" validate:"required" playground:"max=10"`
+	Email  string  `json:"email" playground:"required,email"`
+	Labels []Label `json:"labels" playground:"dive"`
 }
 
 type Account struct {
@@ -39,7 +42,7 @@ type Account struct {
 }
 
 type ByEmail struct {
-	Email string `json:"email" rules:"required,email"`
+	Email string `json:"email" playground:"required,email"`
 }
 
 type finding struct {
@@ -173,6 +176,89 @@ func TestPlaygroundRulesInArcsValidateTagFailRegistration(t *testing.T) {
 	}
 	if err == nil {
 		t.Fatal("expected Arc to reject the unknown validate rule")
+	}
+}
+
+type PortableAndPlayground struct {
+	Email string `json:"email" playground:"required,email" rules:"[{\"name\":\"maxLength\",\"arguments\":[30],\"message\":\"Email is too long.\"}]"`
+}
+
+func TestPlaygroundCoexistsWithPortableRules(t *testing.T) {
+	portable, err := validation.NewPortable[PortableAndPlayground]()
+	if err != nil {
+		t.Fatal(err)
+	}
+	playground := structvalidation.Validator[PortableAndPlayground](structvalidation.NewRules())
+	for _, tc := range []struct {
+		value      string
+		portable   int
+		playground int
+	}{
+		{"ada@example.com", 0, 0},
+		{"not-an-email", 0, 1},
+		{"a-very-long-email-address@example.com", 1, 0},
+	} {
+		t.Run(tc.value, func(t *testing.T) {
+			model := PortableAndPlayground{Email: tc.value}
+			for _, check := range []struct {
+				validator validation.Validator[PortableAndPlayground]
+				want      int
+			}{{portable, tc.portable}, {playground, tc.playground}} {
+				results, err := check.validator.Validate(t.Context(), model)
+				if err != nil || len(results) != check.want {
+					t.Fatalf("results = %+v, %v; want %d", results, err, check.want)
+				}
+			}
+		})
+	}
+}
+
+type Inner struct {
+	Code string `playground:"required"`
+}
+
+type WireCommand struct {
+	Inner
+	DisplayName string `playground:"required"`
+	Email       string `json:",omitempty" playground:"required,email"`
+}
+
+func TestHTTPFindingsUseCamelCaseAndFlattenedWireMembers(t *testing.T) {
+	var handled atomic.Int32
+	f := fixture.New(t, arc.Options{}, func(builder *arc.Builder) error {
+		return commands.Register[WireCommand](builder,
+			commands.Handle(func(WireCommand, context.Context) (string, error) {
+				handled.Add(1)
+				return "opened", nil
+			}),
+			commands.WithPath[WireCommand](accountPath),
+			commands.WithValidator(structvalidation.Validator[WireCommand](structvalidation.NewRules())))
+	})
+	server := fixture.Serve(t, f.App)
+	for _, path := range []string{accountPath + "/validate", accountPath} {
+		r := fixture.Do(t, server, http.MethodPost, path, `{}`, nil)
+		want := [][]string{{"code"}, {"displayName"}, {"email"}}
+		if r.Status != http.StatusBadRequest || !slices.EqualFunc(membersOf(decode(t, r)), want, slices.Equal) {
+			t.Fatalf("%s: got %d %q", path, r.Status, r.Body)
+		}
+	}
+	r := fixture.Do(t, server, http.MethodPost, accountPath,
+		`{"code":"ok","displayName":"Ada","email":"ada@example.com"}`, nil)
+	if r.Status != http.StatusOK || handled.Load() != 1 {
+		t.Fatalf("valid wire members: got %d %q, handled %d", r.Status, r.Body, handled.Load())
+	}
+}
+
+func TestMemberlessStructFailureTargetsTheModel(t *testing.T) {
+	rules := structvalidation.NewRules()
+	rules.RegisterStructValidation(func(level validator.StructLevel) {
+		level.ReportError(level.Current().Interface(), "", "", "account", "")
+	}, WireCommand{})
+	results, err := structvalidation.Validator[WireCommand](rules).Validate(t.Context(), WireCommand{
+		Inner: Inner{Code: "ok"}, DisplayName: "Ada", Email: "ada@example.com",
+	})
+	if err != nil || len(results) != 1 || len(results[0].Members) != 0 {
+		t.Fatalf("results = %+v, %v; want one model-level finding", results, err)
 	}
 }
 

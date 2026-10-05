@@ -12,6 +12,12 @@ import (
 	"github.com/cratis/arc.go/recipes/internal/fixture"
 )
 
+func TestEchoCoordinatedShutdownDrainsActiveSSE(t *testing.T) {
+	f := fixture.New(t, arc.Options{})
+	server := fixture.Serve(t, echomount.NewEcho(f.App))
+	fixture.VerifyCoordinatedShutdown(t, f, server)
+}
+
 func TestEchoMountPreservesArcBehavior(t *testing.T) {
 	f := fixture.New(t, arc.Options{})
 	server := fixture.Serve(t, echomount.NewEcho(f.App))

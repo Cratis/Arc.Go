@@ -20,6 +20,12 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+func TestGinCoordinatedShutdownDrainsActiveSSE(t *testing.T) {
+	f := fixture.New(t, arc.Options{})
+	server := fixture.Serve(t, ginmount.NewEngine(f.App))
+	fixture.VerifyCoordinatedShutdown(t, f, server)
+}
+
 func TestGinMountPreservesArcBehavior(t *testing.T) {
 	f := fixture.New(t, arc.Options{})
 	server := fixture.Serve(t, ginmount.NewEngine(f.App))

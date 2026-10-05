@@ -52,8 +52,32 @@ Chi versions, hub multiplexing or Chi middleware you add.
 
 ## Own the server lifecycle
 
-Your host owns the listener and server timeouts. Shut the server down first,
-then call `app.Shutdown` with a fresh bounded context. Configure CORS and
+Your host owns the listener and server timeouts. Initiate HTTP shutdown and
+Arc shutdown together, then join both with fresh bounded cleanup budgets.
+Do not wait for `server.Shutdown` before calling `app.Shutdown`: HTTP shutdown
+waits for active SSE handlers, while Arc shutdown cancels and joins their sources.
+Copy this helper into your host and check its returned error:
+
+```go
+// ShutdownHost stops HTTP admission and Arc observations concurrently, then
+// joins both. Each has a fresh five-second cleanup budget, not the canceled
+// signal or request context. Business callbacks must honor cancellation.
+func ShutdownHost(app *arc.Application, server *http.Server) error {
+    httpContext, cancelHTTP := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancelHTTP()
+    arcContext, cancelArc := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancelArc()
+    httpStopped := make(chan error, 1)
+    go func() {
+        httpStopped <- server.Shutdown(httpContext)
+    }()
+    arcError := app.Shutdown(arcContext)
+    return errors.Join(arcError, <-httpStopped)
+}
+```
+
+The mounted-host tests run this sequence with an active SSE subscription and
+check both the drained response and producer cancellation. Configure CORS and
 authentication outside Arc as shown in [CORS and CSRF](cors-csrf.md) and
 [JWT bearer tokens](jwt.md). See [hosting](../core/hosting.md) for the embedding
 contract.

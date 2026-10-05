@@ -14,24 +14,25 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
+	"github.com/cratis/arc.go/serialization"
 	"github.com/cratis/arc.go/validation"
 )
 
 // recipe:start validator-rules
 
-// NewRules returns a validator that reads the `rules` struct tag and reports
-// JSON member names. Arc already owns the `validate` tag, which accepts only
-// required and skipConcept and fails registration on anything else.
+// NewRules returns a validator that reads the `playground` struct tag and
+// reports Arc wire member names. Arc owns both `validate` (required and
+// skipConcept) and `rules` (JSON portable rule descriptors).
 func NewRules() *validator.Validate {
 	rules := validator.New(validator.WithRequiredStructEnabled())
-	rules.SetTagName("rules")
+	rules.SetTagName("playground")
 	rules.RegisterTagNameFunc(func(field reflect.StructField) string {
 		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
 		switch name {
 		case "-":
 			return ""
 		case "":
-			return field.Name
+			return serialization.CamelCase(field.Name)
 		}
 		return name
 	})
@@ -54,8 +55,11 @@ func Validator[T any](rules *validator.Validate) validation.Validator[T] {
 		}
 		results := make([]validation.Result, 0, len(failures))
 		for _, failure := range failures {
-			// Namespace is "Type.member.nested[0].field"; drop the Go type.
-			_, member, _ := strings.Cut(failure.Namespace(), ".")
+			member := wireMember(reflect.TypeOf(value), failure.StructNamespace())
+			var members []string
+			if member != "" {
+				members = []string{member}
+			}
 			rule := failure.Tag()
 			if failure.Param() != "" {
 				rule += "=" + failure.Param()
@@ -63,12 +67,71 @@ func Validator[T any](rules *validator.Validate) validation.Validator[T] {
 			results = append(results, validation.Result{
 				Severity:     validation.Error,
 				Message:      fmt.Sprintf("%s does not satisfy %s.", member, rule),
-				Members:      []string{member},
+				Members:      members,
 				ReasonDetail: &rule,
 			})
 		}
 		return results, nil
 	})
+}
+
+// wireMember maps the Go field namespace, retaining collection indexes but
+// omitting anonymous struct segments that Arc flattens on the wire. Unknown
+// or hidden fields (including memberless struct-level errors) target the model.
+func wireMember(t reflect.Type, namespace string) string {
+	_, path, _ := strings.Cut(namespace, ".")
+	var members []string
+	for path != "" {
+		for t.Kind() == reflect.Pointer {
+			t = t.Elem()
+		}
+		if t.Kind() != reflect.Struct {
+			return ""
+		}
+		end := strings.IndexAny(path, ".[")
+		if end < 0 {
+			end = len(path)
+		}
+		field, ok := t.FieldByName(path[:end])
+		if !ok {
+			return ""
+		}
+		path, t = path[end:], field.Type
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		base := t
+		for base.Kind() == reflect.Pointer {
+			base = base.Elem()
+		}
+		if name == "-" || !field.IsExported() && !field.Anonymous {
+			return ""
+		}
+		flatten := field.Anonymous && name == "" && base.Kind() == reflect.Struct
+		if name == "" {
+			name = serialization.CamelCase(field.Name)
+		}
+		for strings.HasPrefix(path, "[") {
+			end = strings.IndexByte(path, ']')
+			if end < 0 {
+				return ""
+			}
+			name += path[:end+1]
+			path = path[end+1:]
+			for t.Kind() == reflect.Pointer {
+				t = t.Elem()
+			}
+			switch t.Kind() {
+			case reflect.Array, reflect.Slice, reflect.Map:
+				t = t.Elem()
+			default:
+				return ""
+			}
+		}
+		if !flatten {
+			members = append(members, name)
+		}
+		path = strings.TrimPrefix(path, ".")
+	}
+	return strings.Join(members, ".")
 }
 
 // recipe:end

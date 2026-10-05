@@ -14,7 +14,8 @@ import (
 // Protect wraps a started Arc application. Cross-origin browser requests are
 // accepted only from the exact trusted origins, such as
 // "https://app.example.com"; every other cross-site unsafe request (POST,
-// QUERY) is rejected with 403 before Arc runs.
+// QUERY) is rejected with 403 before Arc runs. At builder construction, also
+// set Observable.AllowedOrigins to these origins for WebSocket and hub SSE.
 func Protect(app http.Handler, trustedOrigins ...string) (http.Handler, error) {
 	csrf := http.NewCrossOriginProtection()
 	trusted := make(map[string]bool, len(trustedOrigins))
@@ -41,6 +42,7 @@ func cors(trusted map[string]bool, next http.Handler) http.Handler {
 		header.Set("Access-Control-Allow-Origin", origin)
 		header.Set("Access-Control-Allow-Credentials", "true")
 		if r.Method != http.MethodOptions || r.Header.Get("Access-Control-Request-Method") == "" {
+			header.Set("Access-Control-Expose-Headers", "X-Correlation-ID")
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -48,7 +50,7 @@ func cors(trusted map[string]bool, next http.Handler) http.Handler {
 		header.Add("Vary", "Access-Control-Request-Headers")
 		// QUERY is not CORS-safelisted, so browsers always preflight it.
 		header.Set("Access-Control-Allow-Methods", "GET, HEAD, POST, QUERY")
-		header.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Allowed-Severity, X-Correlation-ID, x-cratis-tenant-id")
+		header.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Allowed-Severity, X-Ignore-Warnings, X-Correlation-ID, x-cratis-tenant-id")
 		header.Set("Access-Control-Max-Age", "600")
 		w.WriteHeader(http.StatusNoContent)
 	})

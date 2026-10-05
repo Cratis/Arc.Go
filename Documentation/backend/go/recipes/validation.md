@@ -15,19 +15,19 @@ findings, and the frontend sees members it can attach to form fields.
 This code is compiled and tested in the [recipes module](index.md):
 
 ```go
-// NewRules returns a validator that reads the `rules` struct tag and reports
-// JSON member names. Arc already owns the `validate` tag, which accepts only
-// required and skipConcept and fails registration on anything else.
+// NewRules returns a validator that reads the `playground` struct tag and
+// reports Arc wire member names. Arc owns both `validate` (required and
+// skipConcept) and `rules` (JSON portable rule descriptors).
 func NewRules() *validator.Validate {
     rules := validator.New(validator.WithRequiredStructEnabled())
-    rules.SetTagName("rules")
+    rules.SetTagName("playground")
     rules.RegisterTagNameFunc(func(field reflect.StructField) string {
         name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
         switch name {
         case "-":
             return ""
         case "":
-            return field.Name
+            return serialization.CamelCase(field.Name)
         }
         return name
     })
@@ -35,10 +35,13 @@ func NewRules() *validator.Validate {
 }
 ```
 
-:::caution[Do not put go-playground rules in the validate tag]
+:::caution[Arc owns validate and rules]
 go-playground reads `validate` by default, and so does Arc. Arc rejects an
-unknown rule such as `validate:"email"` when you register the command. Keep
-`validate:"required"` for Arc and put go-playground rules in `rules`.
+unknown rule such as `validate:"email"` when you register the command. Arc also
+owns `rules`, which accepts a JSON array of portable rule descriptors, not
+comma-separated go-playground rules. Keep `validate:"required"` and portable
+`rules` for Arc; use `playground:"required,email"` or `playground:"max=10"`
+for go-playground, including on declarations consumed by arc-gen.
 :::
 
 ## Adapt failures to Arc results
@@ -56,8 +59,11 @@ func Validator[T any](rules *validator.Validate) validation.Validator[T] {
         }
         results := make([]validation.Result, 0, len(failures))
         for _, failure := range failures {
-            // Namespace is "Type.member.nested[0].field"; drop the Go type.
-            _, member, _ := strings.Cut(failure.Namespace(), ".")
+            member := wireMember(reflect.TypeOf(value), failure.StructNamespace())
+            var members []string
+            if member != "" {
+                members = []string{member}
+            }
             rule := failure.Tag()
             if failure.Param() != "" {
                 rule += "=" + failure.Param()
@@ -65,18 +71,80 @@ func Validator[T any](rules *validator.Validate) validation.Validator[T] {
             results = append(results, validation.Result{
                 Severity:     validation.Error,
                 Message:      fmt.Sprintf("%s does not satisfy %s.", member, rule),
-                Members:      []string{member},
+                Members:      members,
                 ReasonDetail: &rule,
             })
         }
         return results, nil
     })
 }
+
+// wireMember maps the Go field namespace, retaining collection indexes but
+// omitting anonymous struct segments that Arc flattens on the wire. Unknown
+// or hidden fields (including memberless struct-level errors) target the model.
+func wireMember(t reflect.Type, namespace string) string {
+    _, path, _ := strings.Cut(namespace, ".")
+    var members []string
+    for path != "" {
+        for t.Kind() == reflect.Pointer {
+            t = t.Elem()
+        }
+        if t.Kind() != reflect.Struct {
+            return ""
+        }
+        end := strings.IndexAny(path, ".[")
+        if end < 0 {
+            end = len(path)
+        }
+        field, ok := t.FieldByName(path[:end])
+        if !ok {
+            return ""
+        }
+        path, t = path[end:], field.Type
+        name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+        base := t
+        for base.Kind() == reflect.Pointer {
+            base = base.Elem()
+        }
+        if name == "-" || !field.IsExported() && !field.Anonymous {
+            return ""
+        }
+        flatten := field.Anonymous && name == "" && base.Kind() == reflect.Struct
+        if name == "" {
+            name = serialization.CamelCase(field.Name)
+        }
+        for strings.HasPrefix(path, "[") {
+            end = strings.IndexByte(path, ']')
+            if end < 0 {
+                return ""
+            }
+            name += path[:end+1]
+            path = path[end+1:]
+            for t.Kind() == reflect.Pointer {
+                t = t.Elem()
+            }
+            switch t.Kind() {
+            case reflect.Array, reflect.Slice, reflect.Map:
+                t = t.Elem()
+            default:
+                return ""
+            }
+        }
+        if !flatten {
+            members = append(members, name)
+        }
+        path = strings.TrimPrefix(path, ".")
+    }
+    return strings.Join(members, ".")
+}
 ```
 
 The callback returns an error only for a programming mistake, such as a
 non-struct `T`; Arc treats that as a failure of the validator, not as a
 finding. Messages are client-visible, so they name only the member and the rule.
+Untagged fields and `json:",omitempty"` use Arc's camelCase names; untagged
+anonymous structs are flattened. Memberless struct-level errors have no members,
+so the client shows a model-level finding rather than targeting an empty field.
 
 ## Register the validator
 

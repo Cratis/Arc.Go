@@ -50,6 +50,10 @@ Echo versions, hub multiplexing or Echo middleware you add.
 
 Use an Arc authentication handler such as the [JWT bearer recipe](jwt.md), or
 `authentication.HostPrincipal()` after your host has installed a verified Arc
-principal. Your host owns the listener and timeouts; shut the server down
-first, then call `app.Shutdown` with a fresh bounded context. See
-[hosting](../core/hosting.md) and the [HTTP contract](../reference/http-contract.md).
+principal. Your host owns the listener and timeouts. Initiate `server.Shutdown`
+and `app.Shutdown` together, then join both with fresh bounded cleanup budgets,
+as in the [coordinated shutdown helper](chi.md#own-the-server-lifecycle).
+Waiting for HTTP drain first stalls active SSE handlers until the deadline;
+Arc must cancel their observations while HTTP drains. The Echo tests exercise
+this sequence with an active SSE stream. See [hosting](../core/hosting.md) and
+the [HTTP contract](../reference/http-contract.md).

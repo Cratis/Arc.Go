@@ -12,6 +12,12 @@ import (
 	"github.com/cratis/arc.go/recipes/internal/fixture"
 )
 
+func TestChiCoordinatedShutdownDrainsActiveSSE(t *testing.T) {
+	f := fixture.New(t, arc.Options{})
+	server := fixture.Serve(t, chimount.NewRouter(f.App))
+	fixture.VerifyCoordinatedShutdown(t, f, server)
+}
+
 func TestChiMountPreservesArcBehavior(t *testing.T) {
 	f := fixture.New(t, arc.Options{})
 	server := fixture.Serve(t, chimount.NewRouter(f.App))

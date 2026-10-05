@@ -69,6 +69,9 @@ Gin versions, hub multiplexing or Gin middleware you add.
 A Gin-authenticated user is not an Arc principal. Register an Arc
 authentication handler, such as the [JWT bearer recipe](jwt.md), or install
 verified `identity.WithPrincipal` metadata with `authentication.HostPrincipal()`.
-Your host owns the listener and server timeouts; shut the server down first,
-then call `app.Shutdown` with a fresh bounded context. See
-[hosting](../core/hosting.md).
+Your host owns the listener and server timeouts. Initiate `server.Shutdown` and
+`app.Shutdown` together, then join both with fresh bounded cleanup budgets, as
+in the [coordinated shutdown helper](chi.md#own-the-server-lifecycle).
+Waiting for HTTP drain first stalls active SSE handlers until the deadline;
+Arc must cancel their observations while HTTP drains. The Gin tests exercise
+this sequence with an active SSE stream. See [hosting](../core/hosting.md).

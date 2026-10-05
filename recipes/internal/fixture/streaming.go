@@ -140,6 +140,23 @@ func VerifyWebSocket(t *testing.T, f *Application, server *httptest.Server) {
 	joined(t, f)
 }
 
+// VerifyCoordinatedShutdown checks the documented host shutdown sequence with
+// an active SSE handler: HTTP draining must not wait for Arc cancellation.
+func VerifyCoordinatedShutdown(t *testing.T, f *Application, server *httptest.Server) {
+	t.Helper()
+	response := openSSE(t, server)
+	reader := bufio.NewReader(response.Body)
+	readSSE(t, reader, "first")
+	readSSE(t, reader, "second")
+	if err := ShutdownHost(f.App, server.Config); err != nil {
+		t.Fatal(err)
+	}
+	joined(t, f)
+	if tail, err := io.ReadAll(reader); err != nil || len(tail) != 0 {
+		t.Fatalf("shutdown SSE tail = %q, %v", tail, err)
+	}
+}
+
 // VerifyShutdown checks cancellation and joining with an active mounted stream,
 // then proves stopped Arc admission still fails closed through the host.
 func VerifyShutdown(t *testing.T, f *Application, server *httptest.Server) {
