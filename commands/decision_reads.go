@@ -11,16 +11,71 @@ import (
 	boundary "github.com/cratis/arc.go/internal/pipeline"
 )
 
-// This is a staged internal mechanism, NOT an enabled command profile. Pipeline
-// admission, provider certification and dependency/Provide guards must be wired
-// together before exposing it. In particular, a caller-supplied boolean cannot
-// certify a provider or validator. No public API currently activates this code.
-var errDecisionRead = errors.New("arc: decision read refused")
+// ErrDecisionRead identifies a refused decision read: an inadmissible profile,
+// an uncertified provider, a failed provider stage, or a read that was not issued
+// to the current invocation. The original cause is retained for errors.Is/As.
+// It is always an infrastructure failure, never an advisory validation finding,
+// so no allowed validation severity can turn a refused read into success.
+var ErrDecisionRead = errors.New("arc: decision read refused")
 
-type decisionAdmission struct {
-	protected, unprotected bool
-	provider, owner        bool // facts supplied by the future trusted integration boundary
+// DecisionTarget identifies one read. Every field takes part in the invocation
+// cache key, so the same model and key from another provider, store or namespace
+// is a separate read. All fields are required.
+type DecisionTarget struct {
+	// Provider must be certified with Registry.AddDecisionProvider.
+	Provider *DecisionProvider
+	// Model is the read-model type.
+	Model reflect.Type
+	// Store, Namespace and Key select the instance within the provider.
+	Store, Namespace, Key string
 }
+
+// DecisionSource is the provider-neutral seam a decision-read provider supplies
+// for one target. Arc calls the stages in order, re-checking callback and
+// security continuity between them, and never holds a lock while calling them.
+// A stage that panics is converted to an error.
+//
+// Admit refuses unsupported models (for example classified ones) before any
+// acquisition. Acquire returns the provider's opaque read evidence; it must not
+// be nil and must not be manufactured by the application. Check re-validates that
+// evidence (lifetime, target) on every issue and verification. Enroll registers
+// the evidence with the provider's current completion owner so a competing write
+// rejects the whole batch; Arc calls it for every protected issue, including
+// cached ones, and never in validation-only execution.
+type DecisionSource interface {
+	Admit(context.Context) error
+	Acquire(context.Context) (any, error)
+	Check(context.Context, any) error
+	Enroll(context.Context, any) error
+}
+
+// DecisionEvidence is implemented by values that carry issued decision reads. A
+// protected command's Provide payload that implements it is verified before
+// Handle runs; *DecisionRead implements it. Arc does not inspect other payload
+// shapes, so a provider-typed decision value should implement this interface. A protected
+// command's evidence must carry at least one issued read. An unmarked or
+// unprotected command may return evidence that carries no reads as an advisory
+// snapshot; any read it does carry is refused, because it was never issued.
+type DecisionEvidence interface{ DecisionReads() []*DecisionRead }
+
+// DecisionRead is an issued read. Only ReadDecision issues one; a zero or copied
+// value is never accepted. It is borrowed, invocation-owned evidence: verify it
+// with VerifyDecision before relying on it in another callback.
+type DecisionRead struct {
+	issue *issuedRead
+}
+
+// Value returns the provider's opaque evidence. It is not a proof by itself.
+func (r *DecisionRead) Value() any {
+	if r == nil || r.issue == nil {
+		return nil
+	}
+	return r.issue.value
+}
+
+// DecisionReads implements DecisionEvidence. A nil read yields one nil entry,
+// which verification refuses.
+func (r *DecisionRead) DecisionReads() []*DecisionRead { return []*DecisionRead{r} }
 
 type decisionMode uint8
 
@@ -29,106 +84,106 @@ const (
 	decisionValidation
 )
 
-// The provider identity distinguishes clients even when store names match. These
-// identities and callbacks will require a qualified cross-module seam; they are
-// deliberately not exported or accepted from command payloads.
-type decisionProviderIdentity struct{ _ byte }
 type decisionTarget struct {
-	provider              *decisionProviderIdentity
+	provider              *DecisionProvider
 	model                 reflect.Type
 	store, namespace, key string
 }
-type decisionSource struct {
-	admit   func(context.Context) error
-	acquire func(context.Context) (any, error)
-	check   func(context.Context, any) error
-	enroll  func(context.Context, any) error
-}
-type decisionRead struct {
-	value any // opaque provider-issued read, never an Arc-manufactured token
-	check func(context.Context, any) error
-}
 type decisionPending struct {
-	done chan struct{}
-	read *decisionRead
-	err  error
+	done  chan struct{}
+	read  *DecisionRead
+	issue *issuedRead
+	err   error
 }
 type decisionReads struct {
 	mode   decisionMode
 	reads  map[decisionTarget]*decisionPending
-	issued map[*decisionRead]struct{}
+	issued map[*DecisionRead]*issuedRead
+}
+
+// issuedRead is the immutable issuance record for one handle. Verification uses
+// it instead of the handle's own fields, which application code can overwrite by
+// copying another DecisionRead over the handle.
+type issuedRead struct {
+	value any
+	check func(context.Context, any) error
 }
 
 var decisionState = NewStateKey[*decisionReads]()
 
-// checkDecisionAdmission refuses the initial narrow profile before any provider,
-// validator or business callback. Arbitrary validators (including model methods
-// and registered graph rules) cannot be certified: this checkpoint admits only
-// WithoutModelValidation and no custom/scoped validators. Operations are refused.
-func checkDecisionAdmission(r Registration, validationOnly bool, admission decisionAdmission) error {
-	if !admission.protected || admission.unprotected || !admission.provider ||
-		(!validationOnly && !admission.owner) || r.operations ||
-		!r.withoutModel || len(r.validators) != 0 {
-		return errDecisionRead
+// decisionsFor admits the frame and the target's provider, then returns the
+// frame-local cache, creating it on first admitted use. The state lives in the
+// frame, so nested commands and validation-only runs never share provenance, and
+// it is discarded when the frame ends. Called under the state locks only.
+func decisionsFor(e *Execution, provider *DecisionProvider) (*decisionReads, error) {
+	f := e.frame
+	if f.registration.decisions != DecisionsProtected {
+		return nil, ErrDecisionProfile
 	}
-	return nil
-}
-
-// beginDecisionReads attaches the already-admitted profile to a live frame. The
-// pure check above must also run before OpenResources or other user factories.
-func beginDecisionReads(ctx context.Context, inv *Invocation, admission decisionAdmission) error {
-	return withState(ctx, inv, func(e *Execution) error {
-		if err := checkDecisionAdmission(e.frame.registration, e.frame.snapshot.validationOnly, admission); err != nil {
-			return err
-		}
-		if e.frame.state == nil {
-			e.frame.state = make(map[*stateIdentity]any)
-		}
-		if _, exists := e.frame.state[decisionState.identity]; exists {
-			return errDecisionRead // never reset provenance partway through a command
-		}
-		mode := decisionProtected
-		if e.frame.snapshot.validationOnly {
-			mode = decisionValidation
-		}
-		e.frame.state[decisionState.identity] = stateValue[*decisionReads]{&decisionReads{
-			mode: mode, reads: make(map[decisionTarget]*decisionPending), issued: make(map[*decisionRead]struct{}),
-		}}
-		return nil
-	})
+	if err := checkDecisionRegistration(f.registration); err != nil {
+		return nil, err
+	}
+	if f.pipeline == nil {
+		return nil, ErrDecisionProfile
+	}
+	if _, certified := f.pipeline.decisionProviders[provider]; !certified {
+		return nil, ErrDecisionProfile
+	}
+	if !f.snapshot.validationOnly && len(f.pipeline.terminal) == 0 {
+		return nil, ErrDecisionProfile // no completion owner can enroll the read
+	}
+	if value, ok := f.state[decisionState.identity].(stateValue[*decisionReads]); ok && value.value != nil {
+		return value.value, nil
+	}
+	if f.state == nil {
+		f.state = make(map[*stateIdentity]any)
+	}
+	mode := decisionProtected
+	if f.snapshot.validationOnly {
+		mode = decisionValidation
+	}
+	state := &decisionReads{mode: mode, reads: make(map[decisionTarget]*decisionPending), issued: make(map[*DecisionRead]*issuedRead)}
+	f.state[decisionState.identity] = stateValue[*decisionReads]{state}
+	return state, nil
 }
 
 func currentDecisionReads(e *Execution) (*decisionReads, error) {
 	value, ok := e.frame.state[decisionState.identity].(stateValue[*decisionReads])
 	if !ok || value.value == nil {
-		return nil, errDecisionRead
+		return nil, ErrDecisionRead
 	}
 	return value.value, nil
 }
 
-// readDecision shares one in-flight acquisition per invocation/mode/target. The
-// first acquisition's context owns the fold; canceled waiters do not cancel it.
-// Acquisitions (including failures) are cached; enrollment is repeated on every
-// resolution against the current owner. No callback runs under the state lock.
-func readDecision(ctx context.Context, inv *Invocation, target decisionTarget, source decisionSource) (read *decisionRead, err error) {
+// ReadDecision issues a decision read for target within a protected command's
+// invocation. It refuses, before any provider stage, an unmarked or unprotected
+// command, an uncertified provider or a missing completion owner.
+//
+// One acquisition is shared per command frame and target, including concurrent
+// callers; the first caller's context owns it and canceled waiters do not cancel
+// it. Results, including failures, are cached for the frame and never retried.
+// Every call re-checks the evidence and, outside validation-only execution,
+// re-enrolls it with source's current owner. Validation-only execution uses a
+// separate cache and never enrolls. Every failure wraps ErrDecisionRead.
+func ReadDecision(ctx context.Context, inv *Invocation, target DecisionTarget, source DecisionSource) (read *DecisionRead, err error) {
 	defer func() { err = decisionFailure(err) }()
-	if target.provider == nil || target.model == nil || target.store == "" || target.namespace == "" || target.key == "" ||
-		source.admit == nil || source.acquire == nil || source.check == nil || source.enroll == nil {
-		return nil, errDecisionRead
+	if target.Provider == nil || target.Model == nil || target.Store == "" || target.Namespace == "" || target.Key == "" || nilValue(source) {
+		return nil, ErrInvalidRegistration
 	}
+	key := decisionTarget{provider: target.Provider, model: target.Model, store: target.Store, namespace: target.Namespace, key: target.Key}
 	var pending *decisionPending
 	var state *decisionReads
 	var first bool
 	err = withState(ctx, inv, func(e *Execution) error {
 		var err error
-		state, err = currentDecisionReads(e)
+		state, err = decisionsFor(e, target.Provider)
 		if err != nil {
 			return err
 		}
-		pending = state.reads[target]
+		pending = state.reads[key]
 		if pending == nil {
 			pending = &decisionPending{done: make(chan struct{})}
-			state.reads[target], first = pending, true
+			state.reads[key], first = pending, true
 		}
 		return nil
 	})
@@ -142,31 +197,32 @@ func readDecision(ctx context.Context, inv *Invocation, target decisionTarget, s
 			if err := inv.Execution().Check(ctx); err != nil {
 				return err
 			}
-			if err := source.admit(ctx); err != nil {
+			if err := source.Admit(ctx); err != nil {
 				return err
 			}
 			if err := inv.Execution().Check(ctx); err != nil {
 				return err
 			}
-			value, err := source.acquire(ctx)
+			value, err := source.Acquire(ctx)
 			if err != nil {
 				return err
 			}
 			if nilValue(value) {
-				return errDecisionRead
+				return ErrDecisionRead
 			}
 			if err := inv.Execution().Check(ctx); err != nil {
 				return err
 			}
-			if err := source.check(ctx, value); err != nil {
+			if err := source.Check(ctx, value); err != nil {
 				return err
 			}
 			return withState(ctx, inv, func(e *Execution) error {
 				current, err := currentDecisionReads(e)
 				if err != nil || current != state {
-					return errDecisionRead
+					return ErrDecisionRead
 				}
-				pending.read = &decisionRead{value: value, check: source.check}
+				pending.issue = &issuedRead{value: value, check: source.Check}
+				pending.read = &DecisionRead{issue: pending.issue}
 				return nil
 			})
 		})
@@ -183,9 +239,12 @@ func readDecision(ctx context.Context, inv *Invocation, target decisionTarget, s
 	if err := inv.Execution().Check(ctx); err != nil {
 		return nil, err
 	}
-	read = pending.read
+	read, issue := pending.read, pending.issue
+	if read == nil || issue == nil || read.issue != issue {
+		return nil, ErrDecisionRead
+	}
 	err = boundary.Call(ctx, func(ctx context.Context) error {
-		if err := read.check(ctx, read.value); err != nil {
+		if err := issue.check(ctx, issue.value); err != nil {
 			return err
 		}
 		// Provider checks may outlive the callback or change security continuity.
@@ -193,8 +252,11 @@ func readDecision(ctx context.Context, inv *Invocation, target decisionTarget, s
 		if err := inv.Execution().Check(ctx); err != nil {
 			return err
 		}
+		if read.issue != issue {
+			return ErrDecisionRead
+		}
 		if state.mode == decisionProtected {
-			return source.enroll(ctx, read.value)
+			return source.Enroll(ctx, issue.value)
 		}
 		return nil
 	})
@@ -203,10 +265,10 @@ func readDecision(ctx context.Context, inv *Invocation, target decisionTarget, s
 	}
 	err = withState(ctx, inv, func(e *Execution) error {
 		current, err := currentDecisionReads(e)
-		if err != nil || current != state {
-			return errDecisionRead
+		if err != nil || current != state || read.issue != issue {
+			return ErrDecisionRead
 		}
-		current.issued[read] = struct{}{}
+		current.issued[read] = issue
 		return nil
 	})
 	if err != nil {
@@ -215,35 +277,78 @@ func readDecision(ctx context.Context, inv *Invocation, target decisionTarget, s
 	return read, nil
 }
 
-// verifyDecision must precede dependency delivery and use of Provide's result.
-// Checking only a provider token's type or LastHandled does not prove provenance.
-func verifyDecision(ctx context.Context, inv *Invocation, read *decisionRead) (err error) {
+// VerifyDecision refuses a nil, zero, foreign or expired read: one not issued to
+// this command frame, issued to another command or a validation-only run, or
+// whose evidence the provider no longer accepts. It re-checks callback and
+// security continuity before and after the provider check. Checking only a
+// provider token's type or progress does not prove provenance. Every failure
+// wraps ErrDecisionRead.
+func VerifyDecision(ctx context.Context, inv *Invocation, read *DecisionRead) (err error) {
 	defer func() { err = decisionFailure(err) }()
+	var issue *issuedRead
 	verify := func(e *Execution) error {
 		state, err := currentDecisionReads(e)
 		if err != nil || read == nil {
-			return errDecisionRead
+			return ErrDecisionRead
 		}
-		if _, issued := state.issued[read]; !issued {
-			return errDecisionRead
+		recorded, issued := state.issued[read]
+		if !issued || read.issue != recorded {
+			return ErrDecisionRead
 		}
+		issue = recorded
 		return nil
 	}
 	if err := withState(ctx, inv, verify); err != nil {
 		return err
 	}
-	if err := boundary.Call(ctx, func(ctx context.Context) error { return read.check(ctx, read.value) }); err != nil {
+	if err := boundary.Call(ctx, func(ctx context.Context) error { return issue.check(ctx, issue.value) }); err != nil {
 		return err
 	}
 	return withState(ctx, inv, verify)
 }
 
-// Acquisition/provenance failures are not advisory validation findings. Retain
-// the original cause for errors.Is/As, but always add an infrastructure branch
-// so an allowed validation severity cannot turn a refused read into success.
-func decisionFailure(err error) error {
-	if err != nil {
-		return errors.Join(errDecisionRead, err)
+// verifyProvided verifies every read carried by a Provide payload before Handle,
+// for every profile: an unmarked command has no issued reads, so any carried read
+// is refused. A protected command must carry at least one read; unmarked and
+// unprotected commands may return read-less DecisionEvidence as an advisory
+// snapshot. Payloads that carry no DecisionEvidence are not inspected.
+func (f *frame) verifyProvided(payload any, payloadEvidence bool) error {
+	if payload == nil && payloadEvidence && f.registration.decisions == DecisionsProtected {
+		return decisionFailure(ErrDecisionRead)
 	}
-	return err
+	evidence, ok := payload.(DecisionEvidence)
+	if !ok {
+		return nil
+	}
+	return f.call(func(ctx context.Context, inv *Invocation) error {
+		if nilValue(evidence) {
+			return decisionFailure(ErrDecisionRead)
+		}
+		reads := evidence.DecisionReads()
+		if len(reads) == 0 {
+			if f.registration.decisions == DecisionsProtected {
+				return decisionFailure(ErrDecisionRead)
+			}
+			// An unmarked or unprotected command holds no issued reads, so
+			// evidence without reads is an advisory snapshot and carries nothing
+			// to verify. Any read it does carry is still refused below.
+			return nil
+		}
+		for _, read := range reads {
+			if err := VerifyDecision(ctx, inv, read); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// decisionFailure retains the original cause for errors.Is/As but always adds an
+// infrastructure branch, so an allowed validation severity cannot turn a refused
+// read into success.
+func decisionFailure(err error) error {
+	if err == nil || (errors.Is(err, ErrDecisionRead) && len(boundary.Classify(err).Exceptions) > 0) {
+		return err
+	}
+	return errors.Join(ErrDecisionRead, err)
 }

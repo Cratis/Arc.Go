@@ -26,22 +26,19 @@ func TestDecisionIssuedReadRechecksProviderAndCurrentInvocation(t *testing.T) {
 		return nil
 	}
 	callDecisionFrame(t, f, func(ctx context.Context, inv *Invocation) error {
-		if err := beginDecisionReads(ctx, inv, decisionAdmissionForTest()); err != nil {
-			return err
-		}
-		read, err := readDecision(ctx, inv, target, source)
+		read, err := ReadDecision(ctx, inv, target, source)
 		if err != nil {
 			return err
 		}
 		changed := identity.WithPrincipal(ctx, identity.System())
-		if err := verifyDecision(changed, inv, read); !errors.Is(err, execution.ErrIdentityChanged) {
+		if err := VerifyDecision(changed, inv, read); !errors.Is(err, execution.ErrIdentityChanged) {
 			t.Fatalf("foreign principal accepted: %v", err)
 		}
 		invalid.Store(true)
-		if err := verifyDecision(ctx, inv, read); !errors.Is(err, stale) {
+		if err := VerifyDecision(ctx, inv, read); !errors.Is(err, stale) {
 			t.Fatalf("provided stale evidence accepted: %v", err)
 		}
-		if read, err := readDecision(ctx, inv, target, source); read != nil || !errors.Is(err, stale) {
+		if read, err := ReadDecision(ctx, inv, target, source); read != nil || !errors.Is(err, stale) {
 			t.Fatalf("cached stale evidence accepted: %v, %v", read, err)
 		}
 		return nil
@@ -63,11 +60,8 @@ func TestDecisionLateAcquisitionCannotEnrollOrIssueAfterCallbackExpiry(t *testin
 		return new(int), nil
 	}
 	callDecisionFrame(t, f, func(ctx context.Context, inv *Invocation) error {
-		if err := beginDecisionReads(ctx, inv, decisionAdmissionForTest()); err != nil {
-			return err
-		}
 		go func() {
-			read, err := readDecision(ctx, inv, target, source)
+			read, err := ReadDecision(ctx, inv, target, source)
 			if read != nil {
 				t.Error("late acquisition issued a read")
 			}
@@ -93,7 +87,7 @@ func TestDecisionExpiredProviderCallbackCannotReachNextStage(t *testing.T) {
 			target, source := decisionSourceForTest(&acquired, &enrolled)
 			entered, release := make(chan struct{}), make(chan struct{})
 			type result struct {
-				read *decisionRead
+				read *DecisionRead
 				err  error
 			}
 			done := make(chan result, 1)
@@ -125,16 +119,13 @@ func TestDecisionExpiredProviderCallbackCannotReachNextStage(t *testing.T) {
 				return nil
 			}
 			callDecisionFrame(t, f, func(ctx context.Context, inv *Invocation) error {
-				if err := beginDecisionReads(ctx, inv, decisionAdmissionForTest()); err != nil {
-					return err
-				}
 				if stage == "cached-check" {
-					if _, err := readDecision(ctx, inv, target, source); err != nil {
+					if _, err := ReadDecision(ctx, inv, target, source); err != nil {
 						return err
 					}
 				}
 				go func() {
-					read, err := readDecision(ctx, inv, target, source)
+					read, err := ReadDecision(ctx, inv, target, source)
 					done <- result{read: read, err: err}
 				}()
 				<-entered
@@ -145,7 +136,7 @@ func TestDecisionExpiredProviderCallbackCannotReachNextStage(t *testing.T) {
 			// Execution() no longer supplies a view after expiry; withState may
 			// instead observe the retained view's closed callback directly.
 			closed := errors.Is(got.err, ErrExecutionClosed) || errors.Is(got.err, ErrNoContext)
-			if got.read != nil || !closed || !errors.Is(got.err, errDecisionRead) {
+			if got.read != nil || !closed || !errors.Is(got.err, ErrDecisionRead) {
 				t.Fatalf("expired read = %v, %v", got.read, got.err)
 			}
 			wantAcquired, wantChecked, wantEnrolled := int32(1), int32(0), int32(0)
@@ -175,9 +166,6 @@ func TestDecisionMidCallbackCancellationCannotReachNextStage(t *testing.T) {
 			target, source := decisionSourceForTest(&acquired, &enrolled)
 			var checked atomic.Int32
 			callDecisionFrame(t, f, func(ctx context.Context, inv *Invocation) error {
-				if err := beginDecisionReads(ctx, inv, decisionAdmissionForTest()); err != nil {
-					return err
-				}
 				ctx, cancel := context.WithCancel(ctx)
 				defer cancel()
 				source.admit = func(context.Context) error {
@@ -200,8 +188,8 @@ func TestDecisionMidCallbackCancellationCannotReachNextStage(t *testing.T) {
 					}
 					return nil
 				}
-				read, err := readDecision(ctx, inv, target, source)
-				if read != nil || !errors.Is(err, context.Canceled) || !errors.Is(err, errDecisionRead) {
+				read, err := ReadDecision(ctx, inv, target, source)
+				if read != nil || !errors.Is(err, context.Canceled) || !errors.Is(err, ErrDecisionRead) {
 					t.Fatalf("canceled read = %v, %v", read, err)
 				}
 				return nil
@@ -229,15 +217,12 @@ func TestDecisionCachedReadReenrollsAgainstCurrentOwner(t *testing.T) {
 	target, source := decisionSourceForTest(&acquired, &enrolled)
 	ownerMismatch := errors.New("another completion owner")
 	callDecisionFrame(t, f, func(ctx context.Context, inv *Invocation) error {
-		if err := beginDecisionReads(ctx, inv, decisionAdmissionForTest()); err != nil {
-			return err
-		}
-		if _, err := readDecision(ctx, inv, target, source); err != nil {
+		if _, err := ReadDecision(ctx, inv, target, source); err != nil {
 			return err
 		}
 		otherSource := source
 		otherSource.enroll = func(context.Context, any) error { return ownerMismatch }
-		read, err := readDecision(ctx, inv, target, otherSource)
+		read, err := ReadDecision(ctx, inv, target, otherSource)
 		if read != nil || !errors.Is(err, ownerMismatch) {
 			t.Fatalf("cached read bypassed current owner: %v, %v", read, err)
 		}
