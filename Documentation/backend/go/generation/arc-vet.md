@@ -39,7 +39,7 @@ matching a framework type's spelling or structure is not enough.
 | Code | C# analyzer | Go meaning and recovery |
 | --- | --- | --- |
 | ARC0001 | `ReadModelAnalyzer.cs` | An explicit query, or implicit method returning its owning-model shape or a recognized observable source, has an invalid result signature or owning-model shape. Return `(O, error)` with an admitted model/source shape. Unrelated implicit helper returns remain outside Go discovery. |
-| ARC0002 | `CommandAnalyzer.cs` | In a package with artifact-selection directives, a struct with exported nonembedded data and a declared `Handle` lacks an artifact directive or typed `commands.Register[T]` reference. Choose `arc:command` for generated registration or `commands.Register[T](builder, commands.Handle(T.Handle))` for manual registration; do not register through both paths. Use `arc:ignore` on a non-command. Packages without artifact-selection directives, other selected artifacts, empty service receivers, `Helper`/`Helpers`/`Extensions` suffixes and implementations of `commands.ResponseValueHandler` do not trigger the heuristic. |
+| ARC0002 | `CommandAnalyzer.cs` | In a package with artifact-selection directives, a struct with exported nonembedded data and a declared `Handle` lacks an artifact directive or a typed `commands.Register[T]` reference in the same package. Choose `arc:command` for generated registration or `commands.Register[T](builder, commands.Handle(T.Handle))` for manual registration; do not register through both paths. Use `arc:ignore` on a non-command or a command registered from another package or through a generic wrapper. Packages without artifact-selection directives, other selected artifacts, empty service receivers, `Helper`/`Helpers`/`Extensions` suffixes and implementations of `commands.ResponseValueHandler` do not trigger the heuristic. |
 | ARC0003 | `CommandAnalyzer.cs` | A non-command receiver declares `Handle` taking an opted-in command. Move handling onto the command. Package-level functions are not handler methods. |
 | ARC0004 | `CommandAnalyzer.cs` | An opted-in command lacks a directly declared exported `Handle`. Lowercase, promoted and ignored methods do not count. |
 | ARC0005 | `CommandProvideAnalyzer.cs` | `Provide` returns a payload that no `Handle` parameter consumes by exact Go type identity, including the payload of `commands.Preparation[P]`. Return a control-only result or add the payload parameter. Unlike C#, assignability alone is insufficient; multiple exact matches remain an arc-gen error. |
@@ -55,10 +55,14 @@ handwritten declarations to pass shared generator admission before inspecting
 query bodies. Unrelated malformed directives remain generator errors.
 
 `arc:ignore` excludes a declaration from these new convention checks; it is not
-a runtime authorization bypass. ARC0002 recognizes typed `commands.Register[T]` references in the package,
-including aliases, but the declaration rules do not inspect arbitrary manual
-registration callbacks, runtime blank-field metadata tags or Chronicle
-projection definitions. Imported opted-in command/read-model identities are
+a runtime authorization bypass. ARC0002 recognizes typed `commands.Register[T]`
+references only in the type's own package, including aliases and inferred type
+arguments. It cannot see registration from an importing package or trace a
+user-defined generic wrapper whose `commands.Register[T]` type argument is a type
+parameter. Put `//arc:ignore` on the command type in either case to suppress
+ARC0002; keep the manual registration unchanged. The declaration rules also do
+not inspect arbitrary manual registration callbacks, runtime blank-field metadata
+tags or Chronicle projection definitions. Imported opted-in command/read-model identities are
 transported by Go analysis facts for the selected build, so imported aliases do
 not lose their meaning. Constructors are checked only when explicitly marked
 `arc:validator`, not merely because their names resemble validators.

@@ -62,6 +62,47 @@ func TestDeclarationDiagnosticsAllowManualCommands(t *testing.T) {
 	}
 }
 
+func TestDeclarationDiagnosticsManualRegistrationLimits(t *testing.T) {
+	loaded := loadDiagnosticFixtures(t, "", "./testdata/diagnostics/crossmanualcommands/...")
+	if len(loaded) != 2 {
+		t.Fatalf("fixture packages = %d, want 2", len(loaded))
+	}
+	for _, pkg := range loaded {
+		t.Run(pkg.Name, func(t *testing.T) {
+			var findings []goanalysis.Diagnostic
+			_, err := DeclarationAnalyzer.Run(&goanalysis.Pass{
+				Analyzer: DeclarationAnalyzer, Fset: pkg.Fset, Files: pkg.Syntax,
+				Pkg: pkg.Types, TypesInfo: pkg.TypesInfo, TypesSizes: pkg.TypesSizes,
+				Report: func(finding goanalysis.Diagnostic) { findings = append(findings, finding) },
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantNames := map[string]bool{}
+			if pkg.Name == "feature" {
+				wantNames = map[string]bool{"Greet": true, "Wrapped": true}
+			}
+			if len(findings) != len(wantNames) {
+				t.Fatalf("findings = %+v, want commands %v (ignored commands must stay clean)", findings, wantNames)
+			}
+			for _, finding := range findings {
+				var name string
+				for candidate := range wantNames {
+					if pkg.Types.Scope().Lookup(candidate).Pos() == finding.Pos {
+						name = candidate
+						break
+					}
+				}
+				if name == "" || finding.Category != "ARC0002" || int(finding.End-finding.Pos) != len(name) ||
+					!strings.Contains(finding.Message, "arc:ignore if registered elsewhere, through a generic wrapper") {
+					t.Fatalf("unexpected diagnostic or missing recovery at %s: %+v", pkg.Fset.Position(finding.Pos), finding)
+				}
+				delete(wantNames, name)
+			}
+		})
+	}
+}
+
 func assertDeclarationDiagnostics(t *testing.T, pkg *packages.Package, findings []goanalysis.Diagnostic, tagged bool) {
 	t.Helper()
 	type expectedDiagnostic struct{ code, reference string }

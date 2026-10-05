@@ -174,7 +174,7 @@ func runDeclarationDiagnostics(pass *goanalysis.Pass) (any, error) {
 					}
 				} else if generatorSelected && d.kind == "" && handle != nil && commandLikeType(t) &&
 					!manuallyRegistered[t] && !diagnosticCommandHelper(t, responseHandler) {
-					report(ts.Name, "ARC0002", "type has exported data and Handle in a generator-selected package; add arc:command for generated registration, use commands.Register[T] for manual registration, or arc:ignore for a non-command")
+					report(ts.Name, "ARC0002", "type has exported data and Handle in a generator-selected package; add arc:command for generated registration, use commands.Register[T] in this package for manual registration, or arc:ignore if registered elsewhere, through a generic wrapper, or not a command")
 				}
 			}
 		}
@@ -269,8 +269,10 @@ func diagnosticBaseType(t types.Type) types.Type {
 	return t
 }
 
-// A typed Register reference establishes manual registration intent, including
-// aliases and inferred type arguments. Spelling-only lookalikes do not count.
+// A typed Register reference in the current package establishes manual registration
+// intent, including aliases and inferred type arguments. Registrations in importers
+// and through generic wrappers are not traced; arc:ignore suppresses those cases.
+// Spelling-only lookalikes do not count.
 func diagnosticManualCommands(pass *goanalysis.Pass) map[types.Type]bool {
 	registered := map[types.Type]bool{}
 	for identifier, instance := range pass.TypesInfo.Instances {

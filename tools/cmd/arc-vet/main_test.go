@@ -35,6 +35,7 @@ func TestArcVetCommandContracts(t *testing.T) {
 	}{
 		{name: "clean", args: []string{fixture + "negative"}},
 		{name: "manual_registration", args: []string{fixture + "manualcommands"}},
+		{name: "manual_registration_limits", args: []string{fixture + "crossmanualcommands/..."}, wantExit: 3, contains: "arc:ignore if registered elsewhere, through a generic wrapper"},
 		{name: "unselected_command", args: []string{fixture + "unselectedcommands"}},
 		{name: "diagnostics", args: []string{fixture + "queries"}, wantExit: 3, contains: "ARC0015: query argument", findings: 6},
 		{name: "build_tags", args: []string{fixture + "queries"}, tags: "arcdiagnostics", wantExit: 3, contains: "tagged.go:", findings: 7},
@@ -65,6 +66,11 @@ func TestArcVetCommandContracts(t *testing.T) {
 			}
 			if count := strings.Count(string(output), "ARC0015: query argument"); count != test.findings {
 				t.Fatalf("findings = %d, want %d: %s", count, test.findings, output)
+			}
+			if test.name == "manual_registration_limits" {
+				if strings.Count(string(output), "ARC0002:") != 2 || strings.Contains(string(output), "Ignored") {
+					t.Fatalf("manual registration suppression or recovery failed: %s", output)
+				}
 			}
 			if test.name == "imported_declarations" {
 				if strings.Count(string(output), "ARC0003:") != 1 || strings.Count(string(output), "ARC0006:") != 1 {
