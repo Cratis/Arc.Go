@@ -93,7 +93,10 @@ func (i *Integration) Install(builder *arc.Builder) error {
 	}); err != nil {
 		return err
 	}
-	if err := registry.AddDeferredCommitParticipant("chronicle", func(context.Context, *execution.Scope) (commands.DeferredCommitParticipant, error) {
+	// The sole terminal slot is operation-classified: ordinary commands keep the
+	// same Begin/Complete behavior, and operation commands additionally get
+	// read-only pre-entry commit observation.
+	if err := registry.AddOperationCommitParticipant("chronicle", func(context.Context, *execution.Scope) (commands.OperationCommitParticipant, error) {
 		return terminalScope{i}, nil
 	}); err != nil {
 		return err
@@ -189,6 +192,9 @@ type commandFrame struct {
 	options     CommandOptions
 	actor       Actor
 	causes      []Cause
+	// observation records an authorized root request awaiting the operation
+	// profile's later Begin. It grants no transaction or commit capability.
+	observation bool
 	scopes      map[string]LabeledScope
 	modelMu     sync.Mutex
 	models      map[modelCacheKey]ModelDocument

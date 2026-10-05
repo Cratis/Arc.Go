@@ -17,6 +17,7 @@ type transaction struct {
 	mu           sync.Mutex
 	busy, closed bool
 	bound        bool
+	observed     bool
 	unsubscribe  func()
 	origin       any
 	immediate    commands.CompletionReport
@@ -70,12 +71,60 @@ func (s terminalScope) Complete(ctx context.Context, inv *commands.Invocation, r
 	return s.integration.complete(ctx, inv, result)
 }
 
+// ObserveCommit reports read-only persistence facts before operations are entered.
+func (s terminalScope) ObserveCommit(ctx context.Context, inv *commands.Invocation) (commands.CompletionReport, error) {
+	return s.integration.observeCommit(ctx, inv)
+}
+
 func (i *Integration) begin(ctx context.Context, inv *commands.Invocation) error {
 	tx := &transaction{scopes: map[string]LabeledScope{}, aggregates: map[any]any{}}
 	if provider, ok := i.options.Appends.(appendorigin.Provider); ok {
 		tx.origin = provider.NewAppendOrigin()
 	}
-	return commands.SetRootState(ctx, inv, i.root, tx)
+	if err := commands.SetRootState(ctx, inv, i.root, tx); err != nil {
+		return err
+	}
+	frame, err := i.frameFor(ctx, inv)
+	if err != nil {
+		return err
+	}
+	if !frame.observation {
+		return nil
+	}
+	// The authorized filter of an operation-capable root already ran. Observe
+	// before Provide, Handle, response consumers or any operation is entered.
+	return i.observe(ctx, inv, tx, frame)
+}
+
+// observeCommit snapshots facts under the lock. It never connects, commits, rolls
+// back, retries or activates application services. Completed facts are retained.
+// Pending deferred work is NotCommitted and is never merged into immediate facts.
+func (i *Integration) observeCommit(ctx context.Context, inv *commands.Invocation) (commands.CompletionReport, error) {
+	unknown := commands.CompletionReport{Disposition: commands.OutcomeUnknown}
+	tx, err := i.transaction(ctx, inv)
+	if err != nil {
+		return unknown, err
+	}
+	tx.mu.Lock()
+	defer tx.mu.Unlock()
+	if tx.closed {
+		return tx.result.Report, nil
+	}
+	if tx.busy {
+		return unknown, ErrConcurrent
+	}
+	// Without an attributed immediate-append observation Arc cannot distinguish
+	// no work from an unobserved commit, so operations fail closed.
+	if isNil(i.options.Appends) || !tx.observed || tx.unsubscribe == nil {
+		return unknown, ErrUnsupported
+	}
+	if tx.immediate.Disposition != commands.NoPersistedWork {
+		return tx.immediate, nil
+	}
+	if tx.owner != nil {
+		return commands.CompletionReport{Disposition: commands.NotCommitted}, nil
+	}
+	return commands.CompletionReport{Disposition: commands.NoPersistedWork}, nil
 }
 func (i *Integration) transaction(ctx context.Context, inv *commands.Invocation) (*transaction, error) {
 	if inv == nil || inv.CommandContext().IsValidationOnly() {
