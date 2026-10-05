@@ -12,11 +12,13 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
 	arc "github.com/cratis/arc.go"
 	"github.com/cratis/arc.go/commands"
+	"github.com/cratis/arc.go/execution"
 	integration "github.com/cratis/arc.go/integrations/chronicle"
 	"github.com/cratis/arc.go/integrations/chronicle/sdk"
 	"github.com/cratis/arc.go/validation"
@@ -73,6 +75,13 @@ type roomFixture struct {
 	ctx     context.Context
 	lost    *atomic.Bool
 	handled atomic.Int32
+
+	mu sync.Mutex
+	// filterReads records BookRoom decisions read by a filter, which also runs
+	// in validation-only execution, keyed by validation-only mode.
+	filterReads map[bool][]*commands.DecisionRead
+	// providedReads records the reads BookRoom's Provide returned.
+	providedReads []*commands.DecisionRead
 }
 
 func roomRegistry(t *testing.T, rooms *readmodels.Model[Room], guests *readmodels.Model[GuestRoom]) func(*chronicle.Registry) {
@@ -135,6 +144,25 @@ func roomApp(t *testing.T) *roomFixture {
 	require(t, err)
 	handle, err := client.EventStore(ctx, store)
 	require(t, err)
+	f.filterReads = map[bool][]*commands.DecisionRead{}
+	require(t, builder.Commands().AddFilter("rooms.decide", func(context.Context, *execution.Scope) (commands.Filter, error) {
+		return commands.FilterFunc(func(ctx context.Context, inv *commands.Invocation) (commands.Result[commands.NoResponse], error) {
+			id := inv.CommandContext().CorrelationID()
+			c, ok := inv.CommandContext().Command().(BookRoom)
+			if !ok {
+				return commands.Success(id), nil
+			}
+			decision, err := sdk.ReadDecision(ctx, inv, decisions, rooms, readmodels.Key(c.ID))
+			if err != nil {
+				return commands.Success(id), err
+			}
+			f.mu.Lock()
+			validationOnly := inv.CommandContext().IsValidationOnly()
+			f.filterReads[validationOnly] = append(f.filterReads[validationOnly], decision.DecisionReads()...)
+			f.mu.Unlock()
+			return commands.Success(id), nil
+		}), nil
+	}))
 	require(t, commands.Register(builder.Commands(),
 		commands.WithProtectedDecisions[BookRoom](),
 		commands.WithoutModelValidation[BookRoom](),
@@ -144,6 +172,9 @@ func roomApp(t *testing.T) *roomFixture {
 			if err != nil {
 				return commands.Preparation[*sdk.Decision[Room]]{}, err
 			}
+			f.mu.Lock()
+			f.providedReads = append(f.providedReads, decision.DecisionReads()...)
+			f.mu.Unlock()
 			return commands.Provided(decision), nil
 		}, func(_ context.Context, _ *commands.Invocation, c BookRoom, decision *sdk.Decision[Room]) (integration.EventBatch, error) {
 			f.handled.Add(1)
@@ -299,19 +330,28 @@ func TestLostDecisionCommitAcknowledgementStaysUnknownAgainstTheKernel(t *testin
 	}
 }
 
-func TestValidationOnlyDecisionNeverEnrollsOrAppendsAgainstTheKernel(t *testing.T) {
+func TestValidationOnlyDecisionIsSeparateAndNeverEnrollsAgainstTheKernel(t *testing.T) {
 	f := roomApp(t)
+	// The filter's read runs in validation-only execution too. Enrolling there
+	// would fail (no transaction exists), so success proves no enrollment.
 	validated, err := f.app.Commands().Validate(f.ctx, BookRoom{ID: "404", Guest: "Ada", Compete: true})
-	if !validated.IsSuccess() || err != nil || f.handled.Load() != 0 {
+	if !validated.IsSuccess() || err != nil || f.handled.Load() != 0 || len(f.providedReads) != 0 {
 		t.Fatal(validated.Details(), err)
+	}
+	if len(f.filterReads[true]) != 1 || len(f.filterReads[false]) != 0 {
+		t.Fatal("validation-only filter read", f.filterReads)
 	}
 	if got := f.guests(t, "404"); len(got) != 0 {
 		t.Fatal("validation appended", got)
 	}
-	// The validation read is a separate identity: execution still reads, enrolls and commits.
 	result, err := f.app.Commands().Execute(f.ctx, BookRoom{ID: "404", Guest: "Ada"})
 	if !result.IsSuccess() || err != nil || result.Completion().Disposition != commands.Committed {
 		t.Fatal(result.Details(), result.Completion(), err)
+	}
+	// Execution shares one issued read between the filter and Provide; the
+	// validation-only read is a separate identity that was never reused.
+	if len(f.filterReads[false]) != 1 || len(f.providedReads) != 1 || f.providedReads[0] != f.filterReads[false][0] || f.providedReads[0] == f.filterReads[true][0] {
+		t.Fatal("decision identities", f.filterReads, f.providedReads)
 	}
 }
 
