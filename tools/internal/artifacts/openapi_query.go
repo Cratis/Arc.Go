@@ -75,7 +75,10 @@ func (r *openAPIRenderer) openAPIQueryArguments(parameters []FieldDescriptor) ([
 				return nil, fmt.Errorf("query argument %q element: %w", field.Name, err)
 			}
 			get = openAPIObject{"type": "array", "items": element}
-			array := openAPIObject{"type": "array", "items": openAPIQueryTextForms(element, kind)}
+			// JSON array nodes retain nulls for pointer and Optional elements;
+			// GET/CSV elements are text and keep their nonnullable schema.
+			items := openAPINull(openAPIQueryTextForms(element, kind), value.Element.Nullable || value.Element.Kind == "optional")
+			array := openAPIObject{"type": "array", "items": items}
 			if binding.FixedLength != nil {
 				if *binding.FixedLength < 0 {
 					return nil, fmt.Errorf("query argument %q: negative fixed length", field.Name)
@@ -280,7 +283,7 @@ func openAPIQueryObject(properties openAPIObject) openAPIObject {
 			case "i":
 				extra = "İ"
 			case "k":
-				extra = "K"
+				extra = "\u212A"
 			}
 			pattern.WriteString("[" + lower + upper + extra + "]")
 		}

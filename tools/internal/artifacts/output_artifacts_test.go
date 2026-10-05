@@ -101,8 +101,8 @@ func TestArtifactsPublishCheckAndRemoveStaleWithoutTypeScript(t *testing.T) {
 	put(t, filepath.Join(dir, "api", "openapi.json"), string(openAPI))
 
 	// Dropping the Screenplay request is reported as stale by check mode and
-	// removes only its owned file. The Go adapters are unaffected because the
-	// output location is not contract identity.
+	// removes only its owned file. The Go adapters are unaffected here because
+	// the OpenAPI section still keeps wire analysis and endpoint verification on.
 	if err := Generate(t.Context(), artifactConfig(dir, true, false)); err == nil || !strings.Contains(err.Error(), "stale: ") {
 		t.Fatalf("check mode did not report the stale Screenplay file: %v", err)
 	}
@@ -137,6 +137,67 @@ func TestArtifactsPublishCheckAndRemoveStaleWithoutTypeScript(t *testing.T) {
 	}
 	none.Check = true
 	generate(t, none)
+}
+
+func TestArtifactManifestDoesNotBlockUnrelatedAdapterInvocations(t *testing.T) {
+	dir := artifactConsumer(t)
+	generate(t, artifactConfig(dir, false, true))
+	paths := []string{manifestName, "api/openapi.json", "docs/model.play"}
+	before := map[string][]byte{}
+	for _, path := range paths {
+		before[path] = get(t, filepath.Join(dir, path))
+	}
+	for _, tc := range []struct {
+		name     string
+		profile  ApplicationProfile
+		patterns []string
+		tags     string
+	}{
+		{"different packages", ApplicationProfile{FormatVersion: 2, Name: "Tasks"}, []string{"./commands"}, ""},
+		{"different profile", ApplicationProfile{FormatVersion: 2, Name: "Other"}, []string{"./commands", "./listings"}, ""},
+		{"different tags", ApplicationProfile{FormatVersion: 2, Name: "Tasks"}, []string{"./commands", "./listings"}, "other"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			config := Config{Dir: dir, Profile: &tc.profile, Patterns: tc.patterns, Tags: tc.tags}
+			generate(t, config)
+			config.Check = true
+			generate(t, config)
+			for _, path := range paths {
+				if !bytes.Equal(before[path], get(t, filepath.Join(dir, path))) {
+					t.Fatalf("unrelated invocation changed %s", path)
+				}
+			}
+		})
+	}
+}
+
+func TestArtifactScreenplayOnlyChangesEndpointVerification(t *testing.T) {
+	dir := artifactConsumer(t)
+	put(t, filepath.Join(dir, "profile.json"), `{"formatVersion":2,"name":"Tasks"}`)
+	config := artifactConfig(dir, false, false)
+	config.OpenAPIOut = ""
+	generate(t, config)
+	adapter := filepath.Join(dir, "commands", Filename)
+	plain := get(t, adapter)
+	if bytes.Contains(plain, []byte("ExpectGeneratedEndpoints")) {
+		t.Fatal("adapter-only invocation enabled endpoint verification")
+	}
+	config.ScreenplayOut = "docs/model.play"
+	generate(t, config)
+	if !bytes.Contains(get(t, adapter), []byte("ExpectGeneratedEndpoints")) {
+		t.Fatal("Screenplay-only invocation omitted endpoint verification")
+	}
+	config.Check = true
+	generate(t, config)
+	config.ScreenplayOut = ""
+	if err := Generate(t.Context(), config); err == nil || !strings.Contains(err.Error(), "generated adapters are stale") {
+		t.Fatal("check without the Screenplay flag accepted changed adapters", err)
+	}
+	config.Check = false
+	generate(t, config)
+	if !bytes.Equal(plain, get(t, adapter)) {
+		t.Fatal("dropping the sole wire consumer did not restore adapter-only verification")
+	}
 }
 
 func TestArtifactsAreDeterministicAcrossPackageOrder(t *testing.T) {

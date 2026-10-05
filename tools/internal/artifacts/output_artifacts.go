@@ -103,6 +103,41 @@ func moduleManifestExists(moduleRoot string) bool {
 	return false
 }
 
+// moduleManifestMatches limits artifact-less reconciliation to the current
+// owner and package/build scope. Pending publication uses its intended manifest,
+// including interrupted first publication where no live manifest exists yet.
+func moduleManifestMatches(moduleRoot string, next ownedManifest) (bool, error) {
+	data, exists, err := readOutput(filepath.Join(moduleRoot, manifestName))
+	if err != nil {
+		return false, err
+	}
+	pendingBytes, pendingExists, err := readOutput(filepath.Join(moduleRoot, journalName))
+	if err != nil {
+		return false, err
+	}
+	if pendingExists {
+		var pending pendingPlan
+		if err := decodeOwned(pendingBytes, &pending); err != nil {
+			return false, fmt.Errorf("invalid pending publication: %w", err)
+		}
+		if pending.Format != outputFormat || len(pending.After) == 0 {
+			return false, fmt.Errorf("unsupported pending publication")
+		}
+		data, exists = pending.After, true
+	}
+	if !exists {
+		return false, nil
+	}
+	var old ownedManifest
+	if err := decodeOwned(data, &old); err != nil {
+		return false, fmt.Errorf("invalid ownership manifest: %w", err)
+	}
+	if old.Format != outputFormat {
+		return false, fmt.Errorf("unsupported ownership manifest")
+	}
+	return old.Owner == next.Owner && old.Scope == next.Scope, nil
+}
+
 func reportArtifacts(report io.Writer, outputs []ownedOutput, check bool) error {
 	if report == nil || len(outputs) == 0 {
 		return nil

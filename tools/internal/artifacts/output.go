@@ -252,6 +252,17 @@ func publishOwnedFiles(ctx context.Context, moduleRoot, tsRoot string, typescrip
 		return err
 	}
 	next := ownedManifest{Format: outputFormat, Owner: profile.Name, Scope: contentHash(scopeData), Fingerprint: graph.Fingerprint, Files: []ownedEntry{}}
+	if !typescript && len(outputs) == 0 {
+		matches, err := moduleManifestMatches(moduleRoot, next)
+		if err != nil {
+			return err
+		}
+		if !matches {
+			// An unrelated adapter-only invocation must not reconcile another
+			// profile's artifacts or claim its module-root publication scope.
+			return nil
+		}
+	}
 	// Without TypeScript, tsRoot is only the manifest home (the module root).
 	roots := map[string]string{"go": moduleRoot, openAPIRoot: moduleRoot, screenplayRoot: moduleRoot}
 	if typescript {

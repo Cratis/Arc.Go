@@ -5,14 +5,19 @@ package artifacts
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/cratis/arc.go/metadata"
 	"github.com/cratis/arc.go/queries"
+	"github.com/cratis/arc.go/serialization"
 )
 
 const openAPIArgumentsSource = `import "github.com/cratis/arc.go/queries"
@@ -107,6 +112,99 @@ func TestOpenAPIQueryArgumentsAndPagingArePublishedForBothReaders(t *testing.T) 
 	}
 	if !strings.Contains(schema["description"].(string), "Required arguments (name)") {
 		t.Fatal("QUERY description omitted required arguments", schema["description"])
+	}
+}
+
+type openAPINullableArguments struct {
+	Pointers  []*int32
+	Optionals []serialization.Optional[int32]
+	Key       int32
+}
+
+type openAPIArgumentRow struct{ ID int32 }
+
+func TestOpenAPIQueryArgumentNullableElementsAndKelvinAlias(t *testing.T) {
+	graph, err := contractGraph(t, `import "github.com/cratis/arc.go/serialization"
+//arc:readmodel
+type Row struct { ID int32 }
+type Args struct { Pointers []*int32; Optionals []serialization.Optional[int32]; Key int32 }
+//arc:query path=/api/nullable
+func (Row) All(Args) ([]Row, error) { return nil, nil }
+`, contractProfile(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document, err := renderOpenAPI(graph)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := openAPIDecode(t, document.bytes())["paths"].(map[string]any)["/api/nullable"].(map[string]any)
+	operation := item["x-cratis-query"].(map[string]any)["operation"].(map[string]any)
+	schema := operation["requestBody"].(map[string]any)["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)
+	arguments := schema["properties"].(map[string]any)["arguments"].(map[string]any)["anyOf"].([]any)[0].(map[string]any)
+	properties := arguments["properties"].(map[string]any)
+	get := openAPIOperationParameters(t, item["get"].(map[string]any))
+	for _, name := range []string{"pointers", "optionals"} {
+		body := properties[name].(map[string]any)["anyOf"].([]any)[0].(map[string]any)
+		array := body["anyOf"].([]any)[0].(map[string]any)
+		items := array["items"].(map[string]any)["anyOf"].([]any)
+		if len(items) != 2 || items[1].(map[string]any)["type"] != "null" {
+			t.Fatalf("%s JSON array items must accept null: %v", name, items)
+		}
+		forms := items[0].(map[string]any)["anyOf"].([]any)
+		if forms[0].(map[string]any)["type"] != "integer" || forms[1].(map[string]any)["type"] != "string" {
+			t.Fatalf("%s nonnull elements lost their integer/text forms: %v", name, forms)
+		}
+		if get[name]["schema"].(map[string]any)["items"].(map[string]any)["type"] != "integer" {
+			t.Fatal("GET text elements must remain nonnullable", get[name])
+		}
+	}
+	pattern := "^[kK\u212A][eE][yY]$"
+	alias := arguments["patternProperties"].(map[string]any)[pattern]
+	if !reflect.DeepEqual(alias, properties["key"]) || !regexp.MustCompile(pattern).MatchString("\u212Aey") {
+		t.Fatal("Kelvin alias must use the declared key schema", arguments)
+	}
+
+	var registry queries.Registry
+	var captured openAPINullableArguments
+	if err := queries.Register[openAPIArgumentRow](&registry, "All", queries.Function(func(_ context.Context, args openAPINullableArguments) (openAPIArgumentRow, error) {
+		captured = args
+		return openAPIArgumentRow{}, nil
+	}), queries.WithAuthorization[openAPINullableArguments](metadata.Authorization{AllowAnonymous: true})); err != nil {
+		t.Fatal(err)
+	}
+	pipeline, err := registry.Build(queries.PipelineOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := queries.ReadQUERY([]byte(`{"arguments":{"pointers":[null,1],"optionals":[null,"1"],"\u212Aey":2}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := pipeline.Perform(t.Context(), "openAPIArgumentRow.All", request)
+	if err != nil || !result.IsSuccess() {
+		t.Fatal("nullable array elements did not bind", result, err)
+	}
+	if len(captured.Pointers) != 2 || captured.Pointers[0] != nil || captured.Pointers[1] == nil || *captured.Pointers[1] != 1 || len(captured.Optionals) != 2 || !captured.Optionals[0].IsNull() || captured.Key != 2 {
+		t.Fatal("nullable elements or Kelvin argument lost their binding", captured)
+	}
+	if value, present := captured.Optionals[1].Value(); !present || value != 1 {
+		t.Fatal("nonnull Optional element did not bind", value, present)
+	}
+	request, err = queries.ReadQUERY([]byte(`{"arguments":{"\u212Aey":{}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err = pipeline.Perform(t.Context(), "openAPIArgumentRow.All", request)
+	var argumentError *queries.ArgumentError
+	if !errors.As(err, &argumentError) || argumentError.Name != "key" || result.IsSuccess() {
+		t.Fatal("Kelvin alias escaped the runtime integer constraint", result, err)
+	}
+	// The alias uses the same integer/text/null scalar alternatives as key,
+	// none of which permit the object that the binder rejected.
+	forms := alias.(map[string]any)["anyOf"].([]any)[0].(map[string]any)["anyOf"].([]any)
+	if forms[0].(map[string]any)["type"] != "integer" || forms[1].(map[string]any)["type"] != "string" {
+		t.Fatal("Kelvin alias lost its scalar constraint", alias)
 	}
 }
 

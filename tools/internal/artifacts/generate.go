@@ -276,8 +276,8 @@ func Generate(ctx context.Context, config Config) error {
 	// adapter write.
 	configured := config.ConfigFile != "" || config.Profile != nil
 	if len(published) > 0 || configured && moduleManifestExists(loaded[0].Module.Dir) {
-		// A configured profile that stopped requesting artifacts still
-		// reconciles its module-root manifest, removing stale owned files.
+		// A configured profile that stopped requesting artifacts reconciles
+		// only its own matching package/build scope, removing stale files.
 		if err := publishArtifacts(ctx, loaded[0].Module.Dir, profile, graph, config.Tags, published, config.Check, nil); err != nil {
 			return err
 		}

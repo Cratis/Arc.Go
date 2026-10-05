@@ -39,6 +39,14 @@ adapters register endpoint expectations and a contract fingerprint through
 including changes caused by additional manual artifacts. The API deployment base
 path remains a frontend runtime setting, not a generator route prefix.
 
+OpenAPI and Screenplay output also enable wire analysis and endpoint verification,
+including `-screenplay-out` alone. They require static namespaces from source or
+the profile. Adding or dropping the only wire consumer changes endpoint-bearing
+Go adapters; changing only an output location does not. Use the same profile,
+package/build scope and output flags for generation and `-check`. Omitting a
+`-screenplay-out` flag used during generation can make the adapters stale even
+when you are not checking the `.play` file.
+
 ## CLI and profile reference
 
 | Flag | Default and meaning |
@@ -134,7 +142,10 @@ The output root contains `.arc-gen-manifest.json`: profile owner, selected packa
 and build-tag scope, contract fingerprint, relative Go/TypeScript paths and SHA-256
 hashes. All analysis, rendering, layout and ownership preflight completes before
 publication. Changing the scope while sharing a root is rejected; use a separate
-root rather than accidentally cleaning another profile's files.
+root rather than accidentally cleaning another profile's files. Without TypeScript,
+artifact publication has one owner and package/build scope per module-root
+manifest. A configured run that drops artifacts removes stale files only when
+that owner and scope match; unrelated adapter-only runs leave the manifest alone.
 
 For TypeScript-enabled publication, existing files must already belong to the
 manifest and match its hashes and generator markers. Even byte-identical marked
