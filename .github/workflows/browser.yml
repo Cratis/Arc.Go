@@ -1,0 +1,62 @@
+# Real-browser observable contracts: pinned playwright-core with Chromium only.
+# The browser is downloaded here, in CI, not by the runner or a package script.
+name: Browser observable conformance
+
+on:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-observables-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GOWORK: 'off'
+  GOTOOLCHAIN: local
+
+jobs:
+  chromium:
+    name: Default <Arc> hubs in headless Chromium (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.x'
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: '26.8.1'
+          cache: npm
+          cache-dependency-path: ContractTests/browser/package-lock.json
+      # setup-node ships Node's bundled npm; the lock and engines pin npm 12.0.2.
+      - name: Install pinned npm
+        run: npm install --global --no-audit --no-fund npm@12.0.2
+      - name: Install locked prerequisites
+        run: node ContractTests/browser/run.mjs install
+      # The locked playwright-core selects the Chromium revision; only the headless
+      # shell and its system libraries are installed, no other browser.
+      - name: Install the pinned headless Chromium
+        working-directory: ContractTests/browser
+        run: npx --no-install playwright-core install --with-deps --only-shell chromium
+      - name: Bundle the browser application with production-generated hooks
+        run: node ContractTests/browser/run.mjs bundle
+      - name: Build the real Arc browser fixture host
+        run: node ContractTests/browser/run.mjs host-build
+      - name: Execute the browser cases and join every host
+        run: node ContractTests/browser/run.mjs runtime
+      - name: Preserve page, frame and host evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: browser-observable-failure
+          path: .ai-work/keep/browser-observable-failure.json
+          if-no-files-found: warn
+          retention-days: 7
