@@ -27,17 +27,6 @@ func runKnownFlakes() bool {
 	return os.Getenv(runKnownFlakesEnv) == "1"
 }
 
-// skipKnownKernelDefect skips a test that cannot pass reliably until an
-// upstream kernel fix ships, unless ARC_CHRONICLE_RUN_KNOWN_FLAKES=1.
-func skipKnownKernelDefect(t *testing.T, reason string) {
-	t.Helper()
-	if runKnownFlakes() {
-		t.Logf("%s=1: running despite %s", runKnownFlakesEnv, reason)
-		return
-	}
-	t.Skip(reason + " (set " + runKnownFlakesEnv + "=1 to run)")
-}
-
 // knownKernelDefectObserved ends a test whose failure matched the signature of
 // a known upstream kernel defect. It skips by default and fails when
 // ARC_CHRONICLE_RUN_KNOWN_FLAKES=1, so the evidence stays visible either way.

@@ -19,6 +19,8 @@ import (
 	"github.com/cratis/arc.go/queries"
 	"github.com/cratis/arc.go/tenancy"
 	"github.com/cratis/chronicle.go"
+	"github.com/cratis/chronicle.go/events"
+	"github.com/cratis/chronicle.go/observation"
 	"github.com/cratis/chronicle.go/readmodels"
 )
 
@@ -53,10 +55,6 @@ func TestOneModelProjectsAndServesArcNamespaceQuery(t *testing.T) {
 	})
 	for _, namespace := range []string{"Default", "TenantB"} {
 		t.Run(namespace, func(t *testing.T) {
-			if namespace == "TenantB" {
-				// A freshly ensured namespace can strand every event-log observer behind the tail.
-				skipKnownKernelDefect(t, chronicle4548+": catch-up job reuse strands observers in a freshly ensured namespace; re-enable with https://github.com/Cratis/Arc.Go/issues/43")
-			}
 			store, err := client.EventStore(ctx, storeName, chronicle.WithNamespace(chronicle.Namespace(namespace)))
 			require(t, err)
 			logInventorySetup(t, store)
@@ -74,13 +72,13 @@ func TestOneModelProjectsAndServesArcNamespaceQuery(t *testing.T) {
 			reader := readmodels.For(store.ReadModels(), model)
 			note := "initial note"
 			want := sharedmodel.Inventory{ID: "item-1", ProductName: sharedmodel.ProductName(namespace), URLValue: "https://example.test", Note: &note, State: "available"}
-			awaitInventory(t, ctx, reader, want)
+			awaitInventoryOrKnownStall(t, ctx, store, model, reader, want, appended.Position, namespace)
 			appended, err = store.EventLog().Append(ctx, "item-1", sharedmodel.NoteCleared{})
 			logInventoryAppend(t, store, "cleared", appended, err)
 			require(t, err)
 			require(t, appended.Err())
 			want.Note = nil
-			awaitInventory(t, ctx, reader, want)
+			awaitInventoryOrKnownStall(t, ctx, store, model, reader, want, appended.Position, namespace)
 
 			tenant, err := tenancy.ParseID(namespace)
 			require(t, err)
@@ -113,7 +111,35 @@ func TestOneModelProjectsAndServesArcNamespaceQuery(t *testing.T) {
 	}
 }
 
-func awaitInventory(t *testing.T, ctx context.Context, reader *readmodels.Reader[sharedmodel.Inventory], want sharedmodel.Inventory) {
+// awaitInventoryOrKnownStall waits for the projected inventory. On timeout it
+// fails, except in the freshly ensured TenantB namespace where the upstream
+// kernel strand (Chronicle#4548) is skipped when the projection observer is
+// active, subscribed, behind a known tail and has no failed partitions.
+func awaitInventoryOrKnownStall(t *testing.T, ctx context.Context, store *chronicle.EventStore, model readmodels.Model[sharedmodel.Inventory], reader *readmodels.Reader[sharedmodel.Inventory], want sharedmodel.Inventory, position *events.SequenceNumber, namespace string) {
+	t.Helper()
+	if awaitInventory(t, ctx, reader, want) {
+		return
+	}
+	failure := "projection did not materialize"
+	if namespace != "TenantB" || position == nil {
+		t.Fatal(failure)
+	}
+	for _, projection := range store.Projections() {
+		if projection.Model().Identifier() != model.Identifier() {
+			continue
+		}
+		stall, evidence := observeStall(t, ctx, store, observation.ID(projection.Identifier()), projection.EventSequence(), *position, 0, failure)
+		if stall.matchesChronicle4548() {
+			knownKernelDefectObserved(t, chronicle4548+": catch-up job reuse strands observers in a freshly ensured namespace; re-enable with https://github.com/Cratis/Arc.Go/issues/43", failure, evidence)
+			return
+		}
+		t.Fatal(failure, evidence)
+	}
+	t.Fatal(failure, "; projection for the model not registered")
+}
+
+// awaitInventory polls for want and reports whether it materialized within 15 seconds.
+func awaitInventory(t *testing.T, ctx context.Context, reader *readmodels.Reader[sharedmodel.Inventory], want sharedmodel.Inventory) bool {
 	t.Helper()
 	deadline, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
@@ -121,14 +147,17 @@ func awaitInventory(t *testing.T, ctx context.Context, reader *readmodels.Reader
 	defer ticker.Stop()
 	for {
 		instance, err := reader.Get(deadline, "item-1")
-		require(t, err)
-		if instance.Exists && reflect.DeepEqual(instance.Value, want) {
-			return
+		if err != nil && deadline.Err() == nil {
+			require(t, err)
+		}
+		if err == nil && instance.Exists && reflect.DeepEqual(instance.Value, want) {
+			return true
 		}
 		select {
 		case <-deadline.Done():
 			t.Logf("last polling snapshot: exists=%t note=%s LastHandled=%s wantNote=%s", instance.Exists, diagnosticValue(instance.Value.Note), diagnosticValue(instance.LastHandled), diagnosticValue(want.Note))
-			t.Fatalf("projection did not materialize: got %+v, want %+v", instance, want)
+			t.Logf("projection did not materialize: got %+v, want %+v", instance, want)
+			return false
 		case <-ticker.C:
 		}
 	}

@@ -28,6 +28,14 @@ type reactorStall struct {
 // keeps the observer active and subscribed behind it, records no failure, and
 // never delivers it to the client. Any delivery, failure, inactive or
 // unsubscribed observer, or advanced observer is a different defect.
+//
+// Delivered is counted inside the reactor's Handle method, so a client-SDK
+// defect in chronicle.go before Handle (for example a dropped or undecodable
+// delivery) also leaves Delivered at zero and can match this signature. The
+// signature narrows the kernel strand; it does not prove it. Running with
+// ARC_CHRONICLE_RUN_KNOWN_FLAKES=1 turns the skip into a failure and so
+// distinguishes the two. Projection observers have no client hook, so their
+// Delivered is always zero and the check relies on the kernel state alone.
 func (s reactorStall) matchesChronicle4548() bool {
 	behind := s.LastHandled == unavailable || s.LastHandled < s.Position
 	known := s.Tail != unavailable && s.Tail >= s.Position
@@ -44,6 +52,9 @@ func TestReactorStallMatchesChronicle4548OnlyForTheKernelStrand(t *testing.T) {
 	}{
 		{"stranded behind the tail", func(s reactorStall) reactorStall { return s }, true},
 		{"nothing handled yet", func(s reactorStall) reactorStall { s.LastHandled = unavailable; return s }, true},
+		{"projection observer stranded in a fresh namespace", func(reactorStall) reactorStall {
+			return reactorStall{Position: 5, Active: true, Subscribed: true, LastHandled: unavailable, Tail: 5}
+		}, true},
 		{"delivered to Arc", func(s reactorStall) reactorStall { s.Delivered = 1; return s }, false},
 		{"failure recorded", func(s reactorStall) reactorStall { s.UnresolvedFailures = 1; return s }, false},
 		{"observer inactive", func(s reactorStall) reactorStall { s.Active = false; return s }, false},
