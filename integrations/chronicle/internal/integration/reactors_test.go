@@ -9,11 +9,13 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,6 +29,8 @@ import (
 	"github.com/cratis/chronicle.go"
 	contracts "github.com/cratis/chronicle.go/contracts/observation"
 	"github.com/cratis/chronicle.go/events"
+	"github.com/cratis/chronicle.go/eventsequences"
+	"github.com/cratis/chronicle.go/observation"
 	"github.com/cratis/chronicle.go/reactors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -36,10 +40,30 @@ import (
 type CreateRequested struct {
 	Name string `json:"name"`
 }
-type CreateFromRequest struct{}
+type CreateFromRequest struct{ deliveries *reactorDeliveries }
 
-func (*CreateFromRequest) Handle(event CreateRequested, ctx events.Context) CreateAuthor {
+func (r *CreateFromRequest) Handle(event CreateRequested, ctx events.Context) CreateAuthor {
+	r.deliveries.record(ctx.SourceID)
 	return CreateAuthor{ID: integration.EventSourceID(ctx.SourceID), Name: event.Name}
+}
+
+// reactorDeliveries counts client-side reactor invocations per event source,
+// separating a delivery the kernel never made from one Arc mishandled.
+type reactorDeliveries struct {
+	mu       sync.Mutex
+	bySource map[events.SourceID]int
+}
+
+func (d *reactorDeliveries) record(source events.SourceID) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.bySource[source]++
+}
+
+func (d *reactorDeliveries) count(source events.SourceID) int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.bySource[source]
 }
 
 func TestReactorReturnedCommandCommitsBeforeAckAndFailureRecordsPartition(t *testing.T) {
@@ -51,13 +75,14 @@ func TestReactorReturnedCommandCommitsBeforeAckAndFailureRecordsPartition(t *tes
 	require(t, err)
 	effects, err := sdk.CommandEffects(bridge, reflect.TypeFor[CreateAuthor]())
 	require(t, err)
+	deliveries := &reactorDeliveries{bySource: map[events.SourceID]int{}}
 	client, _, ctx := clientFor(t, func(registry *chronicle.Registry) {
 		_, err := chronicle.RegisterEvent[CreateRequested](registry)
 		require(t, err)
 		_, err = chronicle.RegisterEvent[AuthorCreated](registry)
 		require(t, err)
 		require(t, chronicle.RegisterReactorSideEffectHandler(registry, effects))
-		require(t, chronicle.RegisterReactor[*CreateFromRequest](registry, func() *CreateFromRequest { return &CreateFromRequest{} }, reactors.WithID("arc-create"), reactors.OnceOnly()))
+		require(t, chronicle.RegisterReactor[*CreateFromRequest](registry, func() *CreateFromRequest { return &CreateFromRequest{deliveries: deliveries} }, reactors.WithID("arc-create"), reactors.OnceOnly()))
 	}, storeName)
 	builder, err := arc.NewBuilder(arc.Options{})
 	require(t, err)
@@ -87,49 +112,101 @@ func TestReactorReturnedCommandCommitsBeforeAckAndFailureRecordsPartition(t *tes
 	appendResult, err := store.EventLog().Append(ctx, "success", CreateRequested{Name: "Ada"})
 	require(t, err)
 	require(t, appendResult.Err())
-	wait, cancel := context.WithTimeout(ctx, 15*time.Second)
+	awaitReactorOutcome(t, ctx, ctx, store, deliveries, "success", appendResult.Position, "reactor command did not append", func(wait context.Context) (bool, error) {
+		handle, err := client.EventStore(wait, storeName)
+		if err != nil {
+			return false, err
+		}
+		records, err := handle.EventLog().ReadSource(wait, "success", eventsequences.SourceFilter{})
+		if err != nil || len(records) != 2 {
+			return false, err
+		}
+		if records[1].Context.EventType.ID != "AuthorCreated" || records[1].Context.CorrelationID != appendResult.CorrelationID || records[1].Context.CausedBy.Subject != "[System]" {
+			t.Fatal(records)
+		}
+		return true, nil
+	})
+	appendResult, err = store.EventLog().Append(ctx, "failed", CreateRequested{})
+	require(t, err)
+	require(t, appendResult.Err())
+	failures, authenticated := failureClient(t, ctx)
+	awaitReactorOutcome(t, ctx, authenticated, store, deliveries, "failed", appendResult.Position, "command rejection did not fail observer partition", func(wait context.Context) (bool, error) {
+		response, err := failures.GetFailedPartitions(wait, &contracts.GetFailedPartitionsRequest{EventStore: string(storeName), Namespace: "Default", ObserverId: "arc-create"})
+		if err != nil {
+			return false, err
+		}
+		for _, partition := range response.Items {
+			if partition.Partition == "failed" {
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+	if len(history(t, ctx, client, storeName, "Default", "failed")) != 1 {
+		t.Fatal("rejected reactor command appended output")
+	}
+}
+
+// awaitReactorOutcome polls done for up to 15 seconds per phase. On timeout it
+// separates the upstream kernel strand (Chronicle#4548: no delivery reached the
+// client while the subscribed, active observer stays behind a known tail) from
+// every other cause, which fails the test. done polls with a deadline derived
+// from poll; the diagnosis reads the kernel with ctx.
+func awaitReactorOutcome(t *testing.T, ctx, poll context.Context, store *chronicle.EventStore, deliveries *reactorDeliveries, source events.SourceID, position *events.SequenceNumber, failure string, done func(context.Context) (bool, error)) {
+	t.Helper()
+	if position == nil {
+		t.Fatal("append omitted position")
+	}
+	wait, cancel := context.WithTimeout(poll, 15*time.Second)
 	defer cancel()
 	ticker := time.NewTicker(25 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		records := history(t, wait, client, storeName, "Default", "success")
-		if len(records) == 2 {
-			if records[1].Context.EventType.ID != "AuthorCreated" || records[1].Context.CorrelationID != appendResult.CorrelationID || records[1].Context.CausedBy.Subject != "[System]" {
-				t.Fatal(records)
-			}
-			break
+		ok, err := done(wait)
+		if ok {
+			return
+		}
+		if err != nil && wait.Err() == nil {
+			t.Fatal(failure, err)
 		}
 		select {
 		case <-wait.Done():
-			t.Fatal("reactor command did not append", wait.Err())
+			diagnoseReactorStall(t, ctx, store, deliveries, source, *position, failure)
+			return
 		case <-ticker.C:
 		}
 	}
-	appendResult, err = store.EventLog().Append(ctx, "failed", CreateRequested{})
-	require(t, err)
-	require(t, appendResult.Err())
-	failures, authenticated := failureClient(t, wait)
-	for {
-		response, err := failures.GetFailedPartitions(authenticated, &contracts.GetFailedPartitionsRequest{EventStore: string(storeName), Namespace: "Default", ObserverId: "arc-create"})
-		require(t, err)
-		found := false
-		for _, partition := range response.Items {
-			if partition.Partition == "failed" {
-				found = true
-			}
-		}
-		if found {
-			break
-		}
-		select {
-		case <-wait.Done():
-			t.Fatal("command rejection did not fail observer partition", wait.Err())
-		case <-ticker.C:
+}
+
+func diagnoseReactorStall(t *testing.T, parent context.Context, store *chronicle.EventStore, deliveries *reactorDeliveries, source events.SourceID, position events.SequenceNumber, failure string) {
+	t.Helper()
+	read, cancel := context.WithTimeout(context.WithoutCancel(parent), 5*time.Second)
+	defer cancel()
+	info, err := store.Observers().Get(read, "arc-create", events.EventLog)
+	if err != nil || info == nil {
+		t.Fatal(failure, "; observer unavailable:", err)
+	}
+	partitions, err := store.Observers().FailedPartitions(read, "arc-create")
+	if err != nil {
+		t.Fatal(failure, "; failed partitions unavailable:", err)
+	}
+	unresolved := 0
+	for _, partition := range partitions {
+		if !partition.IsResolved() {
+			unresolved++
 		}
 	}
-	if len(history(t, ctx, client, storeName, "Default", "failed")) != 1 {
-		t.Fatal("rejected reactor command appended output")
+	stall := reactorStall{
+		Position: uint64(position), Delivered: deliveries.count(source), UnresolvedFailures: unresolved,
+		Active: info.RunningState() == observation.Active, Subscribed: info.IsSubscribed(),
+		LastHandled: uint64(info.LastHandled()), Tail: uint64(info.Tail()),
 	}
+	evidence := fmt.Sprintf("source=%s %+v next=%d handled=%d", source, stall, info.Next(), info.HandledEventCount())
+	if stall.matchesChronicle4548() {
+		knownKernelDefectObserved(t, chronicle4548+": reactor stranded behind the event-log tail; re-enable with "+reactorStrandIssue, failure, evidence)
+		return
+	}
+	t.Fatal(failure, evidence)
 }
 
 // failureClient uses the public kernel OAuth/contract APIs, not SDK internal test helpers.
