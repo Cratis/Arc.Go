@@ -31,6 +31,7 @@ type configuration[C any] struct {
 	responseType     reflect.Type
 	responseOverride bool
 	operations       bool
+	decisions        DecisionProfile
 }
 type option[C any] struct {
 	name string

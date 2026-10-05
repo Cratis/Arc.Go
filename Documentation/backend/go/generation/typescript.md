@@ -91,7 +91,12 @@ for discovery.
   fail before publication. An identity tag is not a custom client delta extractor.
 - Primitive query defaults validate the original Go grammar and target width,
   but remain server defaults rather than initialized client values. Nullable
-  collection elements, rich defaults, and query validators are unsupported.
+  collection elements and rich defaults are unsupported. Snapshot query string
+  rules support `notNull`, `notEmpty`, `minLength`, `maxLength`, and `length`, with
+  matching server and client validators. Observable-query validation and unproved
+  rule shapes are rejected. Typed server validators and named policies use
+  [validator and policy directives](validators-and-policies.md); these do not
+  translate arbitrary application code into client validation.
 - Sorting helpers use declared sortable result-wire fields, not query arguments,
   per [Arc#2998](https://github.com/Cratis/Arc/issues/2998). They do not add backend
   provider paging or sorting.

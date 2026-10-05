@@ -47,6 +47,7 @@ type Registration struct {
 	responseType     reflect.Type
 	responseOverride bool
 	operations       bool
+	decisions        DecisionProfile
 }
 
 // Descriptor returns a copy-isolated declaration.
@@ -133,7 +134,7 @@ func Register[C any](r Registrar, options ...Option[C]) error {
 	if c.key != nil {
 		key = func(value any) (string, bool, error) { key, present := c.key(value.(C)); return key, present, nil }
 	}
-	registration := Registration{descriptor: cloneDescriptor(c.descriptor), commandType: t, adapter: *c.handler, decode: decodeCommand[C], key: key, validators: slices.Clone(c.validators), withoutModel: c.withoutModel, dependencies: slices.Clone(c.dependencies), responseKind: c.handler.responseKind, responseType: c.handler.responseType, responseOverride: c.responseOverride}
+	registration := Registration{descriptor: cloneDescriptor(c.descriptor), commandType: t, adapter: *c.handler, decode: decodeCommand[C], key: key, validators: slices.Clone(c.validators), withoutModel: c.withoutModel, dependencies: slices.Clone(c.dependencies), responseKind: c.handler.responseKind, responseType: c.handler.responseType, responseOverride: c.responseOverride, decisions: c.decisions}
 	registration.operations = c.operations || operationReturn(c.handler.returnType)
 	if bareOperationCollection(c.handler.returnType) || (c.operations && c.handler.returnType.Kind() == reflect.Interface && !operationReturn(c.handler.returnType)) {
 		return ErrInvalidOperation
@@ -146,6 +147,9 @@ func Register[C any](r Registrar, options ...Option[C]) error {
 	}
 	if operationReturn(registration.responseType) || bareOperationCollection(registration.responseType) {
 		return ErrInvalidOperation
+	}
+	if err := checkDecisionRegistration(registration); err != nil {
+		return &RegistrationError{c.descriptor.Type.Identity(), errors.Join(ErrInvalidRegistration, err)}
 	}
 	return r.RegisterCommand(registration)
 }

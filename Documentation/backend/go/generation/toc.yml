@@ -6,3 +6,7 @@
   href: typescript.md
 - name: Directives and signatures
   href: reference.md
+- name: OpenAPI document
+  href: openapi.md
+- name: Screenplay metadata
+  href: screenplay.md

@@ -199,7 +199,7 @@ func TestOpenAPIRendererRefusesWholeDocument(t *testing.T) {
 		{"duplicate command", "duplicate or inconsistent command", func(g *Graph) { g.Commands = append(g.Commands, g.Commands[0]) }},
 		{"dangling input", "unresolved type", func(g *Graph) { g.Commands[0].TypeKey = "missing"; g.Commands[0].Input.Target = "missing" }},
 		{"missing framework", "framework inventory", func(g *Graph) { g.Framework = nil }},
-		{"paged query", "nonpaged", func(g *Graph) { g.Queries[0].Paged = true }},
+		{"paged single result", "collection result", func(g *Graph) { g.Queries[0].Paged = true; g.Queries[0].Result = *g.Queries[0].Result.Element }},
 		{"stream", "snapshot", func(g *Graph) { g.Queries[0].Delivery = "observable" }},
 		{"schema injection", "declared codecs", func(g *Graph) {
 			g.Types[0].Fields[0].Type.Contract.Schemas = &WireSchemas{Input: json.RawMessage(`{"$ref":"https://invalid.test"}`)}
@@ -230,7 +230,7 @@ func TestOpenAPIRendererRefusesWholeDocument(t *testing.T) {
 
 func TestOpenAPIRendererRefusesActualUnsupportedGraphs(t *testing.T) {
 	for _, tc := range []struct{ name, source, message string }{
-		{"query arguments", "//arc:readmodel\ntype Row struct { ID string }; type Args struct { Name string }; func (Row) All(Args) ([]Row, error) { return nil, nil }", "argument-free"},
+		{"query float argument", "//arc:readmodel\ntype Row struct { ID string }; type Args struct { Ratio float64 }; func (Row) All(Args) ([]Row, error) { return nil, nil }", "special-value codec"},
 		{"float codec", "//arc:command\ntype Save struct { Number float64 }; func (Save) Handle() error { return nil }", "special-value codec"},
 		{"date codec", "import \"time\"\n//arc:command\ntype Save struct { Date time.Time }; func (Save) Handle() error { return nil }", "unsupported wire kind"},
 		{"rules", "//arc:command\ntype Save struct { Name string `validate:\"required\"` }; func (Save) Handle() error { return nil }", "validation rules"},

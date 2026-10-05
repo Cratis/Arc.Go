@@ -1,26 +1,77 @@
 ---
 title: Mount Arc in Gin
-description: Adapt Arc's standard handler without losing custom QUERY or discovery routes.
+description: Forward unmatched Gin requests to Arc without losing QUERY or Arc's empty 404.
 ---
 
-## Forward unmatched Arc requests
+Your service already uses Gin and you want Arc's commands and queries next to
+your Gin routes. Gin has no wildcard that matches every method, so forward the
+requests Gin does not route itself to Arc.
 
-For an existing Gin host, use Gin's standard-library handler adapter in a fallback
-which does not compete with your Arc paths. This excerpt assumes an initialized
-Gin engine `engine`, the Gin import `gin`, and started Arc application `app`:
+## Forward unmatched requests
+
+Build and start Arc first. This code is compiled and tested in the
+[recipes module](index.md):
 
 ```go
-engine.NoRoute(gin.WrapH(app))
+// NewEngine returns a Gin engine that serves host routes and forwards every
+// unmatched request, unchanged, to the started Arc application.
+func NewEngine(app http.Handler) *gin.Engine {
+    engine := gin.New()
+    engine.GET("/healthz", func(c *gin.Context) {
+        c.Status(http.StatusNoContent)
+    })
+    engine.NoRoute(func(c *gin.Context) {
+        app.ServeHTTP(immediateWriter{c.Writer}, c.Request)
+        // Gin appends "404 page not found" to a NoRoute response that wrote
+        // no body. Commit Arc's status so its empty 404 stays empty.
+        c.Writer.WriteHeaderNow()
+    })
+    return engine
+}
+
+// immediateWriter restores net/http's immediate header commitment. Gin defers
+// WriteHeader; Arc's wrappers hide Gin's WriteHeaderNow from WebSocket libraries,
+// so an unadapted 101 would remain buffered when the connection is hijacked.
+// Embedding keeps Gin's flush/hijack support and response accounting intact.
+type immediateWriter struct{ gin.ResponseWriter }
+
+func (w immediateWriter) WriteHeader(status int) {
+    w.ResponseWriter.WriteHeader(status)
+    w.WriteHeaderNow()
+}
+
+func (w immediateWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 ```
 
-Do not enable a Gin method-not-allowed handler which intercepts Arc QUERY requests
-before this fallback. Reserve `/.cratis/*` and operation paths, and keep the original
-URL unchanged. Arc owns its empty 404/405 behavior inside its handler. This recipe
-adds no Gin dependency to Arc itself; compilation belongs to your Gin application.
+Gin sends a request to `NoRoute` when no route matches its method and path,
+including QUERY, which Gin does not register. The original URL is unchanged.
 
-An authenticated Gin user becomes Arc authority only through explicitly installed
-`identity.WithPrincipal` metadata and a registered `authentication.HostPrincipal()`
-adapter. Framework-local values or display identity cookies are not proof.
+:::caution[Do not use gin.WrapH alone]
+`engine.NoRoute(gin.WrapH(app))` works for most requests, but Gin writes its own
+`404 page not found` body after Arc's empty 404 because Arc wrote no body. The
+`WriteHeaderNow` call commits Arc's status first. The `immediateWriter` bridge
+also commits status 101 before WebSocket hijacking, which otherwise leaves the
+handshake buffered behind Arc's response wrappers.
+:::
 
-Gin owns its external server/listener/timeouts. Coordinate graceful server shutdown
-with `app.Shutdown` under a fresh cleanup budget. See [hosting](../core/hosting.md).
+## What the recipe proves
+
+The test serves the engine over real HTTP with Gin v1.12.0 and checks command
+execution, `/validate` without execution, GET and QUERY argument binding, HEAD,
+Arc's empty 404/405, and that cancelling the client request cancels the query's
+context. Direct SSE flushes two ordered results, direct WebSocket upgrades and
+sends two results, and disconnect and application shutdown join the source.
+Correlation IDs and QUERY's `no-store` survive the host. It does not cover other
+Gin versions, hub multiplexing or Gin middleware you add.
+
+## Identity and lifecycle
+
+A Gin-authenticated user is not an Arc principal. Register an Arc
+authentication handler, such as the [JWT bearer recipe](jwt.md), or install
+verified `identity.WithPrincipal` metadata with `authentication.HostPrincipal()`.
+Your host owns the listener and server timeouts. Initiate `server.Shutdown` and
+`app.Shutdown` together, then join both with fresh bounded cleanup budgets, as
+in the [coordinated shutdown helper](chi.md#own-the-server-lifecycle).
+Waiting for HTTP drain first stalls active SSE handlers until the deadline;
+Arc must cancel their observations while HTTP drains. The Gin tests exercise
+this sequence with an active SSE stream. See [hosting](../core/hosting.md).

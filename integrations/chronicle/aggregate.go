@@ -116,8 +116,14 @@ type AggregateCommitResult struct {
 // Commit is explicit early finalization of the shared owner. No successor is ever
 // created; subsequent Apply or Commit fails. Automatic root completion retains it.
 // Already-recorded failures in this frame or an ancestor prevent persistence.
+// Operation-capable commands refuse explicit commits with commands.ErrInvalidOperation
+// before any commit RPC; the refusal poisons the shared owner even when ignored.
 func (a *AggregateRoot) Commit(ctx context.Context) (AggregateCommitResult, error) {
 	if err := a.check(ctx); err != nil {
+		return AggregateCommitResult{}, err
+	}
+	if err := a.invocation.Execution().CheckExplicitCommit(ctx); err != nil {
+		a.transaction.poison(err)
 		return AggregateCommitResult{}, err
 	}
 	if err := a.invocation.Execution().CheckRecordedFailures(ctx); err != nil {

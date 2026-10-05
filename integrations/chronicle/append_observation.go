@@ -24,34 +24,53 @@ type AppendObserver interface {
 
 // OnExecution establishes command-attributable immediate-append observation after
 // authorization, never during advisory validation. It may establish store readiness.
+//
+// Operation-capable commands begin the Chronicle transaction after filters and
+// validation. Their root filter therefore only records the authorized request;
+// the terminal Begin opens the transaction, publishes the origin and subscribes
+// before Provide/Handle or operations run. The integration never persists during
+// filters or validation; direct application appends before Begin are unattributed.
 func (i *Integration) OnExecution(ctx context.Context, inv *commands.Invocation) (commands.Result[commands.NoResponse], error) {
 	success := commands.Success(inv.CommandContext().CorrelationID())
 	if inv.CommandContext().IsValidationOnly() {
 		return success, nil
 	}
-	tx, err := i.transaction(ctx, inv)
-	if err != nil {
-		return success, err
-	}
 	frame, err := i.frameFor(ctx, inv)
 	if err != nil {
 		return success, err
 	}
+	tx, found, err := commands.RootState(ctx, inv, i.root)
+	if err != nil {
+		return success, err
+	}
+	if !found {
+		// Only an operation-capable root frame reaches its filters before Begin.
+		if !inv.Execution().IsRoot() {
+			return success, commands.ErrNoContext
+		}
+		frame.observation = true
+		return success, nil
+	}
+	return success, i.observe(ctx, inv, tx, frame)
+}
+
+// observe binds the root transaction to this frame and subscribes once.
+func (i *Integration) observe(ctx context.Context, inv *commands.Invocation, tx *transaction, frame *commandFrame) error {
 	// Every authorized frame publishes the immutable root token, including joined
 	// children whose root is already bound. SetValue updates subsequent callbacks.
 	if tx.origin != nil {
 		if err := inv.SetValue(appendorigin.Name, tx.origin); err != nil {
-			return success, err
+			return err
 		}
 	}
 	tx.mu.Lock()
 	if tx.bound && (tx.coordinates != frame.coordinates || tx.actor != frame.actor) {
 		tx.mu.Unlock()
-		return success, ErrMismatch
+		return ErrMismatch
 	}
 	if tx.bound {
 		tx.mu.Unlock()
-		return success, nil
+		return nil
 	}
 	tx.coordinates, tx.actor, tx.bound = frame.coordinates, frame.actor, true
 	tx.mu.Unlock()
@@ -67,15 +86,15 @@ func (i *Integration) OnExecution(ctx context.Context, inv *commands.Invocation)
 		tx.mu.Unlock()
 	})
 	if err != nil {
-		return success, err
+		return err
 	}
 	if stop == nil {
-		return success, ErrInvalid
+		return ErrInvalid
 	}
 	tx.mu.Lock()
-	tx.unsubscribe = stop
+	tx.unsubscribe, tx.observed = stop, true
 	tx.mu.Unlock()
-	return success, nil
+	return nil
 }
 
 func mergeObserved(a, b commands.CompletionReport) commands.CompletionReport {

@@ -158,7 +158,7 @@ jobs:
       # Top-level tests split from the rest so each half stays well inside the
       # per-run go test timeout. The same anchored pattern feeds -run and -skip,
       # so the two runs are complementary by construction.
-      TOOLS_HEAVY_TESTS: 'TestOwnedPublication.*|TestCompetingObservable.*|TestObservableCollections.*|TestInvalidServiceImports.*|TestQueryRuleRepresentation.*'
+      TOOLS_HEAVY_TESTS: 'TestOwnedPublication.*|TestCompetingObservable.*|TestObservableCollections.*|TestInvalidServiceImports.*|TestQueryRuleRepresentation.*|TestArtifact.*|TestArcGenCLI.*|TestOpenAPIQueryArgument.*'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -218,6 +218,8 @@ jobs:
       - run: go vet ./...
       - run: python3 scripts/check-boundaries.py
       - run: python3 ../../scripts/check-chronicle-snippet.py
+      - name: Test Chronicle snippet drift detection
+        run: python3 -B ../../scripts/test_check_chronicle_snippet.py
       - run: go test -count=1 -timeout=2m ./...
       - run: go test -race -count=1 -timeout=3m ./...
       - run: go mod tidy -diff
@@ -381,10 +383,53 @@ jobs:
         if: failure()
         run: docker logs '${{ job.services.chronicle.id }}' --tail 150
 
+  recipes:
+    name: Recipes module (unpublished)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: recipes
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: recipes/go.sum
+      - run: go mod download
+      - run: go mod verify
+      - run: go build ./...
+      - run: go vet ./...
+      - name: Test recipes and documentation excerpts (Go 1.26)
+        run: go test -count=1 -timeout=2m ./...
+      - run: go mod tidy -diff
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.14.0
+          working-directory: recipes
+          args: --timeout=3m --config=../.golangci.yml
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.x'
+          cache-dependency-path: recipes/go.sum
+      - name: Compile recipes (Go 1.27)
+        run: go build ./...
+      - name: Vet recipes (Go 1.27)
+        run: go vet ./...
+      - name: Test recipes and documentation excerpts (Go 1.27)
+        run: go test -count=1 -timeout=2m ./...
+      - name: Race detector
+        run: go test -race -count=1 -timeout=3m ./...
+      - name: Install pinned govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+      - run: govulncheck ./...
+
   gate:
     name: Go gate
     if: always()
-    needs: [test, race, lint, vulnerabilities, workflows, tools, integrations-chronicle, mongodb-test, integrations-mongodb, mongodb-provider, chronicle-kernel]
+    needs: [test, race, lint, vulnerabilities, workflows, tools, integrations-chronicle, mongodb-test, integrations-mongodb, mongodb-provider, chronicle-kernel, recipes]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

@@ -130,7 +130,57 @@ Each root execution allocates a fresh, immutable local origin, even without stag
 
 Notifications must match the exact nonzero origin and the selected store, namespace and sequence. Correlation is diagnostic only, so concurrent same-correlation commands remain separate. SDK-owned unit commits use their own origin and bypass the resolver; they are not counted as immediate handler appends. Resolver errors or panics fail before dispatch without fallback. Origins are local attribution metadata, not authorization credentials or persistence guarantees.
 
-Coverage requires the supplied callback context and this configured client. Appends that discard that context, use another client or raw low-level handles, target other coordinates, or outlive the command's subscription are outside the mechanism. Zero-origin notifications are ignored. Pre-dispatch failures do not emit notifications. Always inspect every direct append result, including rejected and uncertain outcomes; immediate persistence cannot be rolled back by a later command failure.
+Coverage requires the supplied callback context and this configured client. Appends that discard that context, use another client or raw low-level handles, target other coordinates, or outlive the command's subscription are outside the mechanism. Direct SDK appends by application filters or validators in operation commands before terminal `Begin` are also unattributed and outside the immediate-append mechanism. Zero-origin notifications are ignored. Pre-dispatch failures do not emit notifications. Always inspect every direct append result, including rejected and uncertain outcomes; immediate persistence cannot be rolled back by a later command failure.
+
+## Compensate operations against Chronicle outcomes
+
+A booking command often has to do two things: record `SeatBooked` in Chronicle and reserve the seat in an external system. If the reservation succeeds and the Chronicle commit is then rejected, you need to release the seat. If the events did persist, releasing it would be wrong. Arc's [command operations](../commands/operations.md) handle this split. Chronicle reports what actually persisted, and Arc decides whether compensation is safe.
+
+The installed integration fills Arc's sole operation-classified terminal slot, so operation commands run against Chronicle with no further registration:
+
+```go
+type reserveSeat struct{ BookingID, SeatID string }
+
+func (reserveSeat) CommandOperation() {}
+func (o reserveSeat) Execute(ctx context.Context, seats SeatService) error {
+    return seats.Reserve(ctx, o.BookingID, o.SeatID)
+}
+func (o reserveSeat) Compensate(ctx context.Context, seats SeatService, _ commands.OperationFailure) error {
+    return seats.Release(ctx, o.BookingID)
+}
+
+err := commands.RegisterOperation[reserveSeat, SeatService](builder.Commands(),
+    func(context.Context, *execution.Scope) (SeatService, error) { return seats, nil })
+err = commands.Register[BookSeat](builder, commands.Handle(func(c BookSeat, _ context.Context) (commands.Outcome[commands.NoResponse], error) {
+    return commands.Effects[commands.NoResponse](SeatBooked{SeatID: c.SeatID}, reserveSeat{c.BookingID, c.SeatID}), nil
+}), commands.WithOperations[BookSeat]())
+```
+
+This excerpt is checked against the compiled `integrations/chronicle/operation_example_test.go` example: install the integration first, check each error, and declare `SeatService`, `BookSeat` and `SeatBooked` yourself. Handle only declares work. Arc stages the returned events, enters the operations in order, then runs the terminal Chronicle commit. Recovery runs only after that commit, in reverse order.
+
+The completion report decides recovery:
+
+| Completion | Typical cause | Recovery |
+| --- | --- | --- |
+| `NoPersistedWork` | An operation failed and nothing was staged or appended | Compensators run |
+| `NotCommitted` | The deferred commit was rejected, for example by a unique constraint | Compensators run |
+| `Committed` | An operation's attributed immediate append was confirmed before it failed | `RecoverySuppressed`; nothing is reversed |
+| `OutcomeUnknown` | An immediate append or the commit lost its acknowledgement | `RecoveryIndeterminate`; reconcile first |
+| `MixedCommit` | Confirmed immediate writes plus rolled-back deferred work | `RecoveryIndeterminate`; reconcile first |
+
+Inspect `result.Recovery()` and `result.OperationOutcomes()` on the server. They are backend-only and never reach the HTTP envelope.
+
+Operation commands begin the Chronicle transaction after authorization, filters and validation. The integration records the authorized observation request in its filter. The terminal `Begin` then opens the transaction, publishes the append origin and subscribes, all before `Provide`, `Handle` or any operation runs. The integration itself never persists during filters or validation, and a validation failure leaves no subscription behind. Application filters and validators can still append directly through a retained SDK store; appends before `Begin` have no command origin and are outside immediate-append observation. Before the first operation is entered, Arc asks the integration for a read-only snapshot of persistence facts. If a handler already caused a confirmed, unknown or mixed immediate append, Arc refuses to enter any operation and the command fails with `commands.ErrInvalidOperation`.
+
+A rejected handler append is `NotCommitted`, not an uncertain outcome. Even though its rejection poisons the transaction, Arc may still enter the returned operations, then roll back deferred work and compensate those operations against the known final facts. Inspect direct append results and return the failure from the handler to avoid that execute/compensate cycle.
+
+The integration fails closed when missing observation is detectable. Without an `AppendObserver`, such as a custom `Options` without `Appends`, operation commands fail with `ErrUnsupported` before any operation is entered; ordinary commands are unaffected. The SDK adapter always installs the observer, but attribution still depends on configuring `sdk.ResolveAppendOrigin` when you construct the client, before `Capture` in shared-provider setups. Arc cannot detect a client built without it, so an immediate append from such a client looks like no work and can be compensated wrongly.
+
+:::caution[Explicit aggregate commits are refused in operation commands]
+`AggregateRoot.Commit` returns `commands.ErrInvalidOperation` in an operation command, before any commit RPC. The refusal poisons the shared owner, so the command fails, returns no response, enters no operation and persists nothing, even if the handler ignores the error. Return the events and let the terminal step commit them. Ordinary commands keep explicit commit.
+:::
+
+Compensation is a new write, never an unappend. A compensator receives its dependency bundle from planning time. Borrowed SDK facades in that bundle, such as the `*chronicle.EventStore` or an event sequence, stay usable while the client is open. The command's transaction, unit of work and aggregate roots are already completed and must not be reused. Check each compensating append's own result; the original completion report does not describe it. Arc never retries an operation, a compensator or a commit.
 
 ## Inject keyed read models
 
@@ -312,6 +362,6 @@ go test -tags=integration -count=1 -timeout=2m ./internal/integration ./examples
 python3 scripts/check-boundaries.py
 ```
 
-Integration-tagged tests fail when the endpoint variable is absent. They exercise HTTP commands, atomic rejection/readback, tenants, shared projection/query models, projection injection, aggregate competition, reactor-returned commands, failed observer partitions and ignored immediate-append rejection. Root and tools gates run separately; `./...` does not cross module boundaries.
+Integration-tagged tests fail when the endpoint variable is absent. They exercise HTTP commands, atomic rejection/readback, tenants, shared projection/query models, projection injection, aggregate competition, reactor-returned commands, failed observer partitions, ignored immediate-append rejection and operation recovery for every completion, including a lost acknowledgement. Root and tools gates run separately; `./...` does not cross module boundaries.
 
-Protected decisions/enrollment tokens, watches, aggregate snapshots, automatic historical-generation migration, full compliance authoring and general operation compensation remain unsupported. None is implied by an ordinary injected model or a successful snapshot test.
+Protected decisions/enrollment tokens, watches, aggregate snapshots, automatic historical-generation migration, full compliance authoring, generated operation adapters, nested operation workflows and durable operation recovery remain unsupported. None is implied by an ordinary injected model or a successful snapshot test.

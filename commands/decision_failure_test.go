@@ -39,24 +39,35 @@ func TestDecisionFailuresCannotBeAllowedByValidationSeverity(t *testing.T) {
 				}
 			}
 			callDecisionFrame(t, f, func(ctx context.Context, inv *Invocation) error {
-				if err := beginDecisionReads(ctx, inv, decisionAdmissionForTest()); err != nil {
-					return err
-				}
-				read, err := readDecision(ctx, inv, target, source)
+				read, err := ReadDecision(ctx, inv, target, source)
 				if stage == "provided" {
 					if err != nil {
 						return err
 					}
 					issued = true
-					err = verifyDecision(ctx, inv, read)
+					err = VerifyDecision(ctx, inv, read)
 				} else if read != nil {
 					t.Error("refused read delivered a value")
 				}
-				if !errors.Is(err, cause) || !errors.Is(err, errDecisionRead) || len(boundary.Classify(err).Exceptions) == 0 {
+				if !errors.Is(err, cause) || !errors.Is(err, ErrDecisionRead) || len(boundary.Classify(err).Exceptions) == 0 {
 					t.Fatalf("filterable acquisition failure: %v", err)
 				}
 				return nil
 			})
 		})
+	}
+}
+
+func TestDecisionSentinelWrappedAsValidationFailureStaysInfrastructure(t *testing.T) {
+	wrapped := &validation.InvocationError{Cause: ErrDecisionRead}
+	if len(boundary.Classify(wrapped).Exceptions) != 0 {
+		t.Fatal("precondition: a validation failure wrapping the sentinel has no infrastructure branch")
+	}
+	err := decisionFailure(wrapped)
+	if !errors.Is(err, ErrDecisionRead) || len(boundary.Classify(err).Exceptions) == 0 {
+		t.Fatalf("sentinel was filterable: %v", err)
+	}
+	if again := decisionFailure(err); again != err {
+		t.Fatalf("an error with an infrastructure branch was rewrapped: %v", again)
 	}
 }

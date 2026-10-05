@@ -39,6 +39,14 @@ adapters register endpoint expectations and a contract fingerprint through
 including changes caused by additional manual artifacts. The API deployment base
 path remains a frontend runtime setting, not a generator route prefix.
 
+OpenAPI and Screenplay output also enable wire analysis and endpoint verification,
+including `-screenplay-out` alone. They require static namespaces from source or
+the profile. Adding or dropping the only wire consumer changes endpoint-bearing
+Go adapters; changing only an output location does not. Use the same profile,
+package/build scope and output flags for generation and `-check`. Omitting a
+`-screenplay-out` flag used during generation can make the adapters stale even
+when you are not checking the `.play` file.
+
 ## CLI and profile reference
 
 | Flag | Default and meaning |
@@ -49,6 +57,8 @@ path remains a frontend runtime setting, not a generator route prefix.
 | `-bindings-config` | Disabled; separate strict versioned constructor-service configuration |
 | `-typescript-out` | Disabled; overrides profile `typescript.out` |
 | `-emit-go` | True; an explicitly supplied value overrides profile `typescript.emitGo` |
+| `-openapi-out` | Disabled; overrides profile `openapi.out` (module-relative `.json`); requires the profile's `openapi` section |
+| `-screenplay-out` | Disabled; sets or overrides profile `screenplay.out` (module-relative `.play`); requires `formatVersion` 2 |
 | `-check` | False; compare complete inventory and bytes without writes or repair |
 | Package patterns | `.`; selected main-module application artifact packages |
 
@@ -63,8 +73,18 @@ Profile fields:
 
 - `formatVersion`: `1` retains the existing adapter/TS projection and fingerprints;
   `2` explicitly selects the richer [shared contract projection](../../internal/artifacts/contract.md).
-  OpenAPI profile requests remain diagnostic: document generation/publication is
-  not enabled. `name`: stable nonempty ownership identity.
+  `name`: stable nonempty ownership identity.
+- `openapi`: `title`, `version`, `out`, optional `servers` (only `/`). Requires
+  `server` and `responseFields` assertions and publishes a file-only OpenAPI 3.1.1
+  document; unsupported shapes refuse the whole document. There is no HTTP
+  exposure or embedded viewer. See
+  [Publish an OpenAPI document](../../../Documentation/backend/go/generation/openapi.md).
+- `screenplay`: `out`. Publishes partial Screenplay 4.48.1 metadata; the profile
+  `name` is the domain. There is no embedded viewer. See
+  [Export Screenplay metadata](../../../Documentation/backend/go/generation/screenplay.md).
+  Without TypeScript output, OpenAPI and Screenplay files are owned by a
+  `.arc-gen-manifest.json` in the module root; with TypeScript output they join
+  its manifest. Go adapters keep marker-based ownership in either case.
 - `defaultNamespace` and `packageNamespaces`: logical names; source namespaces
   remain available. Reachable dependency models need a declared namespace or
   explicit package mapping; dependencies never receive generated Go adapters.
@@ -102,8 +122,11 @@ repair the pinned serializer's null-write behavior.
 
 Arbitrary interfaces, opaque codecs, unresolved dynamic responses, unsupported
 rules/defaults/derived providers, rich dictionaries, eager constructor cycles,
-nullable collection elements, query validators, channels, and unsupported observable
-or opaque provider emissions fail instead of degrading to `any`. Primitive query
+nullable collection elements, unsupported query validation, channels, and unsupported observable
+or opaque provider emissions fail instead of degrading to `any`. Snapshot query string
+rules support `notNull`, `notEmpty`, `minLength`, `maxLength`, and `length`; they
+register server validation and emit matching client validators. Observable-query
+validation and unproved rule shapes are rejected. Primitive query
 defaults are checked against the original Go grammar and target width, and remain
 server-side defaults.
 Query parameter names containing regex metacharacters are rejected for Arc 22.48.2
@@ -122,7 +145,10 @@ The output root contains `.arc-gen-manifest.json`: profile owner, selected packa
 and build-tag scope, contract fingerprint, relative Go/TypeScript paths and SHA-256
 hashes. All analysis, rendering, layout and ownership preflight completes before
 publication. Changing the scope while sharing a root is rejected; use a separate
-root rather than accidentally cleaning another profile's files.
+root rather than accidentally cleaning another profile's files. Without TypeScript,
+artifact publication has one owner and package/build scope per module-root
+manifest. A configured run that drops artifacts removes stale files only when
+that owner and scope match; unrelated adapter-only runs leave the manifest alone.
 
 For TypeScript-enabled publication, existing files must already belong to the
 manifest and match its hashes and generator markers. Even byte-identical marked

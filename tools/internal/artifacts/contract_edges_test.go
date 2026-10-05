@@ -126,7 +126,7 @@ func TestContractProfileCompatibilityAndNormalizationAreExplicit(t *testing.T) {
 		t.Fatal(graph.Assertions)
 	}
 	profile.Server.Environment = "Development"
-	profile.OpenAPI.Out = "ignored-path"
+	profile.OpenAPI.Out = "ignored/openapi.json"
 	dev, err := contractGraph(t, source, profile, false)
 	if err != nil {
 		t.Fatal(err)
@@ -134,7 +134,7 @@ func TestContractProfileCompatibilityAndNormalizationAreExplicit(t *testing.T) {
 	if dev.Assertions.DiscoveryExposure != "anonymous" {
 		t.Fatal(dev.Assertions)
 	}
-	profile.OpenAPI.Out = "another-path"
+	profile.OpenAPI.Out = "another/openapi.json"
 	dev2, err := contractGraph(t, source, profile, false)
 	if err != nil {
 		t.Fatal(err)
@@ -142,8 +142,10 @@ func TestContractProfileCompatibilityAndNormalizationAreExplicit(t *testing.T) {
 	if dev.Fingerprint != dev2.Fingerprint || !reflect.DeepEqual(graph.Endpoints, dev.Endpoints) {
 		t.Fatal("output roots or environment altered routes/identity")
 	}
-	if err := Generate(t.Context(), Config{Profile: &profile}); err == nil || !strings.Contains(err.Error(), "not enabled") {
-		t.Fatal("OpenAPI CLI publication became enabled", err)
+	// Publication is file-only and needs an explicit output file.
+	profile.OpenAPI.Out = ""
+	if err := Generate(t.Context(), Config{Profile: &profile}); err == nil || !strings.Contains(err.Error(), "requires an output file") {
+		t.Fatal("OpenAPI profile without an output file was accepted", err)
 	}
 }
 
