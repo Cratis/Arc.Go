@@ -70,7 +70,10 @@ flushes immediately; a pending feed flushes headers without a synthetic result.
 Every later result is a full snapshot, never a hub delta.
 
 Responses use `text/event-stream; charset=utf-8`, `Cache-Control: no-cache` and
-`X-Accel-Buffering: no`. HTTP/1.x includes `Connection: keep-alive`; HTTP/2 does
+`X-Accel-Buffering: no`. An existing `Cache-Control` survives only when it has a
+`no-store` directive, so application middleware cannot leave a cacheable policy
+such as `private, max-age=600` on a stream. Framework `/.cratis/` streams keep
+`no-store, private`; ordinary direct SSE uses `no-cache`. HTTP/1.x includes `Connection: keep-alive`; HTTP/2 does
 not. Direct SSE has no periodic keepalive enabled. A live denial sends one final
 unauthorized result then ends the stream. Source/encoding failures can send a
 safe terminal error; completion simply closes without an invented Completed event.

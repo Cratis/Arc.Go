@@ -273,3 +273,15 @@ func TestSSEHubCreationDenialIs401AndDoesNotKillOtherSubscription(t *testing.T) 
 		t.Fatal(message)
 	}
 }
+
+func TestSSEHubRespondsNoStorePrivate(t *testing.T) {
+	b, err := arc.NewBuilder(arc.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, server := startSSEServer(t, b, false)
+	c := openTestHub(t, server, nil)
+	if got := c.response.Header.Get("Cache-Control"); got != "no-store, private" {
+		t.Fatalf("hub Cache-Control = %q", got)
+	}
+}
