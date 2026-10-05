@@ -84,7 +84,11 @@ site the user's session. Add the headers your frontend sends to
 :::
 
 The test also runs the full mount contract through the wrapper: commands,
-`/validate`, GET, HEAD, QUERY, Arc's empty 404/405, and request cancellation.
+`/validate`, GET, HEAD, QUERY, Arc's empty 404/405, request cancellation, direct
+SSE/WebSocket and source cleanup on disconnect and application shutdown.
+The wrapper passes the original ResponseWriter through; it does not remove
+flushing or hijacking capabilities. Forwarded headers are not trusted or parsed;
+configure any proxy-derived identity or address handling separately at ingress.
 
 ## When this is the wrong fit
 

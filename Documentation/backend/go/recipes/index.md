@@ -28,7 +28,9 @@ Every Go block on these pages is an exact excerpt of code in the repository's
 [`recipes` module](https://github.com/Cratis/Arc.Go/tree/develop/recipes). Its
 tests serve a small Arc application through each recipe over real HTTP and
 check commands, `/validate`, GET and QUERY binding, HEAD, Arc's empty 404/405
-and request cancellation, plus each recipe's own behavior. A documentation test
+and request cancellation, correlation/privacy headers, direct SSE/WebSocket
+results, disconnect cleanup and application shutdown, plus each recipe's own
+behavior. A documentation test
 fails when a Go block here no longer matches the tested code.
 
 Run them from the repository root with the module's own manifest:

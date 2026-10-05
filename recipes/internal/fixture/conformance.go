@@ -113,6 +113,14 @@ func VerifyMount(t *testing.T, f *Application, server *httptest.Server) {
 			t.Fatalf("Cache-Control %q, want no-store", got)
 		}
 	})
+	t.Run("correlation and QUERY privacy headers survive the host", func(t *testing.T) {
+		const id = "12345678-1234-4234-8234-123456789012"
+		r := Do(t, server, "QUERY", QueryPath, `{"arguments":{"title":"private"}}`, http.Header{"X-Correlation-ID": {id}})
+		if r.Status != http.StatusOK || r.Header.Get("X-Correlation-ID") != id ||
+			r.Header.Get("Cache-Control") != "no-store" || !strings.Contains(r.Body, `"correlationId":"`+id+`"`) {
+			t.Fatalf("got %d %q %v", r.Status, r.Body, r.Header)
+		}
+	})
 	t.Run("unmapped Arc path is Arc's empty 404", func(t *testing.T) {
 		r := Do(t, server, http.MethodGet, UnmappedPath, "", nil)
 		if r.Status != http.StatusNotFound || r.Body != "" {
@@ -131,6 +139,15 @@ func VerifyMount(t *testing.T, f *Application, server *httptest.Server) {
 	})
 	t.Run("client cancellation reaches the query", func(t *testing.T) {
 		VerifyCancellation(t, f, server)
+	})
+	t.Run("direct SSE flushes data and joins on disconnect", func(t *testing.T) {
+		VerifySSE(t, f, server)
+	})
+	t.Run("direct WebSocket upgrades and joins on disconnect", func(t *testing.T) {
+		VerifyWebSocket(t, f, server)
+	})
+	t.Run("application shutdown joins active observations", func(t *testing.T) {
+		VerifyShutdown(t, f, server)
 	})
 }
 

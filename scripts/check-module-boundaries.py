@@ -22,6 +22,12 @@ for directory in [".", "tools", "integrations/chronicle", "integrations/mongodb"
     module = json.loads(subprocess.check_output(["go", "mod", "edit", "-json"], cwd=directory))
     if module.get("Replace"):
         raise SystemExit("Modules must not rely on replace directives; they pin fetchable revisions instead.")
+    if directory == "recipes":
+        if module["Module"]["Path"] != "github.com/cratis/arc.go/recipes":
+            raise SystemExit("The unpublished recipes module must use github.com/cratis/arc.go/recipes.")
+    elif any(requirement["Path"] == "github.com/cratis/arc.go/recipes"
+             for requirement in module.get("Require", [])):
+        raise SystemExit("No consumable module may depend on the unpublished recipes module.")
 
 
 def forbidden(path):

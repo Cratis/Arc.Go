@@ -99,6 +99,9 @@ func TestUntrustedCrossSiteUnsafeRequestsAreRejectedBeforeArc(t *testing.T) {
 	for name, header := range map[string]http.Header{
 		"fetch metadata":                browser("cross-site", attacker),
 		"origin without fetch metadata": browser("", attacker),
+		"forged forwarded origin": browser("cross-site", attacker,
+			"Forwarded", `host=app.example.com;proto=https`,
+			"X-Forwarded-Host", "app.example.com", "X-Forwarded-Proto", "https"),
 	} {
 		t.Run(name, func(t *testing.T) {
 			command := fixture.Do(t, server, http.MethodPost, fixture.CommandPath, `{"title":"forged"}`, header)

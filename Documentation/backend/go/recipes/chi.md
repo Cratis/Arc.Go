@@ -45,7 +45,10 @@ requests before they reach Arc. Reserve Arc's operation paths and `/.cratis/*`.
 The test serves the router over real HTTP with Chi v5.3.2 and checks command
 execution, `/validate` without execution, GET and QUERY argument binding, HEAD,
 Arc's empty 404/405, and that cancelling the client request cancels the query's
-context. It does not cover other Chi versions or Chi middleware you add.
+context. Direct SSE flushes two ordered results, direct WebSocket upgrades and
+sends two results, and disconnect and application shutdown join the source.
+Correlation IDs and QUERY's `no-store` survive the host. It does not cover other
+Chi versions, hub multiplexing or Chi middleware you add.
 
 ## Own the server lifecycle
 

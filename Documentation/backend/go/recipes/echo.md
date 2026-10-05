@@ -41,7 +41,10 @@ register it explicitly with `Add` if not. The recipe module does not test v4.
 The test serves the instance over real HTTP with Echo v5.4.0 and checks command
 execution, `/validate` without execution, GET and QUERY argument binding, HEAD,
 Arc's empty 404/405, and that cancelling the client request cancels the query's
-context. It does not cover other Echo versions or Echo middleware you add.
+context. Direct SSE flushes two ordered results, direct WebSocket upgrades and
+sends two results, and disconnect and application shutdown join the source.
+Correlation IDs and QUERY's `no-store` survive the host. It does not cover other
+Echo versions, hub multiplexing or Echo middleware you add.
 
 ## Identity and lifecycle
 

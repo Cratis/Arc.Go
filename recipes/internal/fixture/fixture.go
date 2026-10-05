@@ -14,6 +14,7 @@ import (
 
 	arc "github.com/cratis/arc.go"
 	"github.com/cratis/arc.go/commands"
+	"github.com/cratis/arc.go/observable"
 	"github.com/cratis/arc.go/queries"
 )
 
@@ -23,6 +24,7 @@ const (
 	ValidatePath  = CommandPath + "/validate"
 	QueryPath     = "/api/tasks/search"
 	SlowQueryPath = "/api/tasks/slow"
+	LiveQueryPath = "/api/tasks/live"
 	UnmappedPath  = "/api/tasks/unmapped"
 )
 
@@ -51,6 +53,8 @@ type Application struct {
 	SlowStarted chan struct{}
 	// SlowStopped receives the context error the slow query observed.
 	SlowStopped chan error
+	// LiveStopped receives each observable producer's cancellation on cleanup.
+	LiveStopped chan error
 
 	slowOnce atomic.Bool
 }
@@ -61,7 +65,7 @@ type Configure func(*arc.Builder) error
 // New builds and starts the fixture application and shuts it down on cleanup.
 func New(t testing.TB, options arc.Options, configure ...Configure) *Application {
 	t.Helper()
-	f := &Application{SlowStarted: make(chan struct{}), SlowStopped: make(chan error, 1)}
+	f := &Application{SlowStarted: make(chan struct{}), SlowStopped: make(chan error, 1), LiveStopped: make(chan error, 4)}
 	builder, err := arc.NewBuilder(options)
 	if err != nil {
 		t.Fatal(err)
@@ -90,6 +94,20 @@ func New(t testing.TB, options arc.Options, configure ...Configure) *Application
 		f.SlowStopped <- ctx.Err()
 		return nil, ctx.Err()
 	}), queries.WithPath[queries.NoArguments](SlowQueryPath)); err != nil {
+		t.Fatal(err)
+	}
+	if err := queries.RegisterObservable[Task](builder, "Live", queries.Function(func(context.Context, queries.NoArguments) (observable.Source[Task], error) {
+		return observable.FromProducer(func(ctx context.Context, emit func(Task) error) error {
+			defer func() { f.LiveStopped <- ctx.Err() }()
+			for _, title := range []string{"first", "second"} {
+				if err := emit(Task{Title: title}); err != nil {
+					return err
+				}
+			}
+			<-ctx.Done()
+			return ctx.Err()
+		}), nil
+	}), queries.WithPath[queries.NoArguments](LiveQueryPath)); err != nil {
 		t.Fatal(err)
 	}
 	app, err := builder.Build()

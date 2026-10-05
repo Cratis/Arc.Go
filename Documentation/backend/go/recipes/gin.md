@@ -21,13 +21,26 @@ func NewEngine(app http.Handler) *gin.Engine {
         c.Status(http.StatusNoContent)
     })
     engine.NoRoute(func(c *gin.Context) {
-        app.ServeHTTP(c.Writer, c.Request)
+        app.ServeHTTP(immediateWriter{c.Writer}, c.Request)
         // Gin appends "404 page not found" to a NoRoute response that wrote
         // no body. Commit Arc's status so its empty 404 stays empty.
         c.Writer.WriteHeaderNow()
     })
     return engine
 }
+
+// immediateWriter restores net/http's immediate header commitment. Gin defers
+// WriteHeader; Arc's wrappers hide Gin's WriteHeaderNow from WebSocket libraries,
+// so an unadapted 101 would remain buffered when the connection is hijacked.
+// Embedding keeps Gin's flush/hijack support and response accounting intact.
+type immediateWriter struct{ gin.ResponseWriter }
+
+func (w immediateWriter) WriteHeader(status int) {
+    w.ResponseWriter.WriteHeader(status)
+    w.ResponseWriter.WriteHeaderNow()
+}
+
+func (w immediateWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 ```
 
 Gin sends a request to `NoRoute` when no route matches its method and path,
@@ -36,7 +49,9 @@ including QUERY, which Gin does not register. The original URL is unchanged.
 :::caution[Do not use gin.WrapH alone]
 `engine.NoRoute(gin.WrapH(app))` works for most requests, but Gin writes its own
 `404 page not found` body after Arc's empty 404 because Arc wrote no body. The
-`WriteHeaderNow` call commits Arc's status first.
+`WriteHeaderNow` call commits Arc's status first. The `immediateWriter` bridge
+also commits status 101 before WebSocket hijacking, which otherwise leaves the
+handshake buffered behind Arc's response wrappers.
 :::
 
 ## What the recipe proves
@@ -44,7 +59,10 @@ including QUERY, which Gin does not register. The original URL is unchanged.
 The test serves the engine over real HTTP with Gin v1.12.0 and checks command
 execution, `/validate` without execution, GET and QUERY argument binding, HEAD,
 Arc's empty 404/405, and that cancelling the client request cancels the query's
-context. It does not cover other Gin versions or Gin middleware you add.
+context. Direct SSE flushes two ordered results, direct WebSocket upgrades and
+sends two results, and disconnect and application shutdown join the source.
+Correlation IDs and QUERY's `no-store` survive the host. It does not cover other
+Gin versions, hub multiplexing or Gin middleware you add.
 
 ## Identity and lifecycle
 

@@ -46,6 +46,37 @@ composite propagator). Passing them explicitly keeps the recipe independent of
 the global OpenTelemetry state. Inside a handler,
 `trace.SpanContextFromContext(ctx)` returns the server span.
 
+## Correlate application logs
+
+Use this bridge with a nonnil, application-owned `slog.Logger` and the handler's
+context. Call the returned logger's `InfoContext` or `ErrorContext` methods;
+request-derived trace fields do not mutate the base logger or global logging.
+
+```go
+// Logger derives a request logger from a nonnil application-owned logger.
+// Trace IDs are log correlation fields, never metric labels. No valid span
+// means the original logger is returned; neither logger nor globals mutate.
+func Logger(ctx context.Context, logger *slog.Logger) *slog.Logger {
+    span := trace.SpanContextFromContext(ctx)
+    if !span.IsValid() {
+        return logger
+    }
+    return logger.With(
+        slog.String("traceId", span.TraceID().String()),
+        slog.String("spanId", span.SpanID().String()),
+    )
+}
+```
+
+Create your SDK provider before starting Arc. After stopping the HTTP server and
+joining `app.Shutdown`, shut the provider down with a fresh bounded cleanup
+context and check its error. The tests own their provider and follow that cleanup
+order; the wrapper never installs a global provider. Ingress spans do not replace
+[backend operation diagnostics](../core/diagnostics.md). Do not log credentials,
+command payloads or sensitive query arguments, or use tenant/user IDs as metric
+labels. Expose metrics, pprof and administrative endpoints only on deliberately
+configured routes or listeners.
+
 ## Why a span name formatter
 
 otelhttp's default names a span after the request method and the
@@ -64,5 +95,7 @@ The attributes still follow the semantic conventions: a QUERY span records
 With otelhttp v0.72.0 and the OpenTelemetry SDK v1.47.0, the tests check the
 parent span from an incoming `traceparent`, that the query handler observes the
 server span, the QUERY span name and method attributes, bounded names for
-unmapped paths, and the full mount contract through the wrapper. Metrics and
+unmapped paths, log correlation without changing the base logger, and the full
+mount contract through the wrapper, including direct SSE/WebSocket and shutdown.
+Metrics and
 exporters are outside the recipe; configure them in your SDK setup.

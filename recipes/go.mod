@@ -3,6 +3,7 @@ module github.com/cratis/arc.go/recipes
 go 1.26.0
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/cratis/arc.go v0.0.0-20261005184454-af475e547995
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-chi/chi/v5 v5.3.2
@@ -21,7 +22,6 @@ require (
 	github.com/bytedance/sonic/loader v0.5.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
-	github.com/coder/websocket v1.8.15 // indirect
 	github.com/cratis/fundamentals.go v0.1.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.15 // indirect
