@@ -15,6 +15,7 @@ import (
 func (r *openAPIRenderer) paths() (openAPIObject, error) {
 	commands := map[string]CommandDescriptor{}
 	queries := map[string]QueryDescriptor{}
+	shapes := map[string]openAPIQueryShape{}
 	catalogCommands := map[string]metadata.Command{}
 	catalogQueries := map[string]metadata.Query{}
 	for _, declaration := range r.graph.Catalog.Commands {
@@ -52,10 +53,23 @@ func (r *openAPIRenderer) paths() (openAPIObject, error) {
 		if query.Declaration.ExcludeFromDiscovery || query.Declaration.Authorization != nil || query.Declaration.ReadModelAuthorization != nil || len(query.Roles) > 0 || query.PortableRules {
 			return nil, fmt.Errorf("openapi: %s: exclusion, authorization and validation customization are outside checkpoint profile", identity)
 		}
-		if query.Delivery != "snapshot" || query.Declaration.Observable || query.Paged || len(query.SortFields) > 0 || len(query.Parameters) > 0 || query.DataPresence != "omit-nil-data" {
-			return nil, fmt.Errorf("openapi: %s: only nonpaged, argument-free snapshot queries are admitted", identity)
+		if query.Delivery != "snapshot" || query.Declaration.Observable || query.DataPresence != "omit-nil-data" {
+			return nil, fmt.Errorf("openapi: %s: only snapshot queries are admitted; streams need a separate protocol description", identity)
 		}
+		if query.Paged && query.Result.Kind != "array" {
+			return nil, fmt.Errorf("openapi: %s: a pageable query requires a collection result", identity)
+		}
+		if !query.Paged && len(query.SortFields) > 0 {
+			return nil, fmt.Errorf("openapi: %s: sorting without a pageable result is outside the published profile", identity)
+		}
+		arguments, err := r.openAPIQueryArguments(query.Parameters)
+		if err != nil {
+			return nil, fmt.Errorf("openapi: %s: %w", identity, err)
+		}
+		sortFields := slices.Clone(query.SortFields)
+		slices.Sort(sortFields)
 		queries[identity] = query
+		shapes[identity] = openAPIQueryShape{arguments: arguments, paged: query.Paged, sortFields: sortFields}
 	}
 	if len(commands) != len(catalogCommands) || len(queries) != len(catalogQueries) {
 		return nil, fmt.Errorf("openapi: descriptor and catalog inventories differ")
@@ -65,7 +79,7 @@ func (r *openAPIRenderer) paths() (openAPIObject, error) {
 	paths := openAPIObject{}
 	operationIDs := map[string]bool{}
 	for _, endpoint := range endpoints {
-		operation, err := r.operation(endpoint, commands, queries)
+		operation, err := r.operation(endpoint, commands, queries, shapes)
 		if err != nil {
 			return nil, fmt.Errorf("openapi: %s %s: %w", endpoint.Method, endpoint.Path, err)
 		}
@@ -88,7 +102,7 @@ func (r *openAPIRenderer) paths() (openAPIObject, error) {
 		if endpoint.Method == "GET" {
 			head := endpoint
 			head.Method = "HEAD"
-			operation, err := r.operation(head, commands, queries)
+			operation, err := r.operation(head, commands, queries, shapes)
 			if err != nil {
 				return nil, err
 			}
@@ -98,8 +112,9 @@ func (r *openAPIRenderer) paths() (openAPIObject, error) {
 	return paths, nil
 }
 
-func (r *openAPIRenderer) operation(endpoint metadata.Endpoint, commands map[string]CommandDescriptor, queries map[string]QueryDescriptor) (openAPIObject, error) {
+func (r *openAPIRenderer) operation(endpoint metadata.Endpoint, commands map[string]CommandDescriptor, queries map[string]QueryDescriptor, shapes map[string]openAPIQueryShape) (openAPIObject, error) {
 	var input, payload *WireType
+	var shape openAPIQueryShape
 	category, framework := "Query", "Cratis.QueryResult"
 	summary := ""
 	if endpoint.Method == "POST" {
@@ -117,7 +132,7 @@ func (r *openAPIRenderer) operation(endpoint metadata.Endpoint, commands map[str
 		if !exists || endpoint.ValidateOnly || (endpoint.Method != "GET" && endpoint.Method != "HEAD" && endpoint.Method != "QUERY") {
 			return nil, fmt.Errorf("unsupported or unresolved query endpoint")
 		}
-		payload, summary = &query.Result, query.Declaration.DocumentationSummary
+		payload, summary, shape = &query.Result, query.Declaration.DocumentationSummary, shapes[endpoint.Identity]
 	}
 	contract, exists := r.framework[framework]
 	if !exists {
@@ -156,8 +171,15 @@ func (r *openAPIRenderer) operation(endpoint metadata.Endpoint, commands map[str
 	if summary != "" {
 		operation["summary"] = summary
 	}
+	if endpoint.Method == "GET" || endpoint.Method == "HEAD" {
+		parameters := operation["parameters"].([]any)
+		for _, argument := range shape.arguments {
+			parameters = append(parameters, argument.get)
+		}
+		operation["parameters"] = append(parameters, openAPIQueryGETParameters(shape)...)
+	}
 	if endpoint.Method == "QUERY" {
-		operation["requestBody"] = openAPIObject{"required": true, "content": openAPIObject{"application/json": openAPIObject{"schema": openAPIQueryRequest()}}}
+		operation["requestBody"] = openAPIObject{"required": true, "content": openAPIObject{"application/json": openAPIObject{"schema": openAPIQueryRequest(shape)}}}
 		operation["description"] = "HTTP QUERY with the built-in JSON request reader. OpenAPI 3.1 consumers must explicitly understand x-cratis-query to invoke this operation; it is not a GET or POST alias."
 	}
 	if input != nil {

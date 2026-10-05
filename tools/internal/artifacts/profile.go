@@ -29,6 +29,7 @@ type ApplicationProfile struct {
 	TypeRoots         []string                            `json:"typeRoots,omitempty"`
 	Imports           map[string]ImportMapping            `json:"imports,omitempty"`
 	OpenAPI           *OpenAPIProfile                     `json:"openapi,omitempty"`
+	Screenplay        *ScreenplayProfile                  `json:"screenplay,omitempty"`
 	Server            *ServerProfile                      `json:"server,omitempty"`
 	WireSchemas       map[string]WireSchemas              `json:"wireSchemas,omitempty"`
 	ResponseFields    map[string]map[string]ResponseField `json:"responseFields,omitempty"`
@@ -56,6 +57,12 @@ type TypeScriptProfile struct {
 	ExcludeTypes      []string        `json:"excludeTypes,omitempty"`
 	ExcludeNamespaces []string        `json:"excludeNamespaces,omitempty"`
 	ClientVersion     string          `json:"clientVersion,omitempty"`
+}
+
+// ScreenplayProfile requests the partial Screenplay metadata export. Out names
+// a module-relative .play file; it is an output location, not contract identity.
+type ScreenplayProfile struct {
+	Out string `json:"out,omitempty"`
 }
 
 // NamespaceRoot maps the longest exact/dot-prefix namespace to a safe folder.
@@ -97,6 +104,19 @@ func validateProfile(profile ApplicationProfile) error {
 	if profile.FormatVersion == GraphVersion && (profile.OpenAPI != nil || profile.Server != nil || len(profile.WireSchemas) > 0 || len(profile.ResponseFields) > 0) {
 		return fmt.Errorf("server/OpenAPI/schema assertions require explicit profile formatVersion 2")
 	}
+	if profile.FormatVersion == GraphVersion && profile.Screenplay != nil {
+		return fmt.Errorf("screenplay export requires explicit profile formatVersion 2 for exact scalar descriptors")
+	}
+	if profile.OpenAPI != nil {
+		if err := validateArtifactOut("openapi", profile.OpenAPI.Out, ".json"); err != nil {
+			return err
+		}
+	}
+	if profile.Screenplay != nil {
+		if err := validateArtifactOut("screenplay", profile.Screenplay.Out, ".play"); err != nil {
+			return err
+		}
+	}
 	if err := validateContractProfile(profile); err != nil {
 		return err
 	}
@@ -120,6 +140,20 @@ func validateProfile(profile ApplicationProfile) error {
 		if mapping.Type == "" || mapping.Constructor == "" || mapping.Module == "" || strings.ContainsAny(mapping.Module, "\n\r'\"\\") {
 			return fmt.Errorf("incomplete or unsafe import mapping")
 		}
+	}
+	return nil
+}
+
+// validateArtifactOut accepts an empty location (supplied later by a flag) or
+// a safe module-relative file with the artifact's suffix. Absolute flag values
+// are made module-relative by Generate before this check.
+func validateArtifactOut(kind, out, suffix string) error {
+	if out == "" {
+		return nil
+	}
+	base := filepath.Base(out)
+	if !strings.HasSuffix(out, suffix) || base == suffix || base == manifestName || base == journalName || !safeRelative(out) {
+		return fmt.Errorf("%s output %q must be a safe module-relative %s file", kind, out, suffix)
 	}
 	return nil
 }

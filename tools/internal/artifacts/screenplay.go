@@ -16,7 +16,8 @@ import (
 //
 // The grammar is Cratis.Screenplay 4.48.1 (e5b5698f9dbcf61c39e4cc3f43fcf092c9e0b5fc),
 // the version consumed by Arc 7c1e780. See testdata/screenplay/contract.md.
-// This stays internal until an independently reviewed publication contract exists.
+// arc-gen publishes it as a file through -screenplay-out; there is no HTTP
+// route or embedded viewer.
 type screenplayMetadata struct {
 	Document    []byte
 	Diagnostics []string
