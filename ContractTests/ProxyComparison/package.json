@@ -7,7 +7,7 @@
     "reference:capture": "node reference.mjs --capture",
     "reference:check": "node reference.mjs",
     "compile:reference": "tsc -p tsconfig.reference.json",
-    "test": "node --test --test-timeout=30000 baseline.test.mjs"
+    "test": "node --test --test-timeout=30000 baseline.test.mjs comparison.test.mjs"
   },
   "dependencies": {
     "@cratis/arc": "22.48.2",

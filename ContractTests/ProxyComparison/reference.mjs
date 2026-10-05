@@ -118,7 +118,12 @@ export async function reference({ capture = false } = {}) {
         const recorded = JSON.parse(await readFile(join(directory, 'provenance.json')));
         assert.deepEqual(recorded.snapshots, hashes);
     }
-    console.log(`Pinned C# reference: ${rendered.length} files verified; Go comparison not yet implemented.`);
+    console.log(`Pinned C# reference: ${rendered.length} files verified.`);
+    if (!capture) {
+        const { generate } = await import('./Matched/prepare.mjs');
+        const { compare } = await import('./compare.mjs');
+        await compare(await generate());
+    }
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {

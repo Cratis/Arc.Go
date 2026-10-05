@@ -1,0 +1,341 @@
+{
+  "formatVersion": 1,
+  "allowances": [
+    {
+      "file": "ProxyComparison/All.ts",
+      "fragment": "All:Constructor:constructor",
+      "csharp": "constructor ( ) { super ( Listing , true ) ; this . _sortBy = new AllSortBy ( this ) ; }",
+      "go": "constructor ( ) { super ( Listing , true ) ; this . _sortBy = new AllSortBy ( this ) ; this . setHttpMethod ( QueryHttpMethod . Get ) ; }",
+      "reason": "Go explicitly selects Get for the dual GET/QUERY endpoint, preserving the pinned C# default Get behavior."
+    },
+    {
+      "file": "ProxyComparison/All.ts",
+      "fragment": "All:GetAccessor:requiredRequestParameters",
+      "csharp": "get requiredRequestParameters ( ) : string [ ] { return [ \"id\" , ] ; }",
+      "go": "get requiredRequestParameters ( ) : string [ ] { return [ \"id\" ] ; }",
+      "reason": "Array trailing-comma formatting only; id remains the sole required Guid argument."
+    },
+    {
+      "file": "ProxyComparison/All.ts",
+      "fragment": "All:order",
+      "csharp": "[\"PropertyDeclaration:route\",\"PropertyDeclaration:queryName\",\"PropertyDeclaration:treatWarningsAsErrors\",\"PropertyDeclaration:roles\",\"PropertyDeclaration:defaultValue\",\"PropertyDeclaration:_sortBy\",\"static:PropertyDeclaration:_sortBy\",\"Constructor:constructor\",\"GetAccessor:requiredRequestParameters\",\"PropertyDeclaration:parameterDescriptors\",\"PropertyDeclaration:id\",\"GetAccessor:sortBy\",\"static:GetAccessor:sortBy\",\"static:MethodDeclaration:use\",\"static:MethodDeclaration:useWithPaging\",\"static:MethodDeclaration:useSuspense\",\"static:MethodDeclaration:useSuspenseWithPaging\",\"static:MethodDeclaration:when\"]",
+      "go": "[\"PropertyDeclaration:route\",\"PropertyDeclaration:queryName\",\"PropertyDeclaration:treatWarningsAsErrors\",\"PropertyDeclaration:roles\",\"PropertyDeclaration:defaultValue\",\"PropertyDeclaration:_sortBy\",\"static:PropertyDeclaration:_sortBy\",\"Constructor:constructor\",\"GetAccessor:requiredRequestParameters\",\"PropertyDeclaration:parameterDescriptors\",\"PropertyDeclaration:id\",\"GetAccessor:sortBy\",\"static:GetAccessor:sortBy\",\"static:MethodDeclaration:use\",\"static:MethodDeclaration:useSuspense\",\"static:MethodDeclaration:useWithPaging\",\"static:MethodDeclaration:useSuspenseWithPaging\",\"static:MethodDeclaration:when\"]",
+      "reason": "Only the useSuspense and useWithPaging static methods exchange declaration order; their complete bodies and tuple signatures compare unchanged."
+    },
+    {
+      "file": "ProxyComparison/All.ts",
+      "fragment": "All:static:PropertyDeclaration:_sortBy",
+      "csharp": "private static readonly _sortBy : AllSortByWithoutQuery = new AllSortByWithoutQuery ( ) ;",
+      "go": "private static readonly _sortBy = new AllSortByWithoutQuery ( ) ;",
+      "reason": "The static sort-helper initializer infers the same private type rather than spelling its annotation."
+    },
+    {
+      "file": "ProxyComparison/All.ts",
+      "fragment": "AllSortBy:Constructor:constructor",
+      "csharp": "constructor ( readonly query : All ) { this . _id = new SortingActionsForQuery < Listing [ ] > ( \"id\" , query ) ; }",
+      "go": "constructor ( readonly query : All ) { this . _field0 = new SortingActionsForQuery < Listing [ ] > ( \"name\" , query ) ; this . _field1 = new SortingActionsForQuery < Listing [ ] > ( \"status\" , query ) ; }",
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/All.ts",
+      "fragment": "AllSortBy:GetAccessor:id",
+      "csharp": "get id ( ) : SortingActionsForQuery < Listing [ ] > { return this . _id ; }",
+      "go": null,
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/All.ts",
+      "fragment": "AllSortBy:GetAccessor:name",
+      "csharp": null,
+      "go": "get name ( ) : SortingActionsForQuery < Listing [ ] > { return this . _field0 ; }",
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/All.ts",
+      "fragment": "AllSortBy:GetAccessor:status",
+      "csharp": null,
+      "go": "get status ( ) : SortingActionsForQuery < Listing [ ] > { return this . _field1 ; }",
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/All.ts",
+      "fragment": "AllSortBy:PropertyDeclaration:_field0",
+      "csharp": null,
+      "go": "private readonly _field0 : SortingActionsForQuery < Listing [ ] > ;",
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/All.ts",
+      "fragment": "AllSortBy:PropertyDeclaration:_field1",
+      "csharp": null,
+      "go": "private readonly _field1 : SortingActionsForQuery < Listing [ ] > ;",
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/All.ts",
+      "fragment": "AllSortBy:PropertyDeclaration:_id",
+      "csharp": "private _id : SortingActionsForQuery < Listing [ ] > ;",
+      "go": null,
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/All.ts",
+      "fragment": "AllSortBy:order",
+      "csharp": "[\"PropertyDeclaration:_id\",\"Constructor:constructor\",\"GetAccessor:id\"]",
+      "go": "[\"PropertyDeclaration:_field0\",\"PropertyDeclaration:_field1\",\"Constructor:constructor\",\"GetAccessor:name\",\"GetAccessor:status\"]",
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/All.ts",
+      "fragment": "AllSortByWithoutQuery:GetAccessor:id",
+      "csharp": "get id ( ) : SortingActions { return this . _id ; }",
+      "go": null,
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/All.ts",
+      "fragment": "AllSortByWithoutQuery:GetAccessor:name",
+      "csharp": null,
+      "go": "get name ( ) : SortingActions { return this . _field0 ; }",
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/All.ts",
+      "fragment": "AllSortByWithoutQuery:GetAccessor:status",
+      "csharp": null,
+      "go": "get status ( ) : SortingActions { return this . _field1 ; }",
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/All.ts",
+      "fragment": "AllSortByWithoutQuery:PropertyDeclaration:_field0",
+      "csharp": null,
+      "go": "private readonly _field0 = new SortingActions ( \"name\" ) ;",
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/All.ts",
+      "fragment": "AllSortByWithoutQuery:PropertyDeclaration:_field1",
+      "csharp": null,
+      "go": "private readonly _field1 = new SortingActions ( \"status\" ) ;",
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/All.ts",
+      "fragment": "AllSortByWithoutQuery:PropertyDeclaration:_id",
+      "csharp": "private _id : SortingActions = new SortingActions ( \"id\" ) ;",
+      "go": null,
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/All.ts",
+      "fragment": "AllSortByWithoutQuery:order",
+      "csharp": "[\"PropertyDeclaration:_id\",\"GetAccessor:id\"]",
+      "go": "[\"PropertyDeclaration:_field0\",\"GetAccessor:name\",\"PropertyDeclaration:_field1\",\"GetAccessor:status\"]",
+      "reason": "Approved Arc#2998 deviation: sorting uses explicitly sortable result fields name/status, never the unrelated query argument id; numbered readonly private storage is Go emission syntax."
+    },
+    {
+      "file": "ProxyComparison/All.ts",
+      "fragment": "imports",
+      "csharp": "import { QueryFor , QueryResultWithState , Sorting , SortingActions , SortingActionsForQuery , Paging } from \"@cratis/arc/queries\" ; import { useQuery , useQueryWithPaging , useSuspenseQuery , useSuspenseQueryWithPaging , PerformQuery , SetSorting , SetPage , SetPageSize , QueryWhen } from \"@cratis/arc.react/queries\" ; import { ParameterDescriptor } from \"@cratis/arc/reflection\" ; import { Guid } from \"@cratis/fundamentals\" ; import { Listing } from \"./Listing\" ;",
+      "go": "import { Listing } from \"./Listing\" ; import type { PerformQuery } from \"@cratis/arc.react/queries\" ; import { QueryWhen } from \"@cratis/arc.react/queries\" ; import type { SetPage } from \"@cratis/arc.react/queries\" ; import type { SetPageSize } from \"@cratis/arc.react/queries\" ; import type { SetSorting } from \"@cratis/arc.react/queries\" ; import { useQuery } from \"@cratis/arc.react/queries\" ; import { useQueryWithPaging } from \"@cratis/arc.react/queries\" ; import { useSuspenseQuery } from \"@cratis/arc.react/queries\" ; import { useSuspenseQueryWithPaging } from \"@cratis/arc.react/queries\" ; import { Paging } from \"@cratis/arc/queries\" ; import { QueryFor } from \"@cratis/arc/queries\" ; import { QueryHttpMethod } from \"@cratis/arc/queries\" ; import type { QueryResultWithState } from \"@cratis/arc/queries\" ; import type { Sorting } from \"@cratis/arc/queries\" ; import { SortingActions } from \"@cratis/arc/queries\" ; import { SortingActionsForQuery } from \"@cratis/arc/queries\" ; import { ParameterDescriptor } from \"@cratis/arc/reflection\" ; import { Guid } from \"@cratis/fundamentals\" ;",
+      "reason": "Exact import split/order and type-only bindings; QueryHttpMethod is additionally required for the explicit Get client preference."
+    },
+    {
+      "file": "ProxyComparison/Detail.ts",
+      "fragment": "imports",
+      "csharp": "import { field } from \"@cratis/fundamentals\" ; import { Guid } from \"@cratis/fundamentals\" ;",
+      "go": "import { Guid } from \"@cratis/fundamentals\" ; import { field } from \"@cratis/fundamentals\" ;",
+      "reason": "Exact import split/order only; runtime bindings and all model declarations remain unchanged."
+    },
+    {
+      "file": "ProxyComparison/Listing.ts",
+      "fragment": "imports",
+      "csharp": "import { field } from \"@cratis/fundamentals\" ; import { Detail } from \"./Detail\" ; import { Notice } from \"./Notice\" ; import { Status } from \"./Status\" ;",
+      "go": "import { Detail } from \"./Detail\" ; import { Notice } from \"./Notice\" ; import type { Status } from \"./Status\" ; import { field } from \"@cratis/fundamentals\" ;",
+      "reason": "Exact import order plus type-only Status import; enum field hydration still uses Number and model fields are unchanged."
+    },
+    {
+      "file": "ProxyComparison/Register.ts",
+      "fragment": "Register:GetAccessor:id",
+      "csharp": "get id ( ) : Guid { return this . _id ; }",
+      "go": "get id ( ) : Guid { return this . _value0 ; }",
+      "reason": "Private command storage is numbered _value0/_value1/_value2 instead of _id/_name/_quantity. Accessors and propertyChanged wire names retain their behavior; member order additionally includes commandName."
+    },
+    {
+      "file": "ProxyComparison/Register.ts",
+      "fragment": "Register:GetAccessor:name",
+      "csharp": "get name ( ) : string { return this . _name ; }",
+      "go": "get name ( ) : string { return this . _value1 ; }",
+      "reason": "Private command storage is numbered _value0/_value1/_value2 instead of _id/_name/_quantity. Accessors and propertyChanged wire names retain their behavior; member order additionally includes commandName."
+    },
+    {
+      "file": "ProxyComparison/Register.ts",
+      "fragment": "Register:GetAccessor:quantity",
+      "csharp": "get quantity ( ) : number { return this . _quantity ; }",
+      "go": "get quantity ( ) : number { return this . _value2 ; }",
+      "reason": "Private command storage is numbered _value0/_value1/_value2 instead of _id/_name/_quantity. Accessors and propertyChanged wire names retain their behavior; member order additionally includes commandName."
+    },
+    {
+      "file": "ProxyComparison/Register.ts",
+      "fragment": "Register:PropertyDeclaration:_id",
+      "csharp": "private _id ! : Guid ;",
+      "go": null,
+      "reason": "Private command storage is numbered _value0/_value1/_value2 instead of _id/_name/_quantity. Accessors and propertyChanged wire names retain their behavior; member order additionally includes commandName."
+    },
+    {
+      "file": "ProxyComparison/Register.ts",
+      "fragment": "Register:PropertyDeclaration:_name",
+      "csharp": "private _name ! : string ;",
+      "go": null,
+      "reason": "Private command storage is numbered _value0/_value1/_value2 instead of _id/_name/_quantity. Accessors and propertyChanged wire names retain their behavior; member order additionally includes commandName."
+    },
+    {
+      "file": "ProxyComparison/Register.ts",
+      "fragment": "Register:PropertyDeclaration:_quantity",
+      "csharp": "private _quantity ! : number ;",
+      "go": null,
+      "reason": "Private command storage is numbered _value0/_value1/_value2 instead of _id/_name/_quantity. Accessors and propertyChanged wire names retain their behavior; member order additionally includes commandName."
+    },
+    {
+      "file": "ProxyComparison/Register.ts",
+      "fragment": "Register:PropertyDeclaration:_value0",
+      "csharp": null,
+      "go": "private _value0 ! : Guid ;",
+      "reason": "Private command storage is numbered _value0/_value1/_value2 instead of _id/_name/_quantity. Accessors and propertyChanged wire names retain their behavior; member order additionally includes commandName."
+    },
+    {
+      "file": "ProxyComparison/Register.ts",
+      "fragment": "Register:PropertyDeclaration:_value1",
+      "csharp": null,
+      "go": "private _value1 ! : string ;",
+      "reason": "Private command storage is numbered _value0/_value1/_value2 instead of _id/_name/_quantity. Accessors and propertyChanged wire names retain their behavior; member order additionally includes commandName."
+    },
+    {
+      "file": "ProxyComparison/Register.ts",
+      "fragment": "Register:PropertyDeclaration:_value2",
+      "csharp": null,
+      "go": "private _value2 ! : number ;",
+      "reason": "Private command storage is numbered _value0/_value1/_value2 instead of _id/_name/_quantity. Accessors and propertyChanged wire names retain their behavior; member order additionally includes commandName."
+    },
+    {
+      "file": "ProxyComparison/Register.ts",
+      "fragment": "Register:PropertyDeclaration:commandName",
+      "csharp": null,
+      "go": "readonly commandName : string = \"ProxyComparison.Register\" ;",
+      "reason": "Go-specific additive command identity metadata; no route, request or response change."
+    },
+    {
+      "file": "ProxyComparison/Register.ts",
+      "fragment": "Register:PropertyDeclaration:roles",
+      "csharp": "readonly roles : string [ ] = [ ] ;",
+      "go": "// UI hints only; server authorization remains authoritative. readonly roles : string [ ] = [ ] ;",
+      "reason": "Go adds only the exact UI-hint comment; the empty role list is unchanged."
+    },
+    {
+      "file": "ProxyComparison/Register.ts",
+      "fragment": "Register:PropertyDeclaration:validation",
+      "csharp": "readonly validation : CommandValidator = new RegisterValidator ( ) ;",
+      "go": "readonly validation = new RegisterValidator ( ) ;",
+      "reason": "Go infers the concrete RegisterValidator type rather than the wider CommandValidator annotation."
+    },
+    {
+      "file": "ProxyComparison/Register.ts",
+      "fragment": "Register:SetAccessor:id",
+      "csharp": "set id ( value : Guid ) { this . _id = value ; this . propertyChanged ( \"id\" ) ; }",
+      "go": "set id ( value : Guid ) { this . _value0 = value ; this . propertyChanged ( \"id\" ) ; }",
+      "reason": "Private command storage is numbered _value0/_value1/_value2 instead of _id/_name/_quantity. Accessors and propertyChanged wire names retain their behavior; member order additionally includes commandName."
+    },
+    {
+      "file": "ProxyComparison/Register.ts",
+      "fragment": "Register:SetAccessor:name",
+      "csharp": "set name ( value : string ) { this . _name = value ; this . propertyChanged ( \"name\" ) ; }",
+      "go": "set name ( value : string ) { this . _value1 = value ; this . propertyChanged ( \"name\" ) ; }",
+      "reason": "Private command storage is numbered _value0/_value1/_value2 instead of _id/_name/_quantity. Accessors and propertyChanged wire names retain their behavior; member order additionally includes commandName."
+    },
+    {
+      "file": "ProxyComparison/Register.ts",
+      "fragment": "Register:SetAccessor:quantity",
+      "csharp": "set quantity ( value : number ) { this . _quantity = value ; this . propertyChanged ( \"quantity\" ) ; }",
+      "go": "set quantity ( value : number ) { this . _value2 = value ; this . propertyChanged ( \"quantity\" ) ; }",
+      "reason": "Private command storage is numbered _value0/_value1/_value2 instead of _id/_name/_quantity. Accessors and propertyChanged wire names retain their behavior; member order additionally includes commandName."
+    },
+    {
+      "file": "ProxyComparison/Register.ts",
+      "fragment": "Register:order",
+      "csharp": "[\"PropertyDeclaration:route\",\"PropertyDeclaration:validation\",\"PropertyDeclaration:treatWarningsAsErrors\",\"PropertyDeclaration:roles\",\"PropertyDeclaration:propertyDescriptors\",\"PropertyDeclaration:_id\",\"PropertyDeclaration:_name\",\"PropertyDeclaration:_quantity\",\"Constructor:constructor\",\"GetAccessor:requestParameters\",\"GetAccessor:id\",\"SetAccessor:id\",\"GetAccessor:name\",\"SetAccessor:name\",\"GetAccessor:quantity\",\"SetAccessor:quantity\",\"static:MethodDeclaration:use\"]",
+      "go": "[\"PropertyDeclaration:route\",\"PropertyDeclaration:commandName\",\"PropertyDeclaration:validation\",\"PropertyDeclaration:treatWarningsAsErrors\",\"PropertyDeclaration:roles\",\"PropertyDeclaration:propertyDescriptors\",\"PropertyDeclaration:_value0\",\"PropertyDeclaration:_value1\",\"PropertyDeclaration:_value2\",\"Constructor:constructor\",\"GetAccessor:requestParameters\",\"GetAccessor:id\",\"SetAccessor:id\",\"GetAccessor:name\",\"SetAccessor:name\",\"GetAccessor:quantity\",\"SetAccessor:quantity\",\"static:MethodDeclaration:use\"]",
+      "reason": "Private command storage is numbered _value0/_value1/_value2 instead of _id/_name/_quantity. Accessors and propertyChanged wire names retain their behavior; member order additionally includes commandName."
+    },
+    {
+      "file": "ProxyComparison/Register.ts",
+      "fragment": "Register:static:MethodDeclaration:use",
+      "csharp": "static use ( initialValues ? : IRegister ) : [ Register , SetCommandValues < IRegister > , ClearCommandValues ] { // eslint-disable-next-line @typescript-eslint/ban-ts-comment // @ts-ignore return useCommand < Register , IRegister > ( Register , initialValues ) ; }",
+      "go": "static use ( initialValues ? : IRegister ) : [ Register , SetCommandValues < IRegister > , ClearCommandValues ] { return useCommand < Register , IRegister > ( Register , initialValues ) ; }",
+      "reason": "Go omits the C# eslint/ts-ignore suppression; the hook signature and invocation are identical and strict compilation must pass."
+    },
+    {
+      "file": "ProxyComparison/Register.ts",
+      "fragment": "RegisterValidator:Constructor:constructor",
+      "csharp": "constructor ( ) { super ( ) ; this . ruleFor ( c => c . name ) . notEmpty ( ) . withMessage ( \"Name required\" ) ; this . ruleFor ( c => c . name ) . maxLength ( 40 ) . withMessage ( \"Name too long\" ) ; this . ruleFor ( c => c . quantity ) . greaterThanOrEqual ( 1 ) . withMessage ( \"Quantity must be positive\" ) ; }",
+      "go": "constructor ( ) { super ( ) ; this . ruleFor ( c => c [ \"name\" ] ) . notEmpty ( ) . withMessage ( \"Name required\" ) ; this . ruleFor ( c => c [ \"name\" ] ) . maxLength ( 40 ) . withMessage ( \"Name too long\" ) ; this . ruleFor ( c => c [ \"quantity\" ] ) . greaterThanOrEqual ( 1 ) . withMessage ( \"Quantity must be positive\" ) ; }",
+      "reason": "Portable validator compiler uses bracket access for exact wire names; rules, order, arguments and messages remain identical."
+    },
+    {
+      "file": "ProxyComparison/Register.ts",
+      "fragment": "imports",
+      "csharp": "import { Command , CommandValidator } from \"@cratis/arc/commands\" ; import { useCommand , SetCommandValues , ClearCommandValues } from \"@cratis/arc.react/commands\" ; import { PropertyDescriptor } from \"@cratis/arc/reflection\" ; import { Guid } from \"@cratis/fundamentals\" ;",
+      "go": "import type { ClearCommandValues } from \"@cratis/arc.react/commands\" ; import type { SetCommandValues } from \"@cratis/arc.react/commands\" ; import { useCommand } from \"@cratis/arc.react/commands\" ; import { Command } from \"@cratis/arc/commands\" ; import { CommandValidator } from \"@cratis/arc/commands\" ; import { PropertyDescriptor } from \"@cratis/arc/reflection\" ; import { Fields } from \"@cratis/fundamentals\" ; import { Guid } from \"@cratis/fundamentals\" ;",
+      "reason": "Exact import split/order and type-only hook bindings; Fields is additionally imported for the three explicit hydration registrations."
+    },
+    {
+      "file": "ProxyComparison/Register.ts",
+      "fragment": "order",
+      "csharp": "[\"IRegister\",\"RegisterValidator\",\"Register\"]",
+      "go": "[\"IRegister\",\"RegisterValidator\",\"Register\",\"statement:3\",\"statement:4\",\"statement:5\"]",
+      "reason": "Go registers id/Guid, name/String and quantity/Number hydration metadata through Fields.addFieldToType; C# supplies command descriptors only. No other statement is admitted."
+    },
+    {
+      "file": "ProxyComparison/Register.ts",
+      "fragment": "statement:3",
+      "csharp": null,
+      "go": "Fields . addFieldToType ( Register , \"id\" , Guid , false , [ ] , [ ] ) ;",
+      "reason": "Go registers id/Guid, name/String and quantity/Number hydration metadata through Fields.addFieldToType; C# supplies command descriptors only. No other statement is admitted."
+    },
+    {
+      "file": "ProxyComparison/Register.ts",
+      "fragment": "statement:4",
+      "csharp": null,
+      "go": "Fields . addFieldToType ( Register , \"name\" , String , false , [ ] , [ ] ) ;",
+      "reason": "Go registers id/Guid, name/String and quantity/Number hydration metadata through Fields.addFieldToType; C# supplies command descriptors only. No other statement is admitted."
+    },
+    {
+      "file": "ProxyComparison/Register.ts",
+      "fragment": "statement:5",
+      "csharp": null,
+      "go": "Fields . addFieldToType ( Register , \"quantity\" , Number , false , [ ] , [ ] ) ;",
+      "reason": "Go registers id/Guid, name/String and quantity/Number hydration metadata through Fields.addFieldToType; C# supplies command descriptors only. No other statement is admitted."
+    },
+    {
+      "file": "ProxyComparison/UrgentNotice.ts",
+      "fragment": "imports",
+      "csharp": "import { field , derivedType } from \"@cratis/fundamentals\" ; import { Notice } from \"./Notice\" ;",
+      "go": "import { Notice } from \"./Notice\" ; import { derivedType } from \"@cratis/fundamentals\" ; import { field } from \"@cratis/fundamentals\" ;",
+      "reason": "Exact import split/order only; runtime bindings and all model declarations remain unchanged."
+    },
+    {
+      "file": "ProxyComparison/index.ts",
+      "fragment": "export:./Observe",
+      "csharp": "export * from \"./Observe\" ;",
+      "go": null,
+      "reason": "Blocked subset only: Observe cannot be generated for the unchanged identity-free Listing; its barrel export is absent. This is not observable parity."
+    },
+    {
+      "file": "ProxyComparison/index.ts",
+      "fragment": "order",
+      "csharp": "[\"export:./All\",\"export:./Detail\",\"export:./Listing\",\"export:./Notice\",\"export:./Observe\",\"export:./Register\",\"export:./Status\",\"export:./UrgentNotice\"]",
+      "go": "[\"export:./All\",\"export:./Detail\",\"export:./Listing\",\"export:./Notice\",\"export:./Register\",\"export:./Status\",\"export:./UrgentNotice\"]",
+      "reason": "Blocked subset only: Observe cannot be generated for the unchanged identity-free Listing; its barrel export is absent. This is not observable parity."
+    }
+  ]
+}
