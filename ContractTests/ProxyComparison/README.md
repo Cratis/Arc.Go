@@ -2,8 +2,9 @@
 
 This test-only directory establishes the pinned C# reference for
 [Arc.Go issue 20](https://github.com/Cratis/Arc.Go/issues/20).
-It is **not yet a paired Go/C# proxy conformance suite**: Go TypeScript emission,
-paired HTTP servers and rendered React hook tests remain to be added.
+The production Go CLI is compared with all **nine** pinned C# captures: models,
+enum, command, snapshot query, observable query and barrel. Paired HTTP servers
+and rendered React hook tests are not covered here.
 
 ## Authority and attribution
 
@@ -42,8 +43,8 @@ npm test
 
 To deliberately replace the primary capture after reviewing changed inputs,
 run `npm run reference:capture` instead of the check. Both modes require a
-successful invocation of the pinned restored executable and exactly nine output
-files. Only the C# timestamp is normalized; body hashes are validated and every
+successful invocation of the pinned restored executable and exactly nine C# output
+files. Check mode additionally generates and compares the Go output. Only the C# timestamp is normalized; body hashes are validated and every
 other byte is retained. Generation failure cannot fall back to old snapshots.
 Set `AI_WORK_OUTPUT` to a task-owned scratch directory when running the generator;
 otherwise small outputs are retained under the repository's ignored `.ai-work/`.
@@ -61,6 +62,50 @@ The captures intentionally retain C#'s argument-based `sortBy.id` helpers for
 queries whose result model has no `id` field. Arc.Go's planned result-field
 allowlist is the maintainer-approved correction for
 [Arc issue 2998](https://github.com/Cratis/Arc/issues/2998). Do not edit C# captures
-to conceal that defect. Once Go output exists, inventory each byte difference
-with the exact pair hash and a formatting, approved API-deviation or upstream-
-defect explanation.
+to conceal that defect. The exact constructor, private fields, getters and declaration-order differences
+are recorded in `Matched/allowances.json`; neither the C# captures nor their hashes
+are changed.
+
+## Go golden comparison
+
+`npm test` generates Go output from `Matched/input.go.txt` and
+`Matched/observable.go.txt` using the production
+`tools/cmd/arc-gen` executable and verifies it with the CLI's `-check` mode. The
+scratch consumer uses the existing tools module's fetchable runtime pin, with
+`GOWORK=off`, no `replace`, and no extra committed module. `All` uses `Page[Listing]`
+as the Go translation of the C# pageable `IQueryable<Listing>` proxy surface; its
+profile explicitly selects the C# client's default GET preference.
+
+`compare.mjs` checks the exact output inventory, validates the unchanged C# body
+and snapshot hashes, and compares named TypeScript declarations and class members
+file-by-file. Whitespace and string quote spelling are normalized. Only the exact
+generated banners and leading lint prologues are removed. Imports, comments in
+bodies, private fields, types, decorators, order, method signatures and trailing
+tokens remain compared. No file or API family is blanket-ignored.
+
+Every nonmatching fragment requires exactly one file-specific allowance with
+exact C# and Go token strings and a reason. Missing, duplicate, unused and stale
+allowances fail. The 65 entries cover import split/order and type-only bindings,
+private storage spelling, inferred private/validator types, declaration order,
+trailing commas, exact comments, explicit GET selection, additive command
+identity and hydration metadata, and the approved sorting correction in `All`
+and `Observe`. The barrel compares without an allowance. Regression tests mutate
+every emitted fragment and add an unknown field/file. The live Go output also
+compiles strictly against the real locked client declarations with
+`skipLibCheck: false`.
+
+## Identity-less observable collections
+
+C# `Listing` has only `name`, `detail`, `notice` and `status`, and C# generates
+`Observe.ts` for it. Arc `7c1e780` supports that shape end to end:
+`ChangeSetComputor.cs` falls back to JSON-hash deltas without an `Id` property,
+`useObservableQuery.ts` removes items by JSON when they carry no `id`,
+`reconcileQueryData.ts` reconciles by position, and `useChangeStream.ts` keys by
+full JSON unless a `getKey` is supplied. arc-gen therefore admits an observable
+collection element with no conventional `ID`/`Id` member and no serialized `id`
+property. It still rejects competing or non-direct identity members and a
+serialized `id` without `ID`/`Id`, where client and server keys would differ.
+No artificial identity was added and no C# capture was changed.
+
+CI runs the frozen-reference comparison without requiring .NET;
+`reference:check` additionally executes the pinned C# generator locally.

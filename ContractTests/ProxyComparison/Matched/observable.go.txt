@@ -1,0 +1,11 @@
+// Copyright (c) Cratis. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+package consumer
+
+import "github.com/cratis/arc.go/observable"
+
+//arc:query path=/api/proxy-comparison/observe
+//arc:allow-anonymous
+func (Listing) Observe(args Arguments) (observable.Source[[]Listing], error) {
+	return observable.NewState(rows(args.ID), observable.SubjectOptions[[]Listing]{})
+}

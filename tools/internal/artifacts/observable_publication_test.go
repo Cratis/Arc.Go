@@ -191,3 +191,29 @@ func TestObservableCollectionsRejectUnsupportedClientIdentityBeforePublication(t
 		})
 	}
 }
+
+func TestIdentityLessObservableCollectionsPublishLikeCSharp(t *testing.T) {
+	// C# ChangeSetComputor falls back to JSON-set deltas and the Arc client
+	// removes/reconciles by JSON or position when items carry no id (7c1e780).
+	for name, fields := range map[string]string{
+		"no identity":                "Title string `json:\"title\"`",
+		"unexported lowercase field": "id string; Title string `json:\"title\"`",
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := consumer(t)
+			put(t, filepath.Join(dir, "input.go"), "//arc:namespace Shop\npackage consumer\nimport \"github.com/cratis/arc.go/observable\"\n//arc:readmodel\ntype Task struct { "+fields+" }\nfunc (Task) Watch() (observable.Source[[]Task],error) { return nil,nil }\n")
+			if err := Generate(t.Context(), Config{Dir: dir, TypeScriptOut: "web"}); err != nil {
+				t.Fatalf("identity-less observable collection rejected: %v", err)
+			}
+			proxy := string(get(t, filepath.Join(dir, "web", "Shop", "Watch.ts")))
+			for _, want := range []string{"extends ObservableQueryFor<Task[]>", "static useChangeStream(getKey?: (item: Task) => unknown"} {
+				if !strings.Contains(proxy, want) {
+					t.Fatalf("generated identity-less proxy lacks %q:\n%s", want, proxy)
+				}
+			}
+			if _, err := os.Stat(filepath.Join(dir, Filename)); err != nil {
+				t.Fatalf("adapter not published: %v", err)
+			}
+		})
+	}
+}

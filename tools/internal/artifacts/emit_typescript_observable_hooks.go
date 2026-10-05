@@ -99,15 +99,25 @@ func observableQueryReserved(name string) bool {
 	return false
 }
 
+// validateObservableIdentity accepts a supported scalar id or, as the C# client
+// does, no id at all; identity-less elements use JSON/position fallbacks.
 func validateObservableIdentity(model TypeDescriptor) error {
+	identified := false
 	for _, field := range model.Fields {
-		if field.Name != "id" || field.Optional || field.Type.Nullable {
+		if field.Name != "id" {
+			continue
+		}
+		identified = true
+		if field.Optional || field.Type.Nullable {
 			continue
 		}
 		switch field.Type.Kind {
 		case "string", "number", "Guid", "enum":
 			return nil
 		}
+	}
+	if !identified {
+		return nil
 	}
 	return fmt.Errorf("observable collection requires a selected direct ID/Id serialized as id with a nonnullable scalar identity; other identity layouts are unsupported")
 }
