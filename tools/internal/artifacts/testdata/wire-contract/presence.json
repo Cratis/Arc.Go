@@ -1,0 +1,8 @@
+[
+  {"input":"{}","output":"{\"fixed\":[0,0],\"number\":0}","valid":true},
+  {"input":"{\"pointer\":null,\"list\":null,\"optional\":null}","output":"{\"fixed\":[0,0],\"number\":0,\"optional\":null}","valid":true},
+  {"input":"{\"pointer\":0,\"list\":[null,0],\"optional\":0}","output":"{\"fixed\":[0,0],\"list\":[null,0],\"number\":0,\"optional\":0,\"pointer\":0}","valid":true},
+  {"input":"{\"number\":null}","valid":false},
+  {"input":"{\"fixed\":[1]}","valid":false},
+  {"input":"{\"fixed\":null}","valid":false}
+]

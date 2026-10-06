@@ -1,0 +1,309 @@
+package consumer
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	arc "github.com/cratis/arc.go"
+	"github.com/cratis/arc.go/execution"
+	"github.com/cratis/arc.go/identity"
+	"github.com/cratis/arc.go/queries"
+	di "github.com/cratis/fundamentals.go/dependencyinjection"
+	"github.com/cratis/fundamentals.go/dependencyinjection/container"
+)
+
+func registry(t *testing.T, fail bool) (*container.Registry, *External) {
+	t.Helper()
+	r := &container.Registry{}
+	external := &External{}
+	if err := di.BindValue(r, external); err != nil {
+		t.Fatal(err)
+	}
+	if fail {
+		if err := di.Bind(r, di.Singleton, func(context.Context, di.Resolver) (*Dependency, error) { return nil, ConstructorError }); err != nil {
+			t.Fatal(err)
+		}
+	} else if err := di.BindValue(r, &Dependency{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := RegisterServices(r); err != nil {
+		t.Fatal(err)
+	}
+	return r, external
+}
+func closeProvider(t *testing.T, p di.Provider) {
+	t.Helper()
+	if err := p.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGeneratedLifetimesAndOwnedFailure(t *testing.T) {
+	Calls, ValueCalls, ValueCloses = 0, 0, 0
+	r, external := registry(t, false)
+	if Calls != 0 {
+		t.Fatal("registration activated services")
+	}
+	p, err := r.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeProvider(t, p)
+	if Calls != 0 {
+		t.Fatal("Build activated services")
+	}
+	a, err := p.NewScope(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := p.NewScope(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	foo, err := di.Resolve[IFoo](t.Context(), a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alias, err := di.Resolve[*FooAlias](t.Context(), a)
+	if err != nil || foo != alias {
+		t.Fatal("exact alias forwarding", err)
+	}
+	other, err := di.Resolve[IFoo](t.Context(), b)
+	if err != nil || foo == other {
+		t.Fatal("scoped reuse", err)
+	}
+	singleton, err := di.Resolve[ISingleton](t.Context(), a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	same, err := di.Resolve[*Singleton](t.Context(), b)
+	if err != nil || singleton != same {
+		t.Fatal("singleton forwarding", err)
+	}
+	pair, err := di.Resolve[Pair](t.Context(), a)
+	if err != nil || pair.First == pair.Second {
+		t.Fatal("repeated transient argument coalesced", err)
+	}
+	triple, err := di.Resolve[Triple](t.Context(), a)
+	if err != nil || triple.Ticks[0] == triple.Ticks[1] {
+		t.Fatal(err)
+	}
+	quad, err := di.Resolve[Quad](t.Context(), a)
+	if err != nil || quad.Ticks[0] == quad.Ticks[3] {
+		t.Fatal(err)
+	}
+	wide, err := di.Resolve[*Wide](t.Context(), a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[*Tick]bool{}
+	for _, tick := range wide.Ticks {
+		if seen[tick] {
+			t.Fatal("ordered wide arguments merged")
+		}
+		seen[tick] = true
+	}
+	forwarded, err := di.Resolve[ITick](t.Context(), a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := di.Resolve[ITick](t.Context(), a)
+	if err != nil || forwarded == second {
+		t.Fatal("transient forwarding cached", err)
+	}
+	if _, err := di.Resolve[*Failure](t.Context(), a); !errors.Is(err, ConstructorError) || LastFailure.Closes != 1 {
+		t.Fatal("failed result lost ownership", err)
+	}
+	if _, err := di.Resolve[Value](t.Context(), a); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if alias.Closes != 1 || same.Closes != 0 || forwarded.(*Tick).Closes != 1 || ValueCloses != 1 {
+		t.Fatal("scope close/borrowed forwarding differs")
+	}
+	for _, tick := range wide.Ticks {
+		if tick.Closes != 1 {
+			t.Fatal("wide result dependency not closed once")
+		}
+	}
+	if err := b.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	closeProvider(t, p)
+	if same.Closes != 1 || external.Closes != 0 || alias.Closes != 1 {
+		t.Fatal("singleton/external borrowed disposal differs")
+	}
+}
+func TestGeneratedDisposableValueErrorPreservesRealResult(t *testing.T) {
+	ValueCalls, ValueCloses = 0, 0
+	var r container.Registry
+	if err := di.BindValue(&r, &Dependency{Err: ConstructorError}); err != nil {
+		t.Fatal(err)
+	}
+	if err := di.BindValue(&r, &External{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := RegisterServices(&r); err != nil {
+		t.Fatal(err)
+	}
+	p, err := r.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeProvider(t, p)
+	scope, err := p.NewScope(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := di.Resolve[Value](t.Context(), scope); !errors.Is(err, ConstructorError) || ValueCalls != 1 || ValueCloses != 1 {
+		t.Fatal("real failed disposable value lost ownership", err)
+	}
+	if err := scope.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if ValueCloses != 1 {
+		t.Fatal("failed value disposed twice")
+	}
+}
+
+func TestGeneratedDependencyFailureHasNoDisposableZero(t *testing.T) {
+	ValueCalls, ValueCloses = 0, 0
+	r, _ := registry(t, true)
+	p, err := r.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeProvider(t, p)
+	scope, err := p.NewScope(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := di.Resolve[Value](t.Context(), scope); !errors.Is(err, ConstructorError) {
+		t.Fatal(err)
+	}
+	if err := scope.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if ValueCalls != 0 || ValueCloses != 0 {
+		t.Fatal("nonexistent disposable result constructed/disposed")
+	}
+}
+
+type failingRegistrar struct {
+	calls int
+	err   error
+}
+
+func (r *failingRegistrar) Register(di.Binding) error {
+	r.calls++
+	if r.calls == 2 {
+		return r.err
+	}
+	return nil
+}
+func TestGeneratedStrictDuplicatesAndPartialRegistrarFailure(t *testing.T) {
+	r, _ := registry(t, false)
+	if err := RegisterServices(r); !errors.Is(err, di.ErrDuplicate) {
+		t.Fatal("duplicates silently skipped", err)
+	}
+	missing := &container.Registry{}
+	if err := RegisterServices(missing); !errors.Is(err, di.ErrMissing) {
+		t.Fatal("Existing presence not preflighted", err)
+	}
+	if missing.Contains(di.KeyFor[*Foo]()) {
+		t.Fatal("missing Existing wrote partial registration")
+	}
+	failure := errors.New("registrar failure")
+	fake := &failingRegistrar{err: failure}
+	if err := RegisterServices(fake); !errors.Is(err, failure) || fake.calls != 2 {
+		t.Fatal("partial registrar failure swallowed/continued", err)
+	}
+	if err := RegisterServices(nil); !errors.Is(err, di.ErrInvalidRegistration) {
+		t.Fatal(err)
+	}
+}
+
+func TestGeneratedArcStageLocalAndManualBorrowedCallbacks(t *testing.T) {
+	for _, useContainer := range []bool{false, true} {
+		t.Run(map[bool]string{false: "manual callbacks", true: "generated services"}[useContainer], func(t *testing.T) {
+			Calls = 0
+			resolutions := 0
+			borrowed := &Foo{}
+			options := arc.Options{}
+			var supplied []ArcBindings
+			var p di.Provider
+			if useContainer {
+				r, _ := registry(t, false)
+				var err error
+				p, err = r.Build()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer closeProvider(t, p)
+				options.ScopeFactory = p
+			} else {
+				supplied = []ArcBindings{{ResolveIFoo: func(context.Context, *execution.Scope) (IFoo, error) { resolutions++; return borrowed, nil }}}
+			}
+			builder, err := arc.NewBuilder(options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := RegisterArtifacts(builder, supplied...); err != nil {
+				t.Fatal(err)
+			}
+			app, err := builder.Build()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if Calls != 0 || resolutions != 0 {
+				t.Fatal("eager generated activation")
+			}
+			if err := app.Start(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			for _, command := range []any{Denied{}, Add{}, Stop{}} {
+				result, err := app.Commands().Execute(t.Context(), command)
+				if err != nil || result.IsSuccess() || Calls != 0 || resolutions != 0 {
+					t.Fatal("preactivation failure activated business factory", err)
+				}
+			}
+			validated, err := app.Commands().Validate(t.Context(), Add{Name: "ok"})
+			if err != nil || !validated.IsSuccess() || Calls != 0 || resolutions != 0 {
+				t.Fatal("validate-only activated business factory", err)
+			}
+			denied, err := app.Queries().Perform(t.Context(), "Item.All", queries.RequestFor(queries.NoArguments{}, queries.Parameters{}))
+			if err != nil || denied.IsSuccess() || Calls != 0 || resolutions != 0 {
+				t.Fatal("query authorization activated factory", err)
+			}
+			request, err := queries.ReadGET(map[string][]string{"count": {"bad"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = app.Queries().Perform(t.Context(), "Item.Find", request)
+			if err == nil || Calls != 0 || resolutions != 0 {
+				t.Fatal("query binding must fail before factory activation", err)
+			}
+			result, err := app.Commands().Execute(t.Context(), Add{Name: "ok"})
+			value, present := result.Response()
+			if err != nil || !result.IsSuccess() || !present || value != 5 {
+				t.Fatal("Provide/Handle failed", err, result.Details())
+			}
+			query, err := app.Queries().Perform(identity.WithPrincipal(t.Context(), identity.System("Reader")), "Item.All", queries.RequestFor(queries.NoArguments{}, queries.Parameters{}))
+			if err != nil || !query.IsSuccess() {
+				t.Fatal("query failed", err, query.Details())
+			}
+			if (useContainer && Calls == 0) || (!useContainer && resolutions != 2) {
+				t.Fatal("generated dependency inventory not called")
+			}
+			if err := app.Shutdown(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			if borrowed.Closes != 0 {
+				t.Fatal("borrowed callback value disposed")
+			}
+		})
+	}
+}

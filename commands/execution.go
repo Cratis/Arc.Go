@@ -1,0 +1,217 @@
+// Copyright (c) Cratis. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+
+package commands
+
+import (
+	"context"
+	"errors"
+	"sync"
+
+	"github.com/cratis/arc.go/correlation"
+	"github.com/cratis/arc.go/execution"
+	"github.com/cratis/arc.go/serialization"
+)
+
+type executionState struct {
+	mu                sync.Mutex
+	top               *frame
+	closed            bool
+	completing        bool
+	values            map[*stateIdentity]any
+	report            CompletionReport
+	reports           uint64
+	operationAttempts uint64
+}
+
+// Execution is a callback-scoped view of synchronous command ownership. It is not
+// a transaction or commit verdict. It launches no goroutines and rejects expiry.
+type Execution struct {
+	state      *executionState
+	frame      *frame
+	invocation *Invocation
+}
+
+// IsRoot reports whether this frame owns root completion.
+func (e *Execution) IsRoot() bool { return e != nil && e.frame != nil && e.frame.parent == nil }
+
+// Check verifies callback admission, current frame and security continuity.
+func (e *Execution) Check(ctx context.Context) error {
+	if e == nil || e.state == nil || e.invocation == nil {
+		return ErrNoContext
+	}
+	e.invocation.mu.Lock()
+	active, scope := e.invocation.active, e.invocation.scope
+	e.invocation.mu.Unlock()
+	if !active {
+		return ErrExecutionClosed
+	}
+	e.state.mu.Lock()
+	closed, top := e.state.closed, e.state.top
+	e.state.mu.Unlock()
+	if closed {
+		return ErrExecutionClosed
+	}
+	if top != e.frame {
+		return ErrExecutionMismatch
+	}
+	if err := scope.CheckContext(ctx); err != nil {
+		return err
+	}
+	if correlation.FromContext(ctx) != e.frame.snapshot.correlation {
+		return ErrExecutionMismatch
+	}
+	return nil
+}
+
+// CheckRecordedFailures checks callback/security continuity and fails if this
+// frame or an ancestor has already recorded a failure, including an ignored nested
+// Execute result. Advisory nested Validate remains advisory during Execute.
+// This read-only guard is useful before explicit early persistence. It is not an
+// authorization grant or a promise that subsequent callbacks will succeed.
+func (e *Execution) CheckRecordedFailures(ctx context.Context) error {
+	if e == nil {
+		return ErrNoContext
+	}
+	return withState(ctx, e.invocation, func(current *Execution) error {
+		for frame := current.frame; frame != nil; frame = frame.parent {
+			if frame.err != nil || !frame.result.IsSuccess() || (frame.nestedSet && !frame.nested.IsSuccess()) || frame.nestedErr != nil {
+				return errors.Join(ErrExecutionFailed, frame.err, frame.nestedErr)
+			}
+		}
+		return nil
+	})
+}
+
+func (f *frame) mergeNested() {
+	f.owner.mu.Lock()
+	if !f.nestedSet {
+		f.owner.mu.Unlock()
+		return
+	}
+	failures, err := f.nested, f.nestedErr
+	f.nested, f.nestedErr, f.nestedSet = Result[NoResponse]{}, nil, false
+	f.owner.mu.Unlock()
+	f.merge(failures, false)
+	f.err = errors.Join(f.err, err)
+}
+
+type boundPipeline struct {
+	pipeline   *pipeline
+	frame      *frame
+	invocation *Invocation
+	scope      *execution.Scope
+	mu         sync.Mutex
+	busy       bool
+	stopped    bool
+	done       chan struct{}
+}
+
+func (b *boundPipeline) Lookup(name string) (Registration, bool) { return b.pipeline.Lookup(name) }
+func (b *boundPipeline) LookupCommand(command any) (Registration, error) {
+	return b.pipeline.LookupCommand(command)
+}
+func (b *boundPipeline) Execute(ctx context.Context, command any, options ...ExecuteOptions) (Result[any], error) {
+	return b.run(ctx, b.scope, command, false, options)
+}
+func (b *boundPipeline) Validate(ctx context.Context, command any, options ...ExecuteOptions) (Result[NoResponse], error) {
+	result, err := b.run(ctx, b.scope, command, true, options)
+	return NewResult(result.Details(), serialization.Optional[NoResponse]{}), err
+}
+func (b *boundPipeline) ExecuteScoped(ctx context.Context, scope *execution.Scope, command any, options ...ExecuteOptions) (Result[any], error) {
+	return b.run(ctx, scope, command, false, options)
+}
+func (b *boundPipeline) ValidateScoped(ctx context.Context, scope *execution.Scope, command any, options ...ExecuteOptions) (Result[NoResponse], error) {
+	result, err := b.run(ctx, scope, command, true, options)
+	return NewResult(result.Details(), serialization.Optional[NoResponse]{}), err
+}
+func (b *boundPipeline) run(ctx context.Context, scope *execution.Scope, command any, validate bool, options []ExecuteOptions) (result Result[any], err error) {
+	ctx, attempt := beginDiagnostics(ctx, b, command, validate)
+	defer func() { finishDiagnostics(attempt, ctx, result, err) }()
+	b.mu.Lock()
+	if b.stopped {
+		b.mu.Unlock()
+		return b.rejected(ctx, ErrExecutionClosed, validate)
+	}
+	if b.busy {
+		b.mu.Unlock()
+		return b.rejected(ctx, ErrConcurrentExecution, validate)
+	}
+	b.busy = true
+	b.done = make(chan struct{})
+	b.mu.Unlock()
+	defer func() { b.mu.Lock(); b.busy = false; close(b.done); b.mu.Unlock() }()
+	if err := b.invocation.owner.Check(ctx); err != nil {
+		return b.rejected(ctx, err, validate)
+	}
+	child, _ := b.pipeline.LookupCommand(command)
+	if b.frame.registration.operations || child.operations {
+		b.frame.owner.mu.Lock()
+		b.frame.owner.operationAttempts++
+		b.frame.owner.mu.Unlock()
+		result := FromError[any](contextID(ctx), ErrInvalidOperation)
+		// Forward refusal must be visible to persistence guards inside this
+		// callback, not just to callWith after the callback returns. Recovery
+		// uses per-callback attempts without contaminating the original failure.
+		if b.frame.operations == nil || !b.frame.operations.recovered {
+			b.record(result, ErrInvalidOperation)
+		}
+		return result, ErrInvalidOperation
+	}
+	b.frame.owner.mu.Lock()
+	completing := b.frame.owner.completing
+	b.frame.owner.mu.Unlock()
+	if completing || scope != b.scope || (b.frame.snapshot.validationOnly && !validate) {
+		return b.rejected(ctx, ErrExecutionMismatch, validate)
+	}
+	ctx = context.WithValue(ctx, commandContextKey{}, b.invocation.CommandContext())
+	result, err = b.pipeline.run(ctx, scope, command, validate, b.frame, options)
+	if !result.IsSuccess() && (!validate || b.frame.snapshot.validationOnly) {
+		b.record(result, err)
+	}
+	return result, err
+}
+
+// expire joins a child that the application incorrectly left running. Completion
+// must not race the child. As with callbacks, joining is synchronous/cooperative.
+func (b *boundPipeline) expire() error {
+	b.mu.Lock()
+	b.stopped = true
+	busy, done := b.busy, b.done
+	b.mu.Unlock()
+	if busy {
+		<-done
+		return ErrConcurrentExecution
+	}
+	return nil
+}
+func (b *boundPipeline) rejected(ctx context.Context, err error, validate bool) (Result[any], error) {
+	result := FromError[any](contextID(ctx), err)
+	if b.frame.registration.operations {
+		b.frame.owner.mu.Lock()
+		if !b.frame.owner.closed {
+			b.frame.owner.operationAttempts++
+		}
+		b.frame.owner.mu.Unlock()
+		return result, err
+	}
+	if !validate || b.frame.snapshot.validationOnly {
+		b.record(result, err)
+	}
+	return result, err
+}
+func (b *boundPipeline) record(result Result[any], err error) {
+	owner := b.frame.owner
+	owner.mu.Lock()
+	defer owner.mu.Unlock()
+	if owner.closed {
+		return
+	}
+	f := b.frame
+	if !f.nestedSet {
+		f.nested = Success(result.Details().CorrelationID)
+		f.nestedSet = true
+	}
+	f.nested = Merge(f.nested, NewResult(result.Details(), serialization.Optional[NoResponse]{}))
+	f.nestedErr = errors.Join(f.nestedErr, err)
+}

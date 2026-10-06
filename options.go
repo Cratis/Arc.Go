@@ -1,0 +1,307 @@
+// Copyright (c) Cratis. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+
+package arc
+
+import (
+	"context"
+	"log/slog"
+	"net/http"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/cratis/arc.go/authentication"
+	"github.com/cratis/arc.go/authorization"
+	"github.com/cratis/arc.go/commands"
+	"github.com/cratis/arc.go/correlation"
+	"github.com/cratis/arc.go/execution"
+	"github.com/cratis/arc.go/metadata"
+	"github.com/cratis/arc.go/observability"
+	"github.com/cratis/arc.go/queries"
+	"github.com/cratis/arc.go/tenancy"
+	di "github.com/cratis/fundamentals.go/dependencyinjection"
+)
+
+// Options configures composition. Collaborators are borrowed and must support
+// concurrent calls. Configuration slices and pointed-to values are copied.
+type Options struct {
+	// Diagnostics is borrowed, bounded backend recording; nil disables it.
+	Diagnostics *observability.Recorder
+	// QueryHealth enables protected aggregate health; nil leaves it absent in every environment.
+	QueryHealth            *QueryHealthOptions
+	Namespace              string
+	Environment            string
+	Routes                 *metadata.Options
+	Authentication         []authentication.Handler
+	Tenancy                tenancy.Options
+	TenantResolver         tenancy.Resolver
+	Membership             tenancy.Membership
+	RequireTenant          bool
+	Authorization          authorization.Options
+	OpenResources          execution.OpenResources
+	ScopeFactory           di.ScopeFactory
+	DependencyCatalog      di.Catalog
+	Clock                  func() time.Time
+	CleanupTimeout         time.Duration
+	CommandOperations      commands.OperationOptions // Separate cooperative recovery budget.
+	ExposeExceptionDetails bool
+	Logger                 *slog.Logger
+	HTTP                   HTTPOptions
+	Observable             ObservableOptions
+	Introspection          IntrospectionOptions
+	Identity               IdentityOptions
+}
+
+// ObservableOptions bounds owned query observations. Zero fields select defaults.
+// Limits include opening and retired-but-unjoined operations, not just active streams.
+// Hub limits cover retained framework state, not allocations in application callbacks.
+type ObservableOptions struct {
+	// MaxObservations bounds application query owners and hub subscriptions; default 1024.
+	// Opt-in QueryHealth has a separate private-pipeline ceiling of the same size.
+	MaxObservations int
+	// MaximumWait is the maximum first-result wait budget; default five minutes.
+	MaximumWait time.Duration
+	// CloseGrace bounds initial stream cleanup; default five seconds. Timeouts
+	// remain owned and must be joined by a later application Shutdown.
+	CloseGrace time.Duration
+	// WriteTimeout bounds each streaming write and flush; default ten seconds.
+	// The absolute unary HTTP write deadline is cleared while awaiting emissions.
+	WriteTimeout time.Duration
+	// MaxConnections defaults to 256 physical hub connections per application.
+	MaxConnections int
+	// MaxConnectionsPerOwner defaults to eight per verified subject/tenant;
+	// anonymous connections additionally use the actual peer IP, never forwarding headers.
+	MaxConnectionsPerOwner int
+	// MaxSubscriptions defaults to 64 outstanding operations per connection.
+	MaxSubscriptions int
+	// MaxOpenings defaults to 32 concurrent hub openings per application.
+	MaxOpenings int
+	// MaxOpeningsPerConnection defaults to four concurrent openings.
+	MaxOpeningsPerConnection int
+	// MaxQueryIDs defaults to 1024 retained IDs per connection, without eviction.
+	MaxQueryIDs int
+	// MaxOutboundJobs defaults to 64 pending/in-flight frames per connection.
+	MaxOutboundJobs int
+	// MaxQueuedBytes defaults to 32 MiB retained frames per connection.
+	MaxQueuedBytes int64
+	// MaxStreamingBytes defaults to 256 MiB retained hub frames per application.
+	MaxStreamingBytes int64
+	// KeepAliveInterval defaults to 30 seconds; hub SSE sends JSON Ping messages.
+	KeepAliveInterval time.Duration
+	// ConnectionLifetime defaults to twelve hours, bounding anonymous cookie lifetime.
+	ConnectionLifetime time.Duration
+	// AllowedOrigins adds exact origins to the default same-origin transport policy.
+	// The literal "null" explicitly permits opaque browser origins. No wildcards.
+	AllowedOrigins []string
+	// AnonymousOwner optionally supplies verified session ownership evidence.
+	// It is borrowed, concurrent, panic-protected and never authenticates a user.
+	// Nil uses an independent random HttpOnly cookie per anonymous SSE connection.
+	AnonymousOwner func(context.Context, *http.Request) (string, error)
+}
+
+// HTTPOptions controls bounded unary HTTP publication and owned-server timeouts.
+// Zero fields select defaults; embedded servers own their transport timeouts.
+type HTTPOptions struct {
+	MaxBodyBytes      int64
+	MaxQueryBytes     int
+	MaxResponseBytes  int64
+	CorrelationHeader string
+	ReadHeaderTimeout time.Duration
+	ReadTimeout       time.Duration
+	WriteTimeout      time.Duration
+	IdleTimeout       time.Duration
+	MaxHeaderBytes    int
+	ShutdownTimeout   time.Duration
+	QueryReaders      []queries.RequestReader
+}
+
+// IntrospectionOptions controls discovery exposure. Enabled controls only catalogs.
+// Development defaults anonymous; other environments require authentication or
+// leave discovery unmapped when no authentication adapter is registered.
+type IntrospectionOptions struct {
+	Enabled               *bool
+	RequireAuthentication *bool
+	Roles                 []string
+}
+
+// IdentityOptions selects a registered details provider when more than one exists.
+type IdentityOptions struct{ DetailsProvider string }
+
+func normalizeOptions(o Options) (Options, error) {
+	var healthErr error
+	o.QueryHealth, healthErr = copyQueryHealthOptions(o.QueryHealth)
+	if healthErr != nil {
+		return Options{}, healthErr
+	}
+	if o.Environment == "" {
+		o.Environment = "Production"
+	}
+	if o.Routes == nil {
+		routes := metadata.DefaultOptions()
+		o.Routes = &routes
+	} else {
+		routes := *o.Routes
+		o.Routes = &routes
+	}
+	o.Authentication = slices.Clone(o.Authentication)
+	o.HTTP.QueryReaders = slices.Clone(o.HTTP.QueryReaders)
+	o.Observable.AllowedOrigins = slices.Clone(o.Observable.AllowedOrigins)
+	for i, origin := range o.Observable.AllowedOrigins {
+		canonical, err := transportOrigin(origin)
+		if err != nil {
+			return Options{}, ErrInvalidOptions
+		}
+		o.Observable.AllowedOrigins[i] = canonical
+	}
+	o.Introspection.Roles = slices.Clone(o.Introspection.Roles)
+	if o.Introspection.Enabled != nil {
+		v := *o.Introspection.Enabled
+		o.Introspection.Enabled = &v
+	}
+	if o.Introspection.RequireAuthentication != nil {
+		v := *o.Introspection.RequireAuthentication
+		o.Introspection.RequireAuthentication = &v
+	}
+	if o.Authorization.Fallback != nil {
+		c := cloneCatalog(metadata.Catalog{Version: metadata.Version, Commands: []metadata.Command{{Authorization: o.Authorization.Fallback}}})
+		o.Authorization.Fallback = c.Commands[0].Authorization
+	}
+	if o.OpenResources != nil && o.ScopeFactory != nil || o.CleanupTimeout < 0 || o.CommandOperations.CompensationTimeout < 0 || o.TenantResolver != nil && o.Tenancy != (tenancy.Options{}) {
+		return Options{}, ErrInvalidOptions
+	}
+	if o.Clock == nil {
+		o.Clock = time.Now
+	}
+	if o.CleanupTimeout == 0 {
+		o.CleanupTimeout = 30 * time.Second
+	}
+	observable := &o.Observable
+	if observable.MaxObservations < 0 || observable.MaximumWait < 0 || observable.CloseGrace < 0 || observable.WriteTimeout < 0 {
+		return Options{}, ErrInvalidOptions
+	}
+	if observable.MaxObservations == 0 {
+		observable.MaxObservations = 1024
+	}
+	if observable.MaximumWait == 0 {
+		observable.MaximumWait = 5 * time.Minute
+	}
+	if observable.CloseGrace == 0 {
+		observable.CloseGrace = 5 * time.Second
+	}
+	if observable.WriteTimeout == 0 {
+		observable.WriteTimeout = 10 * time.Second
+	}
+	for _, limit := range []struct {
+		value    *int
+		fallback int
+	}{
+		{&observable.MaxConnections, 256}, {&observable.MaxConnectionsPerOwner, 8},
+		{&observable.MaxSubscriptions, 64}, {&observable.MaxOpenings, 32},
+		{&observable.MaxOpeningsPerConnection, 4}, {&observable.MaxQueryIDs, 1024},
+		{&observable.MaxOutboundJobs, 64},
+	} {
+		if *limit.value < 0 {
+			return Options{}, ErrInvalidOptions
+		}
+		if *limit.value == 0 {
+			*limit.value = limit.fallback
+		}
+	}
+	if observable.MaxQueuedBytes < 0 || observable.MaxStreamingBytes < 0 || observable.KeepAliveInterval < 0 || observable.ConnectionLifetime < 0 {
+		return Options{}, ErrInvalidOptions
+	}
+	if observable.MaxQueuedBytes == 0 {
+		observable.MaxQueuedBytes = 32 << 20
+	}
+	if observable.MaxStreamingBytes == 0 {
+		observable.MaxStreamingBytes = 256 << 20
+	}
+	if observable.KeepAliveInterval == 0 {
+		observable.KeepAliveInterval = 30 * time.Second
+	}
+	if observable.ConnectionLifetime == 0 {
+		observable.ConnectionLifetime = 12 * time.Hour
+	}
+	if observable.KeepAliveInterval < time.Millisecond || observable.ConnectionLifetime < time.Second {
+		return Options{}, ErrInvalidOptions
+	}
+	h := &o.HTTP
+	if h.MaxBodyBytes < 0 || h.MaxQueryBytes < 0 || h.MaxResponseBytes < 0 || h.MaxHeaderBytes < 0 || h.ReadHeaderTimeout < 0 || h.ReadTimeout < 0 || h.WriteTimeout < 0 || h.IdleTimeout < 0 || h.ShutdownTimeout < 0 {
+		return Options{}, ErrInvalidOptions
+	}
+	if h.MaxBodyBytes == 0 {
+		h.MaxBodyBytes = 1 << 20
+	}
+	if h.MaxQueryBytes == 0 {
+		h.MaxQueryBytes = 8 << 10
+	}
+	if h.MaxResponseBytes == 0 {
+		h.MaxResponseBytes = 16 << 20
+	}
+	if h.MaxHeaderBytes == 0 {
+		h.MaxHeaderBytes = 1 << 20
+	}
+	if h.ReadHeaderTimeout == 0 {
+		h.ReadHeaderTimeout = 5 * time.Second
+	}
+	if h.ReadTimeout == 0 {
+		h.ReadTimeout = 30 * time.Second
+	}
+	if h.WriteTimeout == 0 {
+		h.WriteTimeout = 30 * time.Second
+	}
+	if h.IdleTimeout == 0 {
+		h.IdleTimeout = 60 * time.Second
+	}
+	if h.ShutdownTimeout == 0 {
+		h.ShutdownTimeout = 30 * time.Second
+	}
+	if h.CorrelationHeader == "" {
+		h.CorrelationHeader = correlation.DefaultHeader
+	}
+	if !headerToken(h.CorrelationHeader) {
+		return Options{}, ErrInvalidOptions
+	}
+	for _, controlled := range []string{"Content-Type", "Content-Length", "Cache-Control", "Vary", "Allow", "Set-Cookie", "Authorization", "X-Allowed-Severity", "x-cratis-tenant-id", "Content-Encoding", "Connection", "Transfer-Encoding", "Host"} {
+		if strings.EqualFold(h.CorrelationHeader, controlled) {
+			return Options{}, ErrInvalidOptions
+		}
+	}
+	if o.TenantResolver == nil {
+		var err error
+		o.TenantResolver, err = tenancy.NewResolver(o.Tenancy)
+		if err != nil {
+			return Options{}, err
+		}
+	}
+	if o.ScopeFactory != nil {
+		if nilValue(o.ScopeFactory) {
+			return Options{}, ErrInvalidOptions
+		}
+		o.OpenResources = execution.ResourcesFrom(o.ScopeFactory)
+		if o.DependencyCatalog == nil {
+			o.DependencyCatalog, _ = o.ScopeFactory.(di.Catalog)
+		}
+	}
+	if nilValue(o.TenantResolver) || o.Membership != nil && nilValue(o.Membership) || o.DependencyCatalog != nil && nilValue(o.DependencyCatalog) {
+		return Options{}, ErrInvalidOptions
+	}
+	if _, err := authentication.New(o.Authentication...); err != nil {
+		return Options{}, err
+	}
+	return o, nil
+}
+
+func headerToken(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune("!#$%&'*+-.^_`|~", c) {
+			continue
+		}
+		return false
+	}
+	return http.CanonicalHeaderKey(s) != ""
+}

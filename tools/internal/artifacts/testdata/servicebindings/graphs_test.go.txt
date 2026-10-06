@@ -1,0 +1,66 @@
+package consumer
+
+import (
+	"errors"
+	"testing"
+
+	"example.test/consumer/graphs"
+	di "github.com/cratis/fundamentals.go/dependencyinjection"
+	"github.com/cratis/fundamentals.go/dependencyinjection/container"
+)
+
+type inventoryRegistrar struct{ bindings map[di.Key]di.Binding }
+
+func (r *inventoryRegistrar) Register(b di.Binding) error {
+	if r.bindings == nil {
+		r.bindings = map[di.Key]di.Binding{}
+	}
+	r.bindings[b.Key()] = b
+	return nil
+}
+func TestGeneratedDescriptorInventoryAndGraphFailures(t *testing.T) {
+	capture := &inventoryRegistrar{}
+	if err := RegisterServices(capture); err != nil {
+		t.Fatal(err)
+	}
+	if len(capture.bindings) != 12 {
+		t.Fatal("empty or incomplete generated registration inventory", len(capture.bindings))
+	}
+	wide := capture.bindings[di.KeyFor[*Wide]()]
+	if deps := wide.Dependencies(); len(deps) != 1 || deps[0] != di.KeyFor[*Tick]() {
+		t.Fatal("wide direct edges are not unique", deps)
+	}
+	for _, key := range []di.Key{di.KeyFor[IFoo](), di.KeyFor[ISingleton](), di.KeyFor[ITick]()} {
+		if capture.bindings[key].Ownership() != di.Borrowed {
+			t.Fatal("interface owns value", key)
+		}
+	}
+	graph := &inventoryRegistrar{}
+	if err := graphs.RegisterServices(graph); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		keys []di.Key
+		want error
+	}{
+		{"missing", []di.Key{di.KeyFor[*graphs.Consumer]()}, di.ErrMissing},
+		{"cycle", []di.Key{di.KeyFor[*graphs.A](), di.KeyFor[*graphs.B]()}, di.ErrCycle},
+		{"scoped capture", []di.Key{di.KeyFor[*graphs.Captive](), di.KeyFor[*graphs.Scoped]()}, di.ErrCaptiveLifetime},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var registry container.Registry
+			for _, key := range tc.keys {
+				if err := registry.Register(graph.bindings[key]); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := registry.Build(); !errors.Is(err, tc.want) {
+				t.Fatal("Build lost graph failure", err)
+			}
+			if graphs.Calls != 0 {
+				t.Fatal("invalid graph activated factories")
+			}
+		})
+	}
+}

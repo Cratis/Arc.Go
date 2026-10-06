@@ -1,0 +1,68 @@
+{
+  "inputs": {
+    "authority": {
+      "repository": "https://github.com/Cratis/Arc",
+      "commit": "7c1e78075b737df64f69fddfaae83374f75e3612"
+    },
+    "precedent": {
+      "repository": "https://github.com/Cratis/Arc.TypeScript",
+      "commit": "2f546a89c35d49726b78ed2bf573fff8d77b056e",
+      "source": "ContractTests/DotNET/ProxyComparison/Fixtures.cs",
+      "sourceSha256": "0bc99230d0f89b556c7f5d90d725533252b9ace8d6a22ae411cfcc95197213a1",
+      "historicalVersion": "22.45.0"
+    },
+    "dotnet": {
+      "sdk": "10.0.401",
+      "package": "Cratis.Arc.ProxyGenerator.Build",
+      "version": "22.48.2",
+      "packageSha512": "WRlrQAYY/hF9vWphDF+MyHpqvP3viaIyVmDF0q9K7xyqhrRGhFmhWYZxRJIv0HordLE3ZK/tv8OE+xqi1tMrLg==",
+      "executable": "tasks/net10.0/Cratis.Arc.ProxyGenerator.Build.dll",
+      "executableSha256": "930fd65e8285bb49f0f4d711a663c421dd1159cd7466952a47b303a2d3d894c9",
+      "input": "reference/bin/Release/net10.0/Arc.Go.ProxyComparison.dll",
+      "options": [
+        "0"
+      ],
+      "optionsSha256": "a37bbbb0764cc5bf8d8c251cb1c95e3d2e142934792916ccb362ceb5902d9f0b",
+      "lockSha256": "c83d0e56868ee03b8ac85879acdb469e5f904c5341d8ce933587c9496f1cbcad",
+      "projectSha256": "74760aa8e6f6d537b47e36a0f0df3bf04300c603b5525c77b7a78b535d3ed89a"
+    },
+    "frontend": {
+      "node": "26.8.1",
+      "npm": "12.0.2",
+      "clients": {
+        "@cratis/arc": {
+          "version": "22.48.2",
+          "integrity": "sha512-6IKc2ojTk6S7humeWTS14RyGzIdDNvynZ6G0DpiImqf+4a+ZVN8Poea086V8Z2+O26IfmIPQUQDfFD4dYzeivQ=="
+        },
+        "@cratis/arc.react": {
+          "version": "22.48.2",
+          "integrity": "sha512-INXHDBf4L11Tww4flD//+oe8gQUsOI89m1eIFp8zFiMTP9uBOleQRG3cgZDPViYdn89WGTAQN6egAuJjoxv1fQ=="
+        },
+        "@cratis/fundamentals": {
+          "version": "7.22.0",
+          "integrity": "sha512-ZqhfYkDFqXJD4DwllG0GXR4KjMGhe11BtCu9lBCtDx/ENuJNUAh5hc69u5glU0TtA7Za2wHNTz+3eS6z4bpbyQ=="
+        },
+        "react": {
+          "version": "18.3.1",
+          "integrity": "sha512-wS+hAgJShR0KhEvPJArfuPVN1+Hz1t0Y6n5jLrGQbkb4urgPE/0Rve+1kMB1v/oWgHgm4WIcV+i7F2pTVj+2iQ=="
+        },
+        "react-dom": {
+          "version": "18.3.1",
+          "integrity": "sha512-5m4nQKp+rZRb09LNH59GM4BxTh9251/ylbKIbpe7TpGxfJ+9kv6BLkLBXIjjspbgbnIBNqlI23tRnTWT0snUIw=="
+        }
+      },
+      "lockSha256": "c4d83485225404f877a9ef245aade5c54c43ba31bd89cdc7a035c4cc8b372375"
+    }
+  },
+  "snapshots": {
+    "ProxyComparison/All.ts": "714673965c4357dc1a8ebdadbd16138936c1409e7e7517c461653554f8ce8a97",
+    "ProxyComparison/Detail.ts": "fcd53346050d753655df26c353887fd5c3feb986fbf95193f688486f1b43ec8f",
+    "ProxyComparison/Listing.ts": "a9ff1d36d5e1e48d449d98a780c4a3109b08b4cf5268cfd197f544fdfbd9852e",
+    "ProxyComparison/Notice.ts": "f0115947d097035561dd61ecd208035c379df9f2880120fbf8dfcb7db655e93e",
+    "ProxyComparison/Observe.ts": "276b31a574ed158dba030cd44d1adcdcf198a1fee550b3dba86b964d128e00df",
+    "ProxyComparison/Register.ts": "3c904e09e3000a1db593d38f9d8872463e5bb42c736e44dabe38161dab3a32ba",
+    "ProxyComparison/Status.ts": "f8fcef925bd328f67603d26639097bfe2fb3b9f698e75b98a541d809685832ef",
+    "ProxyComparison/UrgentNotice.ts": "2dec69b67575e6291c537f530b90574d168adfb38cd3221026af527b6e85b0a8",
+    "ProxyComparison/index.ts": "47ea7cf2735a3a1c1fd910d8f0ad46fa94cc8fa45699573458b54238bd829218"
+  }
+}

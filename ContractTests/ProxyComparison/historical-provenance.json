@@ -1,0 +1,32 @@
+{
+  "dotnet": {
+    "package": "Cratis.Arc.ProxyGenerator.Build",
+    "version": "22.45.0",
+    "framework": "net10.0",
+    "executable": "tasks/net10.0/Cratis.Arc.ProxyGenerator.Build.dll",
+    "input": "ContractTests/DotNET/bin/Debug/net10.0/Arc.TypeScript.HttpFixture.dll",
+    "options": [
+      "0",
+      "--exclude-namespace=HttpFixture*"
+    ],
+    "source": "ContractTests/DotNET/ProxyComparison/Fixtures.cs",
+    "sourceSha256": "0bc99230d0f89b556c7f5d90d725533252b9ace8d6a22ae411cfcc95197213a1",
+    "optionsSha256": "a53e28154c5a7d5aa5b1635d0f3d898b5e5f21a40cb2ba81af3251ec05bdce41",
+    "lock": "ContractTests/DotNET/packages.lock.json"
+  },
+  "typescript": {
+    "package": "@cratis/arc.proxygenerator",
+    "version": "0.57.0",
+    "entryPoint": "generateFromSource",
+    "project": "ContractTests/ProxyComparison/TypeScript/tsconfig.json",
+    "artifacts": "ContractTests/ProxyComparison/TypeScript",
+    "options": {
+      "rootNamespace": "ProxyComparison"
+    }
+  },
+  "client": {
+    "@cratis/arc": "22.45.0",
+    "@cratis/arc.react": "22.45.0",
+    "@cratis/fundamentals": "7.22.0"
+  }
+}

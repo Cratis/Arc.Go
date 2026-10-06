@@ -1,4 +1,147 @@
 - name: Overview
   href: index.md
+- name: Go foundation
+  items:
+    - name: Get started
+      href: backend/go/core/getting-started.md
+    - name: Hosting
+      href: backend/go/core/hosting.md
+      items:
+        - name: Lifecycle
+          href: backend/go/core/lifecycle.md
+        - name: Middleware
+          href: backend/go/core/middleware.md
+        - name: Operation diagnostics
+          href: backend/go/core/diagnostics.md
+        - name: Hosting options
+          href: backend/go/configuration/hosting.md
+        - name: HTTP contract
+          href: backend/go/reference/http-contract.md
+        - name: Chi recipe
+          href: backend/go/recipes/chi.md
+        - name: Gin recipe
+          href: backend/go/recipes/gin.md
+        - name: Echo recipe
+          href: backend/go/recipes/echo.md
+    - name: Discovery
+      href: backend/go/introspection/index.md
+      items:
+        - name: Schemas
+          href: backend/go/introspection/schemas.md
+    - name: Concepts and JSON values
+      href: backend/go/concepts/index.md
+      items:
+        - name: Int32 enums
+          href: backend/go/concepts/enums.md
+    - name: Commands
+      href: backend/go/commands/index.md
+      items:
+        - name: Model-bound commands
+          href: backend/go/commands/model-bound/index.md
+        - name: Command authorization
+          href: backend/go/commands/model-bound/authorization.md
+        - name: Execute a command
+          href: backend/go/commands/command-pipeline.md
+        - name: Command context and keys
+          href: backend/go/commands/command-context.md
+        - name: Command filters
+          href: backend/go/commands/command-filters.md
+        - name: Protected decision reads
+          href: backend/go/commands/decision-reads.md
+        - name: Flat command operations
+          href: backend/go/commands/operations.md
+        - name: Command execution scopes
+          href: backend/go/commands/command-execution-scopes.md
+        - name: Validate commands
+          href: backend/go/commands/command-validation.md
+        - name: Validation severity filtering
+          href: backend/go/commands/validation-severity-filtering.md
+        - name: Response value handlers
+          href: backend/go/commands/response-value-handlers.md
+        - name: Command return shapes
+          href: backend/go/commands/response-examples.md
+        - name: Traditional action handlers
+          href: backend/go/commands/traditional-actions.md
+    - name: Queries
+      href: backend/go/queries/index.md
+      items:
+        - name: Query pipeline
+          href: backend/go/queries/query-pipeline.md
+        - name: Model-bound queries
+          href: backend/go/queries/model-bound/index.md
+          items:
+            - name: Namespace methods and functions
+              href: backend/go/queries/model-bound/static-methods.md
+            - name: Dependencies
+              href: backend/go/queries/model-bound/dependency-injection.md
+            - name: Arguments
+              href: backend/go/queries/model-bound/query-arguments.md
+            - name: Return types
+              href: backend/go/queries/model-bound/return-types.md
+            - name: Paging and sorting
+              href: backend/go/queries/model-bound/paging.md
+            - name: Authorization
+              href: backend/go/queries/model-bound/authorization.md
+        - name: Read-model interception
+          href: backend/go/queries/read-model-interception.md
+        - name: GET and HTTP QUERY readers
+          href: backend/go/queries/using-the-http-query-method.md
+        - name: Query validation
+          href: backend/go/queries/validation.md
+        - name: Observable queries
+          href: backend/go/queries/observable-queries.md
+        - name: Observable HTTP
+          href: backend/go/queries/observable-http.md
+        - name: Observable query hub
+          href: backend/go/queries/observable-query-hub.md
+        - name: Emission guards
+          href: backend/go/queries/observable-emission-guards.md
+        - name: Collection change streams
+          href: backend/go/queries/change-stream.md
+        - name: Protected query health
+          href: backend/go/queries/query-health.md
+    - name: Generate adapters and proxies
+      href: backend/go/generation/index.md
+      items:
+        - name: Constructor services
+          href: backend/go/generation/constructor-services.md
+        - name: TypeScript proxies
+          href: backend/go/generation/typescript.md
+        - name: Directives and signatures
+          href: backend/go/generation/reference.md
+    - name: Chronicle integration
+      href: backend/go/chronicle/index.md
+      items:
+        - name: Chronicle decision reads
+          href: backend/go/chronicle/decision-reads.md
+    - name: MongoDB snapshots
+      href: backend/go/mongodb/index.md
+      items:
+        - name: Multiple instances
+          href: backend/go/mongodb/multiple-instances.md
+    - name: Command results
+      href: backend/go/commands/results.md
+    - name: Query results
+      href: backend/go/queries/results.md
+    - name: Testing
+      href: backend/go/testing/index.md
+    - name: Validation and severity
+      href: backend/go/validation/index.md
+    - name: Authentication handlers
+      href: backend/go/authentication/index.md
+    - name: Authorization policies
+      href: backend/go/authorization/index.md
+    - name: Identity details
+      href: backend/go/identity/index.md
+    - name: Tenant selection and membership
+      href: backend/go/tenancy/index.md
+    - name: Routes and identities
+      href: backend/go/configuration/routing.md
+    - name: Execution metadata
+      href: backend/go/core/execution-context.md
+    - name: Dependency injection and operation resources
+      href: backend/go/core/dependency-injection.md
+- name: Parity
+  href: parity.md
 - name: Releases
   href: releases.md

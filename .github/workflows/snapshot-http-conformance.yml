@@ -1,0 +1,93 @@
+# A separate, fail-closed checkpoint: no databases, browser clients or Arc NuGet substitute.
+name: Paired snapshot HTTP conformance
+
+on:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: snapshot-http-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GOWORK: 'off'
+  GOTOOLCHAIN: local
+  CGO_ENABLED: '1'
+  ARC_HTTP_CONFORMANCE_DLL: ${{ github.workspace }}/.ai-work/httpconformance/output/artifacts/bin/Reference/release/Arc.Go.HttpConformance.dll
+  ARC_HTTP_CONFORMANCE_PROVENANCE: ${{ github.workspace }}/.ai-work/httpconformance/keep/provenance.json
+  ARC_HTTP_CONFORMANCE_OUTPUT: ${{ github.workspace }}/.ai-work/httpconformance/keep/exchanges
+
+jobs:
+  paired:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Cratis/Arc
+          ref: 7c1e78075b737df64f69fddfaae83374f75e3612
+          path: .ai-work/httpconformance/arc-repository
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.x'
+          cache-dependency-path: go.sum
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.401'
+      - name: Extract exact source and install complete dependency locks
+        run: >-
+          python3 -B ContractTests/httpconformance/prepare.py
+          --arc-repository .ai-work/httpconformance/arc-repository
+          --destination .ai-work/httpconformance/keep/source
+      - name: Restore all source dependencies in locked mode
+        working-directory: ContractTests/httpconformance/reference
+        timeout-minutes: 5
+        run: >-
+          dotnet restore Reference.csproj --locked-mode
+          -p:ArcSourceRoot=${{ github.workspace }}/.ai-work/httpconformance/keep/source
+          -p:Configuration=Release
+          -p:ArtifactsPath=${{ github.workspace }}/.ai-work/httpconformance/output/artifacts
+          -p:RestorePackagesWithLockFile=true
+          --source https://api.nuget.org/v3/index.json --disable-parallel
+      - name: Build real C# query host without restoring
+        working-directory: ContractTests/httpconformance/reference
+        timeout-minutes: 5
+        run: >-
+          dotnet build Reference.csproj -c Release --no-restore -m:2
+          -p:ArcSourceRoot=${{ github.workspace }}/.ai-work/httpconformance/keep/source
+          -p:ArtifactsPath=${{ github.workspace }}/.ai-work/httpconformance/output/artifacts
+      - name: Verify exact source, complete graph and actual runtime patches
+        run: >-
+          python3 -B ContractTests/httpconformance/verify.py
+          --arc-repository .ai-work/httpconformance/arc-repository
+          --source .ai-work/httpconformance/keep/source
+          --artifacts .ai-work/httpconformance/output/artifacts
+          --output .ai-work/httpconformance/keep/provenance.json
+      - name: Native inventory, comparator and lifecycle contracts
+        run: go test -race -count=1 -timeout=90s ./ContractTests/httpconformance
+      - name: Prove generated activation and reject incomplete readiness
+        timeout-minutes: 2
+        run: go test -race -tags=httpconformance -count=1 -timeout=90s -run '^TestReferenceActivation$' ./ContractTests/httpconformance
+      - name: Execute all fixed GET and QUERY requests against both real hosts
+        timeout-minutes: 2
+        run: go test -race -tags=httpconformance -count=1 -timeout=110s -run '^TestPairedSnapshotHTTP$' ./ContractTests/httpconformance
+      - name: Preserve bounded preparation proof and linked raw exchanges, including failures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: snapshot-http-exchanges
+          path: |
+            .ai-work/httpconformance/keep/exchanges
+            .ai-work/httpconformance/keep/provenance.json
+            .ai-work/httpconformance/keep/source.sha256
+            .ai-work/httpconformance/keep/projects.txt
+          if-no-files-found: warn
+          retention-days: 7

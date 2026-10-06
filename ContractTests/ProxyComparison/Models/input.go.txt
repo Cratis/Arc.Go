@@ -1,0 +1,69 @@
+// Copyright (c) Cratis. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+//arc:namespace Shop.Models
+package consumer
+
+import (
+ "time"
+ "github.com/cratis/arc.go/concepts"
+)
+
+// Metadata-only generic concepts. Discovery must never execute these codecs.
+type Value[T any] struct { value T }
+func (v Value[T]) ConceptValue() T { panic("marker executed") }
+func (Value[T]) MarshalText() ([]byte,error) { panic("codec executed") }
+func (Value[T]) MarshalJSON() ([]byte,error) { panic("codec executed") }
+func (*Value[T]) UnmarshalText([]byte) error { panic("codec executed") }
+func (*Value[T]) UnmarshalJSON([]byte) error { panic("codec executed") }
+
+//arc:enum members=StateDraft:Draft,StatePublished:Published,StateArchived:Archived,StateAlias:Alias,StateDefault:Default
+ type State int32
+const (StateDraft State = 0; StatePublished State = 7; StateArchived State = -2; StateAlias State = 7; StateDefault State = 42)
+//arc:enum flags=true members=AccessNone:None,AccessRead:Read,AccessWrite:Write
+ type Access uint32
+const (AccessNone Access = 0; AccessRead Access = 1; AccessWrite Access = 4)
+
+ type Detail struct { ID concepts.UUID `json:"id"`; Label string `json:"label"` }
+ type NoticeContract interface { notice() }
+//arc:model
+//arc:derived interface=NoticeContract
+ type Notice struct { Title string `json:"title"` }
+func (Notice) notice() {}
+//arc:model
+//arc:derived interface=NoticeContract base=Notice id=1578F20A-CD63-456F-98AA-C97DAF05D0FA
+ type UrgentNotice struct { Notice; Priority int32 `json:"priority"` }
+
+//arc:model
+ type Scalars struct {
+ ID concepts.UUID `json:"id"`
+ Day concepts.DateOnly `json:"day"`
+ StartsAt concepts.TimeOnly `json:"startsAt"`
+ Duration concepts.TimeSpan `json:"duration"`
+ Created time.Time `json:"created"`
+ IDConcept Value[concepts.UUID] `json:"idConcept"`
+ DayConcept Value[concepts.DateOnly] `json:"dayConcept"`
+ TimeConcept Value[concepts.TimeOnly] `json:"timeConcept"`
+ SpanConcept Value[concepts.TimeSpan] `json:"spanConcept"`
+ NameConcept Value[string] `json:"nameConcept"`
+ BoolConcept Value[bool] `json:"boolConcept"`
+ NumberConcept Value[int64] `json:"numberConcept"`
+ State State `json:"state"`
+ Access Access `json:"access"`
+ States [2]State `json:"states"`
+ Counts map[string]int32 `json:"counts"`
+ Details []Detail `json:"details"`
+ IDs [2]concepts.UUID `json:"ids"`
+ Days []concepts.DateOnly `json:"days"`
+ Times []concepts.TimeOnly `json:"times"`
+ Spans []concepts.TimeSpan `json:"spans"`
+ Tags []string `json:"tags"`
+ Values []float64 `json:"values"`
+ Flags []bool `json:"flags"`
+ Description *string `json:"description"`
+ NullableID *concepts.UUID `json:"nullableId"`
+ NullableDetail *Detail `json:"nullableDetail"`
+ OptionalCount int32 `json:"optionalCount,omitempty"`
+ Exact string `json:"EXACT-name"`
+ URL string
+ Notice NoticeContract `json:"notice"`
+}

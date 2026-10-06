@@ -1,0 +1,23 @@
+// Copyright (c) Cratis. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+//arc:namespace Shop.Tasks
+package consumer
+
+import (
+ "github.com/cratis/arc.go/commands"
+ "example.test/consumer/shared"
+)
+
+//arc:command
+//arc:allow-anonymous
+type Echo struct {
+ Title shared.Title `json:"title" rules:"[{\"name\":\"notEmpty\",\"message\":\"Title required\"}]"`
+}
+func (value Echo) Handle() (commands.Outcome[Listing],error) { return commands.Respond(Listing{Title:value.Title, Detail:shared.Sample()}),nil }
+
+//arc:readmodel
+//arc:allow-anonymous
+type Listing struct { Title shared.Title `json:"title"`; Detail shared.Detail `json:"detail"` }
+type FindArguments struct { Title string `json:"title" query:"required"` }
+func (Listing) Find(args FindArguments) (Listing,error) { return Listing{Title:shared.Title(args.Title),Detail:shared.Sample()},nil }
+func (Listing) All() ([]Listing,error) { return []Listing{{Title:"snapshot",Detail:shared.Sample()}},nil }

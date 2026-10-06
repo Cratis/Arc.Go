@@ -1,0 +1,1097 @@
+{
+  "runtime": "10.0.12",
+  "arc": "1.0.0+7c1e78075b737df64f69fddfaae83374f75e3612",
+  "fundamentals": "1.0.0+14037b1ff8346b7944ad48065b8f66feca80dab5",
+  "members": {
+    "State": [
+      {
+        "name": "Zero",
+        "value": "0"
+      },
+      {
+        "name": "Read",
+        "value": "1"
+      },
+      {
+        "name": "Write",
+        "value": "4"
+      },
+      {
+        "name": "Alias",
+        "value": "4"
+      },
+      {
+        "name": "High",
+        "value": "1073741824"
+      },
+      {
+        "name": "Sign",
+        "value": "-2147483648"
+      },
+      {
+        "name": "Negative",
+        "value": "-2"
+      }
+    ],
+    "Access": [
+      {
+        "name": "None",
+        "value": "0"
+      },
+      {
+        "name": "Read",
+        "value": "1"
+      },
+      {
+        "name": "Write",
+        "value": "4"
+      },
+      {
+        "name": "Alias",
+        "value": "4"
+      },
+      {
+        "name": "High",
+        "value": "1073741824"
+      },
+      {
+        "name": "Sign",
+        "value": "-2147483648"
+      }
+    ],
+    "Wide": [
+      {
+        "name": "Small",
+        "value": "1"
+      },
+      {
+        "name": "Unsafe",
+        "value": "9007199254740993"
+      }
+    ],
+    "Unsigned": [
+      {
+        "name": "Small",
+        "value": "1"
+      },
+      {
+        "name": "High",
+        "value": "4294967295"
+      }
+    ],
+    "Tiny": [
+      {
+        "name": "Small",
+        "value": "1"
+      },
+      {
+        "name": "High",
+        "value": "255"
+      }
+    ]
+  },
+  "reads": [
+    {
+      "ID": "zero",
+      "Type": "State",
+      "Input": "0",
+      "Nullable": false,
+      "accepted": true,
+      "value": "0",
+      "write": {
+        "Accepted": true,
+        "Output": "0",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "known",
+      "Type": "State",
+      "Input": "4",
+      "Nullable": false,
+      "accepted": true,
+      "value": "4",
+      "write": {
+        "Accepted": true,
+        "Output": "4",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "negative",
+      "Type": "State",
+      "Input": "-2",
+      "Nullable": false,
+      "accepted": true,
+      "value": "-2",
+      "write": {
+        "Accepted": true,
+        "Output": "-2",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "unknown",
+      "Type": "State",
+      "Input": "23",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "combination",
+      "Type": "State",
+      "Input": "5",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "high",
+      "Type": "State",
+      "Input": "1073741824",
+      "Nullable": false,
+      "accepted": true,
+      "value": "1073741824",
+      "write": {
+        "Accepted": true,
+        "Output": "1073741824",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "sign",
+      "Type": "State",
+      "Input": "-2147483648",
+      "Nullable": false,
+      "accepted": true,
+      "value": "-2147483648",
+      "write": {
+        "Accepted": true,
+        "Output": "-2147483648",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "max",
+      "Type": "State",
+      "Input": "2147483647",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "overflow",
+      "Type": "State",
+      "Input": "2147483648",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "underflow",
+      "Type": "State",
+      "Input": "-2147483649",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "fraction",
+      "Type": "State",
+      "Input": "1.0",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "exponent",
+      "Type": "State",
+      "Input": "1e0",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "negative-zero",
+      "Type": "State",
+      "Input": "-0",
+      "Nullable": false,
+      "accepted": true,
+      "value": "0",
+      "write": {
+        "Accepted": true,
+        "Output": "0",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "name",
+      "Type": "State",
+      "Input": "\"Read\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "1",
+      "write": {
+        "Accepted": true,
+        "Output": "1",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "case",
+      "Type": "State",
+      "Input": "\"rEaD\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "1",
+      "write": {
+        "Accepted": true,
+        "Output": "1",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "alias",
+      "Type": "State",
+      "Input": "\"Alias\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "4",
+      "write": {
+        "Accepted": true,
+        "Output": "4",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "renamed-ts",
+      "Type": "State",
+      "Input": "\"reader\"",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "unknown-name",
+      "Type": "State",
+      "Input": "\"Missing\"",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "trim",
+      "Type": "State",
+      "Input": "\" \\tRead\\r\\n\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "1",
+      "write": {
+        "Accepted": true,
+        "Output": "1",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "unicode-trim",
+      "Type": "State",
+      "Input": "\"\u00a0Read\u2000\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "1",
+      "write": {
+        "Accepted": true,
+        "Output": "1",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "names",
+      "Type": "State",
+      "Input": "\"Read, Write\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "5",
+      "write": {
+        "Accepted": true,
+        "Output": "5",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "names-repeat",
+      "Type": "State",
+      "Input": "\"Read,Read\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "1",
+      "write": {
+        "Accepted": true,
+        "Output": "1",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "names-alias",
+      "Type": "State",
+      "Input": "\"Read, Alias\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "5",
+      "write": {
+        "Accepted": true,
+        "Output": "5",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "names-empty",
+      "Type": "State",
+      "Input": "\"Read,,Write\"",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "names-trailing",
+      "Type": "State",
+      "Input": "\"Read,\"",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "names-leading",
+      "Type": "State",
+      "Input": "\",Read\"",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "names-missing",
+      "Type": "State",
+      "Input": "\"Read,Missing\"",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "mixed",
+      "Type": "State",
+      "Input": "\"Read,4\"",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "mixed-leading-number",
+      "Type": "State",
+      "Input": "\"1,Write\"",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "numeric-string",
+      "Type": "State",
+      "Input": "\"23\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "23",
+      "write": {
+        "Accepted": true,
+        "Output": "23",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "numeric-string-max",
+      "Type": "State",
+      "Input": "\"2147483647\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "2147483647",
+      "write": {
+        "Accepted": true,
+        "Output": "2147483647",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "numeric-string-min",
+      "Type": "State",
+      "Input": "\"-2147483648\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "-2147483648",
+      "write": {
+        "Accepted": true,
+        "Output": "-2147483648",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "numeric-string-overflow",
+      "Type": "State",
+      "Input": "\"2147483648\"",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "numeric-string-underflow",
+      "Type": "State",
+      "Input": "\"-2147483649\"",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "numeric-plus",
+      "Type": "State",
+      "Input": "\"+23\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "23",
+      "write": {
+        "Accepted": true,
+        "Output": "23",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "numeric-zeroes",
+      "Type": "State",
+      "Input": "\"001\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "1",
+      "write": {
+        "Accepted": true,
+        "Output": "1",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "numeric-trim",
+      "Type": "State",
+      "Input": "\" \\t+23\\r\\n\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "23",
+      "write": {
+        "Accepted": true,
+        "Output": "23",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "numeric-unicode-trim",
+      "Type": "State",
+      "Input": "\"\u00a023\u2000\"",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "numeric-null-suffix",
+      "Type": "State",
+      "Input": "\"23\\u0000\\u0000\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "23",
+      "write": {
+        "Accepted": true,
+        "Output": "23",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "numeric-null-middle",
+      "Type": "State",
+      "Input": "\"2\\u00003\"",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "numeric-fraction",
+      "Type": "State",
+      "Input": "\"1.0\"",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "numeric-exponent",
+      "Type": "State",
+      "Input": "\"1e0\"",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "numeric-hex",
+      "Type": "State",
+      "Input": "\"0x01\"",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "empty",
+      "Type": "State",
+      "Input": "\"\"",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "blank",
+      "Type": "State",
+      "Input": "\" \\t\"",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "null",
+      "Type": "State",
+      "Input": "null",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "nullable-null",
+      "Type": "State",
+      "Input": "null",
+      "Nullable": true,
+      "accepted": true,
+      "value": null,
+      "write": {
+        "Accepted": true,
+        "Output": "null",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "nullable-name",
+      "Type": "State",
+      "Input": "\"Alias\"",
+      "Nullable": true,
+      "accepted": true,
+      "value": "4",
+      "write": {
+        "Accepted": true,
+        "Output": "4",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "boolean",
+      "Type": "State",
+      "Input": "true",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "object",
+      "Type": "State",
+      "Input": "{}",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "array",
+      "Type": "State",
+      "Input": "[]",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "leading-zero",
+      "Type": "State",
+      "Input": "01",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "trailing-token",
+      "Type": "State",
+      "Input": "1 4",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "known",
+      "Type": "Access",
+      "Input": "4",
+      "Nullable": false,
+      "accepted": true,
+      "value": "4",
+      "write": {
+        "Accepted": true,
+        "Output": "4",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "zero",
+      "Type": "Access",
+      "Input": "0",
+      "Nullable": false,
+      "accepted": true,
+      "value": "0",
+      "write": {
+        "Accepted": true,
+        "Output": "0",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "combination",
+      "Type": "Access",
+      "Input": "5",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "unknown-bit",
+      "Type": "Access",
+      "Input": "2",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "high",
+      "Type": "Access",
+      "Input": "1073741824",
+      "Nullable": false,
+      "accepted": true,
+      "value": "1073741824",
+      "write": {
+        "Accepted": true,
+        "Output": "1073741824",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "sign",
+      "Type": "Access",
+      "Input": "-2147483648",
+      "Nullable": false,
+      "accepted": true,
+      "value": "-2147483648",
+      "write": {
+        "Accepted": true,
+        "Output": "-2147483648",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "names",
+      "Type": "Access",
+      "Input": "\"Read, Write\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "5",
+      "write": {
+        "Accepted": true,
+        "Output": "5",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "high-names",
+      "Type": "Access",
+      "Input": "\"High, Sign, Read\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "-1073741823",
+      "write": {
+        "Accepted": true,
+        "Output": "-1073741823",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "numeric-string-combination",
+      "Type": "Access",
+      "Input": "\"5\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "5",
+      "write": {
+        "Accepted": true,
+        "Output": "5",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "numeric-string-unknown",
+      "Type": "Access",
+      "Input": "\"2\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "2",
+      "write": {
+        "Accepted": true,
+        "Output": "2",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "alias",
+      "Type": "Access",
+      "Input": "\"ALIAS\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "4",
+      "write": {
+        "Accepted": true,
+        "Output": "4",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "null",
+      "Type": "Access",
+      "Input": "null",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "JsonException"
+    },
+    {
+      "ID": "known-number",
+      "Type": "Wide",
+      "Input": "1",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "ArgumentException"
+    },
+    {
+      "ID": "known-name",
+      "Type": "Wide",
+      "Input": "\"Small\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "1",
+      "write": {
+        "Accepted": true,
+        "Output": "1",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "unsafe-name",
+      "Type": "Wide",
+      "Input": "\"Unsafe\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "9007199254740993",
+      "write": {
+        "Accepted": false,
+        "Output": null,
+        "Error": "OverflowException"
+      },
+      "error": null
+    },
+    {
+      "ID": "unsafe-string",
+      "Type": "Wide",
+      "Input": "\"9007199254740993\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "9007199254740993",
+      "write": {
+        "Accepted": false,
+        "Output": null,
+        "Error": "OverflowException"
+      },
+      "error": null
+    },
+    {
+      "ID": "known-number",
+      "Type": "Unsigned",
+      "Input": "1",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "ArgumentException"
+    },
+    {
+      "ID": "known-name",
+      "Type": "Unsigned",
+      "Input": "\"Small\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "1",
+      "write": {
+        "Accepted": true,
+        "Output": "1",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "high-name",
+      "Type": "Unsigned",
+      "Input": "\"High\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "4294967295",
+      "write": {
+        "Accepted": false,
+        "Output": null,
+        "Error": "OverflowException"
+      },
+      "error": null
+    },
+    {
+      "ID": "known-number",
+      "Type": "Tiny",
+      "Input": "1",
+      "Nullable": false,
+      "accepted": false,
+      "value": null,
+      "write": null,
+      "error": "ArgumentException"
+    },
+    {
+      "ID": "known-name",
+      "Type": "Tiny",
+      "Input": "\"Small\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "1",
+      "write": {
+        "Accepted": true,
+        "Output": "1",
+        "Error": null
+      },
+      "error": null
+    },
+    {
+      "ID": "high-name",
+      "Type": "Tiny",
+      "Input": "\"High\"",
+      "Nullable": false,
+      "accepted": true,
+      "value": "255",
+      "write": {
+        "Accepted": true,
+        "Output": "255",
+        "Error": null
+      },
+      "error": null
+    }
+  ],
+  "writes": [
+    {
+      "ID": "zero",
+      "Type": "State",
+      "Value": "0",
+      "accepted": true,
+      "output": "0",
+      "error": null
+    },
+    {
+      "ID": "unknown",
+      "Type": "State",
+      "Value": "23",
+      "accepted": true,
+      "output": "23",
+      "error": null
+    },
+    {
+      "ID": "max",
+      "Type": "State",
+      "Value": "2147483647",
+      "accepted": true,
+      "output": "2147483647",
+      "error": null
+    },
+    {
+      "ID": "min",
+      "Type": "State",
+      "Value": "-2147483648",
+      "accepted": true,
+      "output": "-2147483648",
+      "error": null
+    },
+    {
+      "ID": "alias",
+      "Type": "State",
+      "Value": "4",
+      "accepted": true,
+      "output": "4",
+      "error": null
+    },
+    {
+      "ID": "combination",
+      "Type": "Access",
+      "Value": "5",
+      "accepted": true,
+      "output": "5",
+      "error": null
+    },
+    {
+      "ID": "unknown-bit",
+      "Type": "Access",
+      "Value": "2",
+      "accepted": true,
+      "output": "2",
+      "error": null
+    },
+    {
+      "ID": "all",
+      "Type": "Access",
+      "Value": "-1",
+      "accepted": true,
+      "output": "-1",
+      "error": null
+    },
+    {
+      "ID": "unsafe",
+      "Type": "Wide",
+      "Value": "9007199254740993",
+      "accepted": false,
+      "output": null,
+      "error": "OverflowException"
+    },
+    {
+      "ID": "high",
+      "Type": "Unsigned",
+      "Value": "4294967295",
+      "accepted": false,
+      "output": null,
+      "error": "OverflowException"
+    },
+    {
+      "ID": "high",
+      "Type": "Tiny",
+      "Value": "255",
+      "accepted": true,
+      "output": "255",
+      "error": null
+    }
+  ],
+  "inputs": {
+    "corpus.json": "bfbb0d04e4264bdb8f50dc6a3d86a65e632d6694145d0bac884a0c6d6b3890e7",
+    "reference/Reference.csproj": "7f305251eaf9a726884e4c508b6e171ef6827d62b7d8e641bd93d14c111268d3",
+    "reference/Program.cs": "ae5a6534f8349bda66029c90e76378df3209e2c0698d72c00af6d2c5709c89ac",
+    "reference/packages.lock.json": "05453c507402a6970db4181bf2a859d63b3aa7156df80f12b520ef0ad987bb94"
+  }
+}

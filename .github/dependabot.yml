@@ -12,6 +12,18 @@ updates:
     groups:
       go-non-major:
         update-types: [minor, patch]
+  - package-ecosystem: gomod
+    directory: /integrations/mongodb
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:25'
+      timezone: Etc/UTC
+    labels: [dependencies, no-release]
+    open-pull-requests-limit: 5
+    groups:
+      mongodb-non-major:
+        update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
     schedule:

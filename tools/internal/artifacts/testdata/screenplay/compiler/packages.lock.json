@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "Cratis.Screenplay": {
+        "type": "Direct",
+        "requested": "[4.48.1, 4.48.1]",
+        "resolved": "4.48.1",
+        "contentHash": "CyQALNMrkiisNYyXKviJQg0jsdsqNdVlkJWlEHUJglZo3/fK8p1qwtingre5wSCOmpDnSnaXUeSFjtzdVLI6eg==",
+        "dependencies": {
+          "Cratis.Screenplay.Contexts": "4.48.1",
+          "Microsoft.Extensions.FileSystemGlobbing": "10.0.12"
+        }
+      },
+      "Cratis.Screenplay.Contexts": {
+        "type": "Transitive",
+        "resolved": "4.48.1",
+        "contentHash": "LvxPouAFTI+CJufMJ/+CO6SvsQ3BpPz3vUrEJj8a6TpLuISblo3Yhyam1ED8EoE+kLjIBysCcOX4McCau3CTBw=="
+      },
+      "Microsoft.Extensions.FileSystemGlobbing": {
+        "type": "Transitive",
+        "resolved": "10.0.12",
+        "contentHash": "45cV+UeI0chPAIXrx9Wv7K4PJXuuIR2pnOur5MOAo6kOFclBHSLLDrvGAxMfWRMtUvpv/kQZkxlgaUN56jwzSQ=="
+      }
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "format": 1,
+  "owner": "adapter-only",
+  "scope": "d01a6aa35e4bc86761814d8ce6b83ae811848357b4ada78e7ec8541808d9c76d",
+  "fingerprint": "64588544882a14a771dce5d112ce9dd055e4a86060d45ff2d17097daa7331846",
+  "files": [
+    {
+      "root": "go",
+      "path": "ContractTests/internal/observables/generatedconsumerfixture/zz_arc_generated.go",
+      "hash": "57cdf12d7018e87ca2b07d4f262b8e132b6a80f8e36d18b14ae333f4f11d7c88"
+    },
+    {
+      "root": "ts",
+      "path": "Contracts/Items/All.ts",
+      "hash": "51e651488754cc127866e4d9b31ecfbbb0c60a9e0833a09963670d53c71d91d0"
+    },
+    {
+      "root": "ts",
+      "path": "Contracts/Items/Item.ts",
+      "hash": "9cd9245214c3841853b7ba8a7c00ffccd0038ffea28093e1ad2daefd887d1046"
+    },
+    {
+      "root": "ts",
+      "path": "Contracts/Items/Private.ts",
+      "hash": "b65d9a7d7c8d052cabbd57557035d2118780775779ad308006cf110504a8b40a"
+    },
+    {
+      "root": "ts",
+      "path": "Contracts/Items/index.ts",
+      "hash": "86eef76f26838e42567ccd66dff23c3d8b8acc681d54a7ff12ceb857fb614385"
+    }
+  ]
+}

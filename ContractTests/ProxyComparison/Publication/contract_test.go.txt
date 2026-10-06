@@ -1,0 +1,19 @@
+// Copyright (c) Cratis. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+package consumer
+import (
+ "errors"
+ "testing"
+ arc "github.com/cratis/arc.go"
+ "github.com/cratis/arc.go/metadata"
+)
+func TestGeneratedEndpointProfileAgreement(t *testing.T) {
+ for _,prefix:=range []string{"/proxy","/wrong"} {
+  routes:=metadata.DefaultOptions(); routes.RoutePrefix=prefix
+  builder,err:=arc.NewBuilder(arc.Options{Routes:&routes}); if err!=nil { t.Fatal(err) }
+  if err:=RegisterArtifacts(builder); err!=nil { t.Fatal(err) }
+  _,err=builder.Build()
+  var mismatch *metadata.GeneratedContractMismatchError
+  if prefix=="/proxy" { if err!=nil { t.Fatal(err) } } else if !errors.As(err,&mismatch) || mismatch.Identity=="" || len(mismatch.Expected)==0 || len(mismatch.Actual)==0 { t.Fatal("mismatched runtime profile accepted",err) }
+ }
+}

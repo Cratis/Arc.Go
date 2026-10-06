@@ -1,0 +1,8 @@
+[
+  {"method":"POST","path":"/api/create-task","body":"{\"title\":","status":400,"message":"The request body could not be read or is not valid for this command."},
+  {"method":"GET","path":"/api/missing","status":404},
+  {"method":"DELETE","path":"/api/tasks","status":405,"allow":"GET, HEAD, QUERY"},
+  {"method":"OPTIONS","path":"/api/create-task","status":405,"allow":"POST"},
+  {"method":"GET","path":"/.cratis/me","status":401,"cache":"no-store, private"},
+  {"method":"QUERY","path":"/api/tasks","body":"{","status":400,"cache":"no-store","message":"An internal error occurred while processing the request. See server logs for details."}
+]

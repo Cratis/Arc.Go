@@ -43,11 +43,22 @@ unmanaged local additions shared with Chronicle.Go, not installer-managed files.
 
 ## Layout and commands
 
-Keep one root module, public packages grouped by capability, implementation-only
-helpers under `internal/`, and co-located `_test.go` files. Add directories only
-when implemented; do not copy the C# `Source/` namespace layout. Separate HTTP
-binding/hosting from command/query execution and the Chronicle adapter. Public
-examples should compile. Product documentation belongs in `Documentation/`.
+Keep exactly four independently consumable modules, plus the one unpublished
+recipes module described below: the runtime root,
+`tools/go.mod` (`github.com/cratis/arc.go/tools`),
+`integrations/chronicle/go.mod` (`github.com/cratis/arc.go/integrations/chronicle`), and
+`integrations/mongodb/go.mod` (`github.com/cratis/arc.go/integrations/mongodb`).
+Chronicle dependencies belong only in its integration module; MongoDB driver
+v1/v2 dependencies belong only in the MongoDB module, never the root dependency graph. The `tools/cmd/arc-gen` executable
+uses `go/packages` and `go/types`; `golang.org/x/tools` must not become a root
+runtime dependency. Tools pin a fetchable runtime version, never a local replace
+or workspace. All modules must build independently with `GOWORK=off`.
+
+Group public packages by capability, keep implementation-only helpers under
+`internal/`, and co-locate `_test.go` files. Add directories only when implemented;
+do not copy the C# `Source/` namespace layout. Separate HTTP binding/hosting from
+command/query execution and the Chronicle adapter. Public examples should compile.
+Product documentation belongs in `Documentation/`.
 
 Run from the root using the version in `go.mod` and the matrix in CI:
 
@@ -59,8 +70,33 @@ go vet ./...
 govulncheck ./...
 ```
 
-After authorized dependency changes, run `go mod tidy` and inspect `go.mod` and
-`go.sum`. Use `GOWORK=off` to verify independent consumption. Use `httptest` and
+Repeat the Go gates independently from `tools/`, `integrations/chronicle/`,
+`integrations/mongodb/`, and `recipes/`,
+using the root lint configuration. The root `./...` pattern does not cross nested
+module boundaries. Chronicle integration tags use `integrations/chronicle/vX.Y.Z`;
+its initial develop pins are not a release or a publication authorization.
+MongoDB reserves `integrations/mongodb/vX.Y.Z`; independent no-database gates
+cover bindings/codecs, snapshot boundaries and bounded observation, while a separate Linux Go 1.27
+lane covers task-owned MongoDB 8.0.15 replica-set/HTTP snapshot and change-stream contracts.
+These do not prove real Chronicle sink compatibility, transparent watch resume or gap-free delivery.
+It pins pushed Arc revision `d4fec76` as `v0.0.0-20261003154536-d4fec76875ae`
+(including failure-paging retraction) and released Fundamentals `v0.1.0`. Tooling tags
+would use `tools/vX.Y.Z`, but publication remains deferred pending
+[Fundamentals.Go#16](https://github.com/Cratis/Fundamentals.Go/issues/16); the root
+release workflow still publishes only root-module tags.
+
+The fifth module, `recipes/go.mod` (`github.com/cratis/arc.go/recipes`), is the
+single admitted exception: compiled, tested evidence for the
+[recipe documentation](backend/go/recipes/index.md) covering Chi, Gin, Echo,
+golang-jwt, standard-library CORS/CSRF, otelhttp and go-playground/validator.
+It is never tagged or published, nothing imports it, and its third-party
+dependencies must never enter another module's graph. It pins a fetchable root
+revision, has no `replace`, and runs the same Go gates in its own CI job.
+Databases, brokers and other experiments do not belong in it. No additional
+module layout is admitted.
+
+After authorized dependency changes, run `go mod tidy` in the changed module and
+inspect its `go.mod` and `go.sum`. Use `GOWORK=off` to verify independent consumption. Use `httptest` and
 wire-contract fixtures for transport behavior, plus bounded Chronicle integration
 tests when that adapter exists. The exact required gates and tool pins are in
 [CONTRIBUTING](../CONTRIBUTING.md) and `.github/workflows/`; these quick commands

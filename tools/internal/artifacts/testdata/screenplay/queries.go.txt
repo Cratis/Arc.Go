@@ -1,0 +1,6 @@
+//arc:namespace Tasks
+package queries
+
+//arc:readmodel
+type Listing struct { Name string; Count int32 }
+func (Listing) All() ([]Listing, error) { return nil, nil }

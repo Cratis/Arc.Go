@@ -1,4 +1,4 @@
-# Validate the single root Go module independently of local workspaces.
+# Validate runtime and isolated tooling modules independently of local workspaces.
 name: Go Build
 
 on:
@@ -89,28 +89,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          unformatted=$(git ls-files -z -- '*.go' | xargs -0 -r gofmt -l)
+          # The generic-method fixture needs a Go 1.27 parser, which the Go 1.26 gofmt cannot read.
+          unformatted=$(git ls-files -z -- '*.go' ':(exclude)tools/internal/artifacts/testdata/diagnostics/declarations/generic_methods.go' | xargs -0 -r gofmt -l)
           if [ -n "$unformatted" ]; then
             printf 'Run gofmt on:\n%s\n' "$unformatted"
             exit 1
           fi
-      - name: Enforce single-module layout and portable paths
+      - name: Enforce runtime and tooling module layout and portable paths
         shell: bash
         run: |
-          python3 - <<'PY'
-          import json, subprocess
-          files = subprocess.check_output(['git', 'ls-files', '-z']).decode().split('\0')
-          files = [p for p in files if p]
-          modules = [p for p in files if p == 'go.mod' or p.endswith('/go.mod')]
-          if modules != ['go.mod']:
-              raise SystemExit('This release workflow supports exactly one root go.mod; design nested module releases first.')
-          folded = [p.casefold() for p in files]
-          if len(set(folded)) != len(folded):
-              raise SystemExit('Paths differing only by case are not portable.')
-          module = json.loads(subprocess.check_output(['go', 'mod', 'edit', '-json']))
-          if module.get('Replace'):
-              raise SystemExit('Published modules must not rely on replace directives; consumers ignore them.')
-          PY
+          python3 scripts/check-module-boundaries.py
+      - name: Guarantee the zero-container runtime path and DI-free example imports
+        run: python3 scripts/check-no-container.py
       - name: Check tidy manifests with the minimum supported Go
         run: |
           go mod tidy
@@ -158,10 +148,289 @@ jobs:
       - name: Lint workflows
         run: actionlint -color
 
+  tools:
+    name: Artifact generator
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: tools
+    env:
+      # Top-level tests split from the rest so each half stays well inside the
+      # per-run go test timeout. The same anchored pattern feeds -run and -skip,
+      # so the two runs are complementary by construction.
+      TOOLS_HEAVY_TESTS: 'TestOwnedPublication.*|TestCompetingObservable.*|TestObservableCollections.*|TestInvalidServiceImports.*|TestQueryRuleRepresentation.*|TestArtifact.*|TestArcGenCLI.*|TestOpenAPIQueryArgument.*|TestEnum.*|TestImportedEnum.*'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: tools/go.sum
+      - name: Download dependencies
+        run: go mod download
+      - name: Verify dependency checksums
+        run: go mod verify
+      - name: Compile tools
+        run: go build ./...
+      - name: Vet tools
+        run: go vet ./...
+      - name: Test tools and generated consumers (publication and CLI families)
+        run: go test -count=1 -timeout=2m -run "^(${TOOLS_HEAVY_TESTS})\$" ./...
+      - name: Test tools and generated consumers (remaining tests)
+        run: go test -count=1 -timeout=2m -skip "^(${TOOLS_HEAVY_TESTS})\$" ./...
+      - name: Race detector (publication and CLI families)
+        run: go test -race -count=1 -timeout=5m -run "^(${TOOLS_HEAVY_TESTS})\$" ./...
+      - name: Race detector (remaining tests)
+        run: go test -race -count=1 -timeout=3m -skip "^(${TOOLS_HEAVY_TESTS})\$" ./...
+      - name: Check generated adapters
+        run: go run ./cmd/arc-gen -dir .. -check ./ContractTests/internal/generatedconsumer
+      - name: Check tidy manifests
+        run: go mod tidy -diff
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.14.0
+          working-directory: tools
+          args: --timeout=3m --config=../.golangci.yml
+      - name: Install pinned govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+      - name: Check vulnerabilities
+        run: govulncheck ./...
+
+  integrations-chronicle:
+    name: Chronicle integration module
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: integrations/chronicle
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: integrations/chronicle/go.sum
+      - run: go mod download
+      - run: go mod verify
+      - run: go build ./...
+      - run: go vet ./...
+      - run: python3 scripts/check-boundaries.py
+      - run: python3 ../../scripts/check-chronicle-snippet.py
+      - name: Test Chronicle snippet drift detection
+        run: python3 -B ../../scripts/test_check_chronicle_snippet.py
+      - run: go test -count=1 -timeout=2m ./...
+      - run: go test -race -count=1 -timeout=3m ./...
+      - run: go mod tidy -diff
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a
+        with:
+          version: v2.14.0
+          working-directory: integrations/chronicle
+          args: --timeout=3m --config=../../.golangci.yml
+      - name: Install pinned govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+      - run: govulncheck ./...
+
+  mongodb-test:
+    name: MongoDB no-database tests (${{ matrix.os }}, Go ${{ matrix.go }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        go: ['1.26.x', '1.27.x']
+        include:
+          - os: macos-latest
+            go: '1.27.x'
+          - os: windows-latest
+            go: '1.27.x'
+    defaults:
+      run:
+        working-directory: integrations/mongodb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: ${{ matrix.go }}
+          cache-dependency-path: integrations/mongodb/go.sum
+      - run: go mod download
+      - run: go mod verify
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test -count=1 -timeout=2m ./...
+
+  integrations-mongodb:
+    name: MongoDB no-database module checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: integrations/mongodb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: integrations/mongodb/go.sum
+      - run: go mod download
+      - run: go test -race -count=1 -timeout=3m ./...
+      - name: Verify harness ownership and failure cleanup without Docker
+        run: python3 -B -m unittest discover -s scripts -p 'test_*.py' -v
+      - name: Check documented MongoDB example excerpt
+        run: python3 scripts/check-doc-snippet.py
+      - name: Check tidy manifests and untracked checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          go mod tidy -diff
+          changes=$(git status --porcelain --untracked-files=normal -- go.mod go.sum)
+          if [ -n "$changes" ]; then
+            printf 'Commit module manifests:\n%s\n' "$changes"
+            exit 1
+          fi
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a
+        with:
+          version: v2.14.0
+          working-directory: integrations/mongodb
+          args: --timeout=3m --config=../../.golangci.yml
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.27.x'
+          cache-dependency-path: integrations/mongodb/go.sum
+      - name: Install pinned govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+      - run: govulncheck ./...
+
+  mongodb-provider:
+    name: MongoDB 8.0.15 live snapshot and observation contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: mongodb-provider-${{ github.event_name }}-${{ github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    defaults:
+      run:
+        working-directory: integrations/mongodb
+    env:
+      PROVIDER_STATE_NAME: mongodb-provider-${{ github.run_id }}-${{ github.run_attempt }}.json
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.27.x'
+          cache-dependency-path: integrations/mongodb/go.sum
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a
+        with:
+          version: v2.14.0
+          working-directory: integrations/mongodb
+          args: --build-tags=integration --timeout=3m --config=../../.golangci.yml
+      - name: Required task-owned replica-set contracts
+        run: python3 scripts/replica-set-tests.py --state-file "$RUNNER_TEMP/$PROVIDER_STATE_NAME"
+      - name: Exact owned-container cleanup fallback
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f "$RUNNER_TEMP/$PROVIDER_STATE_NAME" ]; then
+            python3 scripts/replica-set-tests.py --state-file "$RUNNER_TEMP/$PROVIDER_STATE_NAME" --cleanup-only
+          fi
+      - name: Retain provider failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mongodb-provider-failure
+          path: ${{ runner.temp }}/mongodb-provider-${{ github.run_id }}-${{ github.run_attempt }}.*
+          if-no-files-found: warn
+          retention-days: 7
+
+  chronicle-kernel:
+    name: Chronicle kernel contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      chronicle:
+        image: cratis/chronicle:19.29.4-development
+        ports:
+          - 35000:35000
+    defaults:
+      run:
+        working-directory: integrations/chronicle
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.27.x'
+          cache-dependency-path: integrations/chronicle/go.sum
+      - name: Wait for kernel
+        run: timeout 180 bash -c 'until curl -skf https://localhost:35000/health > /dev/null; do sleep 2; done'
+      - name: Record image digest
+        run: printf 'CHRONICLE_INTEGRATION_IMAGE_DIGEST=%s\n' "$(docker inspect '${{ job.services.chronicle.id }}' --format '{{.Image}}')" >> "$GITHUB_ENV"
+      - name: Exercise Arc against the kernel
+        env:
+          CHRONICLE_INTEGRATION_CONNECTION_STRING: chronicle://localhost:35000
+        run: go test -tags=integration -count=1 -timeout=2m ./internal/integration ./examples/taskboard
+      - name: Kernel diagnostics
+        if: failure()
+        run: docker logs '${{ job.services.chronicle.id }}' --tail 150
+
+  recipes:
+    name: Recipes module (unpublished)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: recipes
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: recipes/go.sum
+      - run: go mod download
+      - run: go mod verify
+      - run: go build ./...
+      - run: go vet ./...
+      - name: Test recipes and documentation excerpts (Go 1.26)
+        run: go test -count=1 -timeout=2m ./...
+      - run: go mod tidy -diff
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.14.0
+          working-directory: recipes
+          args: --timeout=3m --config=../.golangci.yml
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.x'
+          cache-dependency-path: recipes/go.sum
+      - name: Compile recipes (Go 1.27)
+        run: go build ./...
+      - name: Vet recipes (Go 1.27)
+        run: go vet ./...
+      - name: Test recipes and documentation excerpts (Go 1.27)
+        run: go test -count=1 -timeout=2m ./...
+      - name: Race detector
+        run: go test -race -count=1 -timeout=3m ./...
+      - name: Install pinned govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+      - run: govulncheck ./...
+
   gate:
     name: Go gate
     if: always()
-    needs: [test, race, lint, vulnerabilities, workflows]
+    needs: [test, race, lint, vulnerabilities, workflows, tools, integrations-chronicle, mongodb-test, integrations-mongodb, mongodb-provider, chronicle-kernel, recipes]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

@@ -1,0 +1,7 @@
+[
+  {"path":"/.cratis/commands","body":[]},
+  {"path":"/.cratis/queries","body":[]},
+  {"path":"/.cratis/users","body":[]},
+  {"path":"/.cratis/tenants","body":[]},
+  {"path":"/.cratis/identity-details/schema","body":{}}
+]
