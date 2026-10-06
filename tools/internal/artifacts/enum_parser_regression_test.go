@@ -58,6 +58,38 @@ func TestImportedEnumParserRejectsStaleMembersBeforePublication(t *testing.T) {
 	generate(t, Config{Dir: dir, TypeScriptOut: "web", Check: true})
 }
 
+func TestImportedEnumParserGoOnlyCheckRequiresSelectingEnumPackage(t *testing.T) {
+	dir := consumer(t)
+	dependency := filepath.Join(dir, "access", "input.go")
+	input := "package access\n//arc:enum parse=int32\ntype Access int32\nconst Read Access = 1\n"
+	put(t, dependency, input)
+	generate(t, Config{Dir: dir, Patterns: []string{"./access"}})
+	put(t, filepath.Join(dir, "input.go"), "package consumer\nimport \"example.test/consumer/access\"\n//arc:command\ntype Save struct { Access access.Access }\nfunc (Save) Handle() error { return nil }\n")
+	generate(t, Config{Dir: dir})
+
+	put(t, dependency, input+"const Write Access = 2\n")
+	before := outputInventory(t, dir)
+	// Go-only consumer output has no member list and does not inspect imported
+	// parse maps, so neither generation nor a root-only check detects this drift.
+	generate(t, Config{Dir: dir})
+	generate(t, Config{Dir: dir, Check: true})
+	assertOutputInventory(t, dir, before)
+	for _, pattern := range []string{"./access", "./..."} {
+		t.Run(pattern, func(t *testing.T) {
+			err := Generate(t.Context(), Config{Dir: dir, Patterns: []string{pattern}, Check: true})
+			if err == nil || !strings.Contains(err.Error(), filepath.Join(dir, "access", Filename)+": generated adapters are stale") {
+				t.Fatalf("pattern=%s did not detect stale enum output: %v", pattern, err)
+			}
+			assertOutputInventory(t, dir, before)
+		})
+	}
+	generate(t, Config{Dir: dir, Patterns: []string{"./access"}})
+	generate(t, Config{Dir: dir, Patterns: []string{"./..."}, Check: true})
+	if parser := get(t, filepath.Join(dir, "access", Filename)); !bytes.Contains(parser, []byte(`"Write": Write`)) {
+		t.Fatalf("regeneration did not repair the imported parser:\n%s", parser)
+	}
+}
+
 func TestEnumOnlyParserDoesNotEmitRegistrationSurface(t *testing.T) {
 	dir := consumer(t)
 	put(t, filepath.Join(dir, "input.go"), `package consumer

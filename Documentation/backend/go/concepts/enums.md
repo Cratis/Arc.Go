@@ -41,8 +41,11 @@ codec methods cannot be combined with this profile either.
 An enum-only package emits just the parser and `UnmarshalJSON`, importing only
 `serialization`; it does not declare `ArcBindings` or `RegisterArtifacts`.
 Generate an imported enum package before its consumers. If you add or rename a
-member, regenerate that package too: consumer generation and `-check` refuse a
-stale imported parse map and name the package that needs regeneration.
+member, regenerate that package too. When TypeScript proxies are generated,
+consumer generation and `-check` refuse a stale imported parse map and name the
+package that needs regeneration. Go-only consumer generation does not check
+imported parse maps: run `arc-gen -check ./access` for an enum in the `access`
+package, or `arc-gen -check ./...` to check all packages in the module.
 
 Reading `{"state":"Read, Write"}` and writing it back produces `{"state":5}`. Run the
 generated consumer with:
