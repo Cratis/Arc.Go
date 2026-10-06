@@ -89,7 +89,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          unformatted=$(git ls-files -z -- '*.go' | xargs -0 -r gofmt -l)
+          # The generic-method fixture needs a Go 1.27 parser, which the Go 1.26 gofmt cannot read.
+          unformatted=$(git ls-files -z -- '*.go' ':(exclude)tools/internal/artifacts/testdata/diagnostics/declarations/generic_methods.go' | xargs -0 -r gofmt -l)
           if [ -n "$unformatted" ]; then
             printf 'Run gofmt on:\n%s\n' "$unformatted"
             exit 1
