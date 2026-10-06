@@ -79,7 +79,27 @@ test('an exhausted generation deadline starts no further Go subprocess', async t
     assert.equal(calls.length, 1);
 });
 
-test('script timeout reaches the inner Go process and reaps it before returning for cleanup', async () => {
+test('a timed-out generation step starts no further Go subprocess', async t => {
+    const calls = [];
+    const spawn = t.mock.method(childProcess, 'spawnSync', (command, args) => {
+        calls.push(args.slice(0, 2));
+        if (calls.length === 2) {
+            return { error: new Error(`spawnSync ${command} ETIMEDOUT`), status: null, stdout: '', stderr: '' };
+        }
+        return { status: 0, stdout: '', stderr: '' };
+    });
+    syncBuiltinESMExports();
+    t.after(() => {
+        spawn.mock.restore();
+        syncBuiltinESMExports();
+    });
+    await assert.rejects(generate(180000), /ETIMEDOUT/);
+    assert.deepEqual(calls, [['mod', 'download'], ['run', './cmd/arc-gen']]);
+});
+
+// This fake Go has no descendants: the test proves only direct-child reaping,
+// not termination of arc-gen or go list processes started by a real go run.
+test('script timeout reaches and reaps the directly spawned Go process before returning', async () => {
     const { consumer } = await prepare();
     const go = join(consumer, 'slow-go.mjs');
     const pidFile = join(consumer, 'slow-go.pid');
@@ -91,7 +111,7 @@ test('script timeout reaches the inner Go process and reaps it before returning 
         return true;
     });
     const pid = Number(await readFile(pidFile, 'utf8'));
-    assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' }, 'The Go process must be gone before cleanup');
+    assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' }, 'The directly spawned Go process must be gone before returning');
 });
 
 // Allow a shared 180s for the ~59MB pinned graph over a slower proxy and all Go
