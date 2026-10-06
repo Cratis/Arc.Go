@@ -321,11 +321,21 @@ test('consumer tidy rejects a tooling-only dependency already present in the pin
     const prepared = await prepare();
     const manifest = join(prepared.consumer, 'go.mod');
     const originalPins = await readFile(manifest, 'utf8');
-    tidyConsumer(prepared);
-    // The control prunes unused tooling pins; restore the authored graph before injection.
-    await writeFile(manifest, originalPins);
-    await warmToolingGraph(prepared);
+    const sums = join(prepared.consumer, 'go.sum');
+    const originalSums = await readFile(sums, 'utf8');
     const { path, version } = await pinnedToolingModule(prepared);
+    const toolingChecksums = originalSums.split('\n').filter(line => line.startsWith(`${path} ${version}`));
+    assert.equal(toolingChecksums.length, 2, 'The pinned graph must include the tooling module and go.mod hashes');
+    tidyConsumer(prepared);
+    const prunedSums = await readFile(sums, 'utf8');
+    assert.ok(toolingChecksums.every(line => !prunedSums.includes(line)), 'The runtime-only control must prune the tooling hashes');
+    // The control prunes unused tooling pins and hashes; restore both before injection.
+    await writeFile(manifest, originalPins);
+    await writeFile(sums, originalSums);
+    assert.equal(await readFile(sums, 'utf8'), originalSums, 'Warm-up must receive the pinned checksums, not the tidy control output');
+    await warmToolingGraph(prepared);
+    const warmedSums = await readFile(join(prepared.consumer, 'tooling.sum'), 'utf8');
+    assert.ok(toolingChecksums.every(line => warmedSums.includes(line)), 'Warm-up must retain both pinned tooling hashes');
     await writeFile(join(prepared.consumer, 'unexpected.go'), `package consumer\nimport _ "${path}/module"\n`);
     const rejected = `Consumer module is outside the pinned runtime graph: ${path} ${version}`;
     assert.throws(() => tidyConsumer(prepared), error => {
