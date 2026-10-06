@@ -57,21 +57,21 @@ func TestHandlerSanitizesGroupsAndPreservesErrorChains(t *testing.T) {
 	failure := fmt.Errorf("provider: %w", cause)
 	attrs := []slog.Attr{slog.Group("group\r\n", slog.String("key\r\n", "text\r\n"), slog.Any("error", failure), slog.Any("stringer", diagnosticValue("id\r\n")), slog.Any("lazy", diagnosticLogValue{}), slog.Int("number", 42))}
 	logger.WithGroup("scope\r\n").With(attrs[0]).WarnContext(t.Context(), "message\r\n", attrs[0])
-	if h.group != "scope" || h.record.Message != "message" || len(h.attrs) != 1 {
+	if h.group != `scope\r\n` || h.record.Message != `message\r\n` || len(h.attrs) != 1 {
 		t.Fatalf("unsafe group/message: %q, %q, %v", h.group, h.record.Message, h.attrs)
 	}
 	check := func(attr slog.Attr) {
 		t.Helper()
-		if attr.Key != "group" {
+		if attr.Key != `group\r\n` {
 			t.Fatal(attr)
 		}
 		children := attr.Value.Group()
-		if children[0].Key != "key" || children[0].Value.String() != "text" || children[2].Value.Any().(fmt.Stringer).String() != "id" || children[3].Value.String() != "lazyvalue" || children[4].Value.Int64() != 42 {
+		if children[0].Key != `key\r\n` || children[0].Value.String() != `text\r\n` || children[2].Value.Any().(fmt.Stringer).String() != `id\r\n` || children[3].Value.String() != `lazy\r\nvalue` || children[4].Value.Int64() != 42 {
 			t.Fatalf("unsafe grouped attributes: %v", children)
 		}
 		logged, ok := children[1].Value.Any().(error)
 		var typed *diagnosticError
-		if !ok || logged.Error() != "provider: causeFORGED" || !errors.Is(logged, cause) || !errors.As(logged, &typed) || typed != cause {
+		if !ok || logged.Error() != `provider: cause\r\nFORGED` || !errors.Is(logged, cause) || !errors.As(logged, &typed) || typed != cause {
 			t.Fatalf("logged error lost sanitized text or cause: %v", children[1])
 		}
 	}
@@ -82,6 +82,28 @@ func TestHandlerSanitizesGroupsAndPreservesErrorChains(t *testing.T) {
 	}
 	if logging.Sanitize(logger) != logger || logging.Sanitize(nil) != nil {
 		t.Fatal("nil or already wrapped logger changed")
+	}
+}
+
+func TestHandlerLogsJoinedErrorsWithVisibleSeparator(t *testing.T) {
+	h := &captureHandler{}
+	logger := logging.Sanitize(slog.New(h))
+	provider := errors.New("provider failed")
+	cleanup := errors.New("cleanup timed out")
+	logger.ErrorContext(t.Context(), "query failed", "error", errors.Join(provider, cleanup))
+	found := false
+	h.record.Attrs(func(attr slog.Attr) bool {
+		if attr.Key == "error" {
+			found = true
+			logged, ok := attr.Value.Any().(error)
+			if !ok || logged.Error() != `provider failed\ncleanup timed out` || !errors.Is(logged, provider) || !errors.Is(logged, cleanup) {
+				t.Fatalf("joined error lost its separator or causes: %v", attr.Value)
+			}
+		}
+		return true
+	})
+	if !found {
+		t.Fatal("log missing error attribute")
 	}
 }
 
@@ -97,7 +119,7 @@ func TestHandlerPreservesStringerJSONValues(t *testing.T) {
 		want  string
 	}{
 		{"UUID", id, uuidText},
-		{"control characters", diagnosticValue("id\r\nFORGED\t\x00"), "idFORGED"},
+		{"control characters", diagnosticValue("id\r\nFORGED\t\x00"), `id\r\nFORGED\t\x00`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var output bytes.Buffer

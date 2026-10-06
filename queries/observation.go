@@ -195,9 +195,9 @@ func (p *queryPipeline) observableResult(ctx context.Context, name FullyQualifie
 	if err != nil {
 		result = Merge(result, FromError[any](result.Details().CorrelationID, err))
 		if p.options.Logger != nil && ctx != nil && ctx.Err() == nil {
-			// Strip line breaks at the sink as well as in the sanitizing logger wrapper.
-			queryName := strings.ReplaceAll(string(name), "\n", "")
-			queryName = strings.ReplaceAll(queryName, "\r", "")
+			// Escape line breaks at the sink as well as in the sanitizing logger wrapper.
+			queryName := strings.ReplaceAll(string(name), "\n", `\n`)
+			queryName = strings.ReplaceAll(queryName, "\r", `\r`)
 			p.options.Logger.ErrorContext(ctx, "observable query failed", "query", queryName, "error", err)
 		}
 	}

@@ -9,11 +9,12 @@ import (
 	"github.com/cratis/arc.go/internal/logging"
 )
 
-func TestStringRemovesControlCharactersAndPreservesPrintableText(t *testing.T) {
+func TestStringEscapesControlCharactersAndPreservesPrintableText(t *testing.T) {
 	for _, tc := range []struct{ name, input, want string }{
 		{"printable", `query "café" failed: /path`, `query "café" failed: /path`},
-		{"line injection", "first\r\nFORGED\nlast", "firstFORGEDlast"},
-		{"controls", "a\x00\t\x1b\x7f\u0085\u2028\u2029b", "ab"},
+		{"line injection", "first\r\nFORGED\nlast", `first\r\nFORGED\nlast`},
+		{"controls", "a\x00\t\x1b\x7f\u0085\u2028\u2029b", `a\x00\t\x1b\x7f\u0085\u2028\u2029b`},
+		{"visible escapes", `first\r\nlast\x1b`, `first\r\nlast\x1b`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := logging.String(tc.input); got != tc.want {

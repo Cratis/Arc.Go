@@ -46,8 +46,8 @@ func TestRequestCompletionSanitizesBeforeHostLogHandler(t *testing.T) {
 	h.record.Attrs(func(attr slog.Attr) bool {
 		if attr.Key == "method" {
 			found = true
-			if got := attr.Value.String(); got != "GETFORGED" {
-				t.Errorf("method = %q, want GETFORGED", got)
+			if got, want := attr.Value.String(), `GET\r\nFORGED\x00\x1b\u0085\u2028`; got != want {
+				t.Errorf("method = %q, want %q", got, want)
 			}
 		}
 		return true
@@ -90,7 +90,7 @@ func TestSnapshotFailureSanitizesBeforeHostLogHandler(t *testing.T) {
 			if attr.Key == "error" {
 				found = true
 				logged, ok := attr.Value.Any().(error)
-				if !ok || !errors.Is(logged, failure) || logged.Error() != "argumentFORGED" {
+				if !ok || !errors.Is(logged, failure) || logged.Error() != `argument\r\nFORGED\t\x00\x1b\u0085\u2029` {
 					t.Fatalf("unsafe or unclassified logged error: %v", attr.Value)
 				}
 			}

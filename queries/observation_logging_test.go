@@ -46,7 +46,7 @@ func TestObservableFailureSanitizesBeforeHostLogHandler(t *testing.T) {
 		}
 		return true
 	})
-	if values["query"] != "queryFORGED" || values["error"] != "providerFORGED" {
+	if values["query"] != `query\r\nFORGED\t\x00\x1b\u0085\u2028\u2029` || values["error"] != `provider\r\nFORGED\t\x00\x1b\u0085\u2029` {
 		t.Fatalf("unsafe log attributes: %q", values)
 	}
 }

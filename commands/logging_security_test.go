@@ -48,7 +48,7 @@ func TestCallbackFailureSanitizesBeforeHostLogHandler(t *testing.T) {
 			if attr.Key == "error" {
 				found = true
 				logged, ok := attr.Value.Any().(error)
-				if !ok || !errors.Is(logged, failure) || logged.Error() != "callbackFORGED" {
+				if !ok || !errors.Is(logged, failure) || logged.Error() != `callback\r\nFORGED\t\x00\x1b\u0085\u2029` {
 					t.Fatalf("unsafe or unclassified logged error: %v", attr.Value)
 				}
 			}

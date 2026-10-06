@@ -5,19 +5,24 @@
 package logging
 
 import (
+	"strconv"
 	"strings"
 	"unicode"
 )
 
-// String removes control characters, including CR and LF, even when the host's
+// String escapes control characters, including CR and LF, even when the host's
 // slog handler emits attribute values without quoting. Printable text is unchanged.
 func String(value string) string {
-	value = strings.ReplaceAll(value, "\r", "")
-	value = strings.ReplaceAll(value, "\n", "")
-	return strings.Map(func(r rune) rune {
+	value = strings.ReplaceAll(value, "\r", `\r`)
+	value = strings.ReplaceAll(value, "\n", `\n`)
+	var escaped strings.Builder
+	for _, r := range value {
 		if unicode.IsControl(r) || r == '\u2028' || r == '\u2029' {
-			return -1
+			quoted := strconv.QuoteRune(r)
+			escaped.WriteString(quoted[1 : len(quoted)-1])
+		} else {
+			escaped.WriteRune(r)
 		}
-		return r
-	}, value)
+	}
+	return escaped.String()
 }
