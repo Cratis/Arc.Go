@@ -77,10 +77,13 @@ are explicitly shadowed unless a trusted authentication adapter establishes iden
 Catalogs and identity are unwrapped. `/.cratis/me` is fresh, anonymous 401 and
 provider-denied 403, with no identity-cookie authentication. Presented legacy
 `.cratis-identity` cookies are expired at `/`, never decoded or reissued.
-Deletion matches C# RemoveCookie: empty value, expiry one day in the past, no
-Domain, HttpOnly, Secure, SameSite or Max-Age attributes. It does not depend on TLS.
-Go detects direct TLS through `Request.TLS`; HTTPS terminated at a proxy does not
-set it automatically. Arc does not trust Forwarded or X-Forwarded-Proto headers
-for TLS detection; configure a trusted host adapter if your own middleware needs
-that information.
+Deletion preserves C# RemoveCookie's empty value, expiry one day in the past,
+and absence of Domain, HttpOnly, SameSite and Max-Age attributes. Go adds Secure
+by default; only plain-HTTP requests whose `Host` is `localhost` or a loopback
+address omit Secure for local development. Direct TLS (`Request.TLS`) or an HTTPS
+URL always sets Secure. HTTPS in `Forwarded` or `X-Forwarded-Proto` also sets
+Secure, including when an HTTPS ingress forwards a localhost backend Host.
+Forwarded headers can only tighten this cookie policy, never relax it; they are
+not trusted to establish transport or identity for other purposes. Configure a
+trusted host adapter if your own middleware needs that information.
 Identity/discovery use `no-store, private` and merged `Vary: Cookie`.

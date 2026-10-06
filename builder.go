@@ -10,6 +10,7 @@ import (
 
 	"github.com/cratis/arc.go/authorization"
 	"github.com/cratis/arc.go/commands"
+	"github.com/cratis/arc.go/internal/logging"
 	"github.com/cratis/arc.go/metadata"
 	"github.com/cratis/arc.go/queries"
 	"github.com/cratis/arc.go/validation"
@@ -43,6 +44,7 @@ func NewBuilder(options Options) (*Builder, error) {
 	if err != nil {
 		return nil, &ConfigurationError{Component: "options", Cause: err}
 	}
+	o.Logger = logging.Sanitize(o.Logger)
 	c, err := commands.NewRegistry(commands.RegistryOptions{Namespace: o.Namespace})
 	if err != nil {
 		return nil, err

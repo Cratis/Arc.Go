@@ -252,9 +252,10 @@ func privateCache(w http.ResponseWriter) {
 }
 
 // plainHTTPLocalhost is the explicit development-only exception to Secure
-// cookies. Forwarded headers are not trusted to relax transport security.
+// cookies, based on the request Host. Forwarded HTTPS only tightens this policy;
+// forwarded HTTP is never trusted to relax transport security.
 func plainHTTPLocalhost(r *http.Request) bool {
-	if r.TLS != nil || (r.URL.Scheme != "" && r.URL.Scheme != "http") {
+	if r.TLS != nil || (r.URL.Scheme != "" && r.URL.Scheme != "http") || forwardedHTTPS(r) {
 		return false
 	}
 	host := r.Host
@@ -263,6 +264,28 @@ func plainHTTPLocalhost(r *http.Request) bool {
 	}
 	host = strings.Trim(host, "[]")
 	return strings.EqualFold(host, "localhost") || net.ParseIP(host).IsLoopback()
+}
+
+// forwardedHTTPS is a tightening-only signal, not a proxy trust boundary.
+func forwardedHTTPS(r *http.Request) bool {
+	for _, header := range r.Header.Values("X-Forwarded-Proto") {
+		for _, proto := range strings.Split(header, ",") {
+			if strings.EqualFold(strings.TrimSpace(proto), "https") {
+				return true
+			}
+		}
+	}
+	for _, header := range r.Header.Values("Forwarded") {
+		for _, element := range strings.Split(header, ",") {
+			for _, parameter := range strings.Split(element, ";") {
+				key, value, ok := strings.Cut(parameter, "=")
+				if ok && strings.EqualFold(strings.TrimSpace(key), "proto") && strings.EqualFold(strings.Trim(strings.TrimSpace(value), "\""), "https") {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func expireLegacyCookie(w http.ResponseWriter, r *http.Request) {

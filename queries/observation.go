@@ -17,7 +17,6 @@ import (
 	"github.com/cratis/arc.go/correlation"
 	"github.com/cratis/arc.go/execution"
 	"github.com/cratis/arc.go/identity"
-	"github.com/cratis/arc.go/internal/logging"
 	boundary "github.com/cratis/arc.go/internal/pipeline"
 	"github.com/cratis/arc.go/observability"
 	"github.com/cratis/arc.go/observable"
@@ -195,7 +194,7 @@ func (p *queryPipeline) observableResult(ctx context.Context, name FullyQualifie
 	if err != nil {
 		result = Merge(result, FromError[any](result.Details().CorrelationID, err))
 		if p.options.Logger != nil && ctx != nil && ctx.Err() == nil {
-			p.options.Logger.ErrorContext(ctx, "observable query failed", "query", logging.String(string(name)), "error", logging.String(err.Error()))
+			p.options.Logger.ErrorContext(ctx, "observable query failed", "query", string(name), "error", err)
 		}
 	}
 	result = finalize(result, p.options.ExposeExceptionDetails)

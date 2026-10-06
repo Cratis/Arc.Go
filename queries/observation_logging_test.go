@@ -22,14 +22,30 @@ func (h *observationLogCapture) WithGroup(string) slog.Handler      { return h }
 
 func TestObservableFailureSanitizesBeforeHostLogHandler(t *testing.T) {
 	h := &observationLogCapture{}
-	p := &queryPipeline{options: PipelineOptions{Logger: slog.New(h)}}
+	var registry Registry
+	built, err := registry.Build(PipelineOptions{Logger: slog.New(h)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := built.(*queryPipeline)
 	failure := errors.New("provider\r\nFORGED\t\x00\x1b\u0085\u2029")
 	result := p.observableResult(t.Context(), "query\r\nFORGED", Result[any]{}, failure)
 	if !result.HasExceptions() {
 		t.Fatal("failure no longer classified as exception")
 	}
 	values := map[string]string{}
-	h.record.Attrs(func(attr slog.Attr) bool { values[attr.Key] = attr.Value.String(); return true })
+	h.record.Attrs(func(attr slog.Attr) bool {
+		if attr.Key == "error" {
+			logged, ok := attr.Value.Any().(error)
+			if !ok || !errors.Is(logged, failure) {
+				t.Fatalf("logged error lost its cause: %v", attr.Value)
+			}
+			values[attr.Key] = logged.Error()
+		} else {
+			values[attr.Key] = attr.Value.String()
+		}
+		return true
+	})
 	if values["query"] != "queryFORGED" || values["error"] != "providerFORGED" {
 		t.Fatalf("unsafe log attributes: %q", values)
 	}
