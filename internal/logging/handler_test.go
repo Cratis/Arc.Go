@@ -4,13 +4,16 @@
 package logging_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"testing"
 	"time"
 
+	"github.com/cratis/arc.go/concepts"
 	"github.com/cratis/arc.go/internal/logging"
 )
 
@@ -79,6 +82,35 @@ func TestHandlerSanitizesGroupsAndPreservesErrorChains(t *testing.T) {
 	}
 	if logging.Sanitize(logger) != logger || logging.Sanitize(nil) != nil {
 		t.Fatal("nil or already wrapped logger changed")
+	}
+}
+
+func TestHandlerPreservesStringerJSONValues(t *testing.T) {
+	const uuidText = "acb94783-78c1-43df-b740-a3d5746189e1"
+	id, err := concepts.ParseUUID(uuidText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name  string
+		value any
+		want  string
+	}{
+		{"UUID", id, uuidText},
+		{"control characters", diagnosticValue("id\r\nFORGED\t\x00"), "idFORGED"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var output bytes.Buffer
+			logger := logging.Sanitize(slog.New(slog.NewJSONHandler(&output, nil)))
+			logger.InfoContext(t.Context(), "diagnostic", "correlationId", tc.value)
+			var record map[string]any
+			if err := json.Unmarshal(output.Bytes(), &record); err != nil {
+				t.Fatal(err)
+			}
+			if got := record["correlationId"]; got != tc.want {
+				t.Fatalf("correlationId = %#v, want %q; log = %s", got, tc.want, output.String())
+			}
+		})
 	}
 }
 

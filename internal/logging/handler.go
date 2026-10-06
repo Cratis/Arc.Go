@@ -82,3 +82,6 @@ func (e sanitizedError) Unwrap() error { return e.err }
 type sanitizedStringer struct{ value fmt.Stringer }
 
 func (s sanitizedStringer) String() string { return String(s.value.String()) }
+func (s sanitizedStringer) MarshalText() ([]byte, error) {
+	return []byte(s.String()), nil
+}
