@@ -1,5 +1,6 @@
 // Copyright (c) Cratis. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
+import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { directory, run } from '../helpers.mjs';
@@ -23,12 +24,28 @@ export async function prepare() {
     return { consumer, tools, go: process.env.GO || 'go' };
 }
 
-export async function generate() {
-    const { consumer, tools, go } = await prepare();
-    const env = { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local' };
-    run(go, ['run', './cmd/arc-gen', '-dir', consumer, '-config', join(consumer, 'profile.json'), '.'], tools, env);
-    // Generated adapters can import runtime packages absent from the authored input; resolve them before verification.
+export function tidyConsumer({ consumer, tools, go }) {
+    const env = { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local', GOPROXY: 'off', GONOPROXY: 'none', GOFLAGS: '-mod=mod' };
+    const format = '{{if not .Main}}{{.Path}} {{.Version}}{{if .Replace}} => {{.Replace.Path}} {{.Replace.Version}}{{end}}{{end}}';
+    const graph = cwd => run(go, ['list', '-m', '-f', format, 'all'], cwd, { ...env, GOFLAGS: '-mod=readonly' })
+        .split('\n').map(line => line.trim()).filter(Boolean);
+    const pinned = new Set(graph(tools));
+    // Offline resolution alone could admit an unrelated dependency already in the cache.
     run(go, ['mod', 'tidy'], consumer, env);
+    for (const module of graph(consumer)) {
+        assert.ok(pinned.has(module), `Consumer module is outside the pinned tools graph: ${module}`);
+    }
+}
+
+export async function generate() {
+    const prepared = await prepare();
+    const { consumer, tools, go } = prepared;
+    const env = { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local' };
+    // Populate only the pinned tools graph before offline consumer resolution.
+    run(go, ['mod', 'download'], tools, env);
+    run(go, ['run', './cmd/arc-gen', '-dir', consumer, '-config', join(consumer, 'profile.json'), '.'], tools, env);
+    // Generated adapters may import more runtime packages, but never another module or version.
+    tidyConsumer(prepared);
     // -check is production CLI verification, not a comparison with hand-written Go output.
     run(go, ['run', './cmd/arc-gen', '-dir', consumer, '-config', join(consumer, 'profile.json'), '-check', '.'], tools, env);
     return join(consumer, 'web');

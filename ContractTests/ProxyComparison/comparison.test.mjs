@@ -1,12 +1,12 @@
 // Copyright (c) Cratis. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 import assert from 'node:assert/strict';
-import { readFile, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import ts from 'typescript';
 import { compare, compareFragments, fragments, pairedFiles } from './compare.mjs';
-import { generate } from './Matched/prepare.mjs';
+import { generate, prepare, tidyConsumer } from './Matched/prepare.mjs';
 import { directory, run } from './helpers.mjs';
 
 const output = await generate();
@@ -23,6 +23,25 @@ test('generation and check ignore inherited workspace and toolchain overrides', 
         GOTOOLCHAIN: 'invalid-toolchain'
     }).trim();
     await compare(generated);
+});
+
+test('consumer tidy rejects an injected import unavailable in the pinned tools graph', async () => {
+    const prepared = await prepare();
+    await writeFile(join(prepared.consumer, 'unexpected.go'), 'package consumer\nimport _ "example.invalid/outside-pinned-tools-graph"\n');
+    assert.throws(() => tidyConsumer(prepared), /module lookup disabled by GOPROXY=off/);
+    assert.doesNotMatch(await readFile(join(prepared.consumer, 'go.mod'), 'utf8'), /require example\.invalid/);
+});
+
+test('consumer tidy rejects an out-of-graph import even when it resolves offline', async () => {
+    const prepared = await prepare();
+    const dependency = join(prepared.consumer, 'unexpected-module');
+    await mkdir(dependency);
+    await writeFile(join(dependency, 'go.mod'), 'module example.invalid/outside-pinned-tools-graph\ngo 1.26.0\n');
+    await writeFile(join(dependency, 'dependency.go'), 'package dependency\n');
+    await writeFile(join(prepared.consumer, 'unexpected.go'), 'package consumer\nimport _ "example.invalid/outside-pinned-tools-graph"\n');
+    await writeFile(join(prepared.consumer, 'go.mod'), await readFile(join(prepared.consumer, 'go.mod'), 'utf8') +
+        '\nreplace example.invalid/outside-pinned-tools-graph => ./unexpected-module\n');
+    assert.throws(() => tidyConsumer(prepared), /Consumer module is outside the pinned tools graph: example\.invalid\/outside-pinned-tools-graph/);
 });
 
 test('every API fragment and every exact allowance rejects a new difference', async () => {
