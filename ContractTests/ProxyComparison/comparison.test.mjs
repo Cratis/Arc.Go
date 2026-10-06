@@ -154,6 +154,43 @@ test('consumer tidy rejects an out-of-graph import even when it resolves offline
     assert.throws(() => tidyConsumer(prepared), /Consumer module is outside the pinned runtime graph: example\.invalid\/outside-pinned-tools-graph/);
 });
 
+async function warmToolingGraph(prepared) {
+    // The pruned tools graph does not cache go.mod files for x/mod's own requirements.
+    // Warm that graph online in a test-only modfile so offline list reaches the guard.
+    const modfile = join(prepared.consumer, 'tooling.mod');
+    await writeFile(modfile, 'module example.test/tooling-graph\ngo 1.26.0\nrequire golang.org/x/mod v0.41.0\n');
+    const env = { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local' };
+    run(prepared.go, ['mod', 'download', '-modfile', modfile, 'all'], prepared.consumer, env);
+}
+
+test('tooling graph warm-up preserves the caller-configured Go proxy', async t => {
+    const proxy = 'https://mirror.example.test/go,https://fallback.example.test/go';
+    const originalProxy = process.env.GOPROXY;
+    process.env.GOPROXY = proxy;
+    const calls = [];
+    const spawn = t.mock.method(childProcess, 'spawnSync', (command, args, options) => {
+        calls.push({ command, args, cwd: options.cwd, env: options.env });
+        return { status: 0, stdout: '', stderr: '' };
+    });
+    syncBuiltinESMExports();
+    t.after(() => {
+        if (originalProxy === undefined) delete process.env.GOPROXY;
+        else process.env.GOPROXY = originalProxy;
+        spawn.mock.restore();
+        syncBuiltinESMExports();
+    });
+    const prepared = await prepare();
+    await warmToolingGraph(prepared);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].command, prepared.go);
+    assert.deepEqual(calls[0].args, ['mod', 'download', '-modfile', join(prepared.consumer, 'tooling.mod'), 'all']);
+    assert.equal(calls[0].cwd, prepared.consumer);
+    assert.equal(calls[0].env.GOPROXY, proxy);
+    assert.equal(calls[0].env.GOWORK, 'off');
+    assert.equal(calls[0].env.GOTOOLCHAIN, 'local');
+    assert.equal(process.env.GOPROXY, proxy, 'Warm-up must not mutate the caller environment');
+});
+
 test('consumer tidy rejects a tooling-only dependency already present in the pinned tools graph', async () => {
     const prepared = await prepare();
     const manifest = join(prepared.consumer, 'go.mod');
@@ -161,13 +198,7 @@ test('consumer tidy rejects a tooling-only dependency already present in the pin
     tidyConsumer(prepared);
     // The control prunes unused tooling pins; restore the authored graph before injection.
     await writeFile(manifest, originalPins);
-    // The pruned tools graph does not cache go.mod files for x/mod's own requirements.
-    // Warm that graph online in a test-only modfile so offline list reaches the guard.
-    const modfile = join(prepared.consumer, 'tooling.mod');
-    await writeFile(modfile, 'module example.test/tooling-graph\ngo 1.26.0\nrequire golang.org/x/mod v0.41.0\n');
-    const env = { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local' };
-    delete env.GOPROXY;
-    run(prepared.go, ['mod', 'download', '-modfile', modfile, 'all'], prepared.consumer, env);
+    await warmToolingGraph(prepared);
     await writeFile(join(prepared.consumer, 'unexpected.go'), 'package consumer\nimport _ "golang.org/x/mod/module"\n');
     assert.throws(() => tidyConsumer(prepared), /Consumer module is outside the pinned runtime graph: golang\.org\/x\/mod v0\.41\.0/);
 });
