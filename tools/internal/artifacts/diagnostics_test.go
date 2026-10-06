@@ -17,7 +17,7 @@ import (
 )
 
 func TestAuthoringDiagnostics(t *testing.T) {
-	loaded := loadDiagnosticFixtures(t, "", "./testdata/diagnostics/...")
+	loaded := loadDiagnosticFixtures(t, "", "./testdata/diagnostics/queries", "./testdata/diagnostics/negative", "./testdata/diagnostics/domain", "./testdata/diagnostics/invalidartifact", "./testdata/diagnostics/invalidconcept")
 	if len(loaded) != 5 {
 		t.Fatalf("fixture packages = %d, want 5", len(loaded))
 	}
@@ -66,13 +66,13 @@ func TestAuthoringDiagnosticsRespectBuildTags(t *testing.T) {
 	assertDiagnosticLocations(t, loaded[0], findings, 7)
 }
 
-func loadDiagnosticFixtures(t *testing.T, tags, pattern string) []*packages.Package {
+func loadDiagnosticFixtures(t *testing.T, tags string, patterns ...string) []*packages.Package {
 	t.Helper()
 	config := &packages.Config{Context: t.Context(), Mode: packages.LoadSyntax}
 	if tags != "" {
 		config.BuildFlags = []string{"-tags=" + tags}
 	}
-	loaded, err := packages.Load(config, pattern)
+	loaded, err := packages.Load(config, patterns...)
 	if err != nil {
 		t.Fatal(err)
 	}

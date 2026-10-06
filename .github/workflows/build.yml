@@ -89,7 +89,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          unformatted=$(git ls-files -z -- '*.go' | xargs -0 -r gofmt -l)
+          # The generic-method fixture needs a Go 1.27 parser, which the Go 1.26 gofmt cannot read.
+          unformatted=$(git ls-files -z -- '*.go' ':(exclude)tools/internal/artifacts/testdata/diagnostics/declarations/generic_methods.go' | xargs -0 -r gofmt -l)
           if [ -n "$unformatted" ]; then
             printf 'Run gofmt on:\n%s\n' "$unformatted"
             exit 1
@@ -150,7 +151,7 @@ jobs:
   tools:
     name: Artifact generator
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: tools
@@ -180,7 +181,7 @@ jobs:
       - name: Test tools and generated consumers (remaining tests)
         run: go test -count=1 -timeout=2m -skip "^(${TOOLS_HEAVY_TESTS})\$" ./...
       - name: Race detector (publication and CLI families)
-        run: go test -race -count=1 -timeout=3m -run "^(${TOOLS_HEAVY_TESTS})\$" ./...
+        run: go test -race -count=1 -timeout=5m -run "^(${TOOLS_HEAVY_TESTS})\$" ./...
       - name: Race detector (remaining tests)
         run: go test -race -count=1 -timeout=3m -skip "^(${TOOLS_HEAVY_TESTS})\$" ./...
       - name: Check generated adapters

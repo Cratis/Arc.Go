@@ -6,6 +6,8 @@
   href: typescript.md
 - name: Directives and signatures
   href: reference.md
+- name: Authoring diagnostics
+  href: arc-vet.md
 - name: OpenAPI document
   href: openapi.md
 - name: Screenplay metadata
