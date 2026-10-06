@@ -17,6 +17,7 @@ import (
 	"github.com/cratis/arc.go/correlation"
 	"github.com/cratis/arc.go/execution"
 	"github.com/cratis/arc.go/identity"
+	"github.com/cratis/arc.go/internal/logging"
 	boundary "github.com/cratis/arc.go/internal/pipeline"
 	"github.com/cratis/arc.go/metadata"
 	"github.com/cratis/arc.go/observability"
@@ -119,6 +120,7 @@ func (r *Registry) Build(o PipelineOptions) (Pipeline, error) {
 	if err := o.Validation.CheckDependencies(o.DependencyCatalog); err != nil {
 		return nil, err
 	}
+	o.Logger = logging.Sanitize(o.Logger)
 	p := &queryPipeline{options: o, queries: map[FullyQualifiedQueryName]Registration{}, filters: slices.Clone(r.filters), interceptors: slices.Clone(r.interceptors), guards: slices.Clone(r.guards), observations: map[*Observation]struct{}{}}
 	catalog := r.Catalog()
 	if _, err := metadata.Resolve(catalog, metadata.DefaultOptions()); err != nil {

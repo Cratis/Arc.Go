@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/cratis/arc.go/correlation"
 	"github.com/cratis/arc.go/execution"
 	"github.com/cratis/arc.go/identity"
+	"github.com/cratis/arc.go/internal/logging"
 	boundary "github.com/cratis/arc.go/internal/pipeline"
 	"github.com/cratis/arc.go/observability"
 	"github.com/cratis/arc.go/observable"
@@ -194,7 +196,10 @@ func (p *queryPipeline) observableResult(ctx context.Context, name FullyQualifie
 	if err != nil {
 		result = Merge(result, FromError[any](result.Details().CorrelationID, err))
 		if p.options.Logger != nil && ctx != nil && ctx.Err() == nil {
-			p.options.Logger.ErrorContext(ctx, "observable query failed", "query", string(name), "error", err)
+			// String applies the full escaping rules; keep explicit CR/LF replacements
+			// visible to CodeQL at the sink and mark the value to avoid escaping it twice.
+			queryName := logging.Escaped(strings.ReplaceAll(strings.ReplaceAll(logging.String(string(name)), "\r", `\r`), "\n", `\n`))
+			p.options.Logger.ErrorContext(ctx, "observable query failed", "query", queryName, "error", err)
 		}
 	}
 	result = finalize(result, p.options.ExposeExceptionDetails)

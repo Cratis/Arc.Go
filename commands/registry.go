@@ -11,6 +11,7 @@ import (
 
 	"github.com/cratis/arc.go/authorization"
 	"github.com/cratis/arc.go/execution"
+	"github.com/cratis/arc.go/internal/logging"
 	"github.com/cratis/arc.go/metadata"
 	di "github.com/cratis/fundamentals.go/dependencyinjection"
 )
@@ -214,6 +215,7 @@ func (r *Registry) Build(options PipelineOptions) (Pipeline, error) {
 			return nil, err
 		}
 	}
+	options.Logger = logging.Sanitize(options.Logger)
 	p := &pipeline{options: options, byType: make(map[reflect.Type]Registration), byName: make(map[string]Registration), providers: append([]extension[ContextValuesProvider](nil), r.providers...), keys: append([]extension[KeyResolver](nil), r.keys...), filters: append([]extension[Filter](nil), r.filters...), authFilters: append([]extension[AuthorizationFilter](nil), r.authFilters...), responses: append([]extension[ResponseValueHandler](nil), r.responses...), participants: append([]extension[ExecutionScope](nil), r.participants...)}
 	p.terminal = append([]extension[DeferredCommitParticipant](nil), r.terminal...)
 	p.admissions = append([]ReturnAdmission(nil), r.admissions...)

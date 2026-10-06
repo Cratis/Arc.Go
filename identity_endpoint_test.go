@@ -55,7 +55,7 @@ func TestIdentityFreshUnwrappedAndLegacyCookieExpired(t *testing.T) {
 		t.Fatal(calls)
 	}
 }
-func TestLegacyCookieExpiryMatchesCSharpRemovalAttributes(t *testing.T) {
+func TestLegacyCookieExpiryPreservesRemovalAttributesWithSecureDefault(t *testing.T) {
 	b, err := arc.NewBuilder(arc.Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -87,10 +87,10 @@ func TestLegacyCookieExpiryMatchesCSharpRemovalAttributes(t *testing.T) {
 				t.Fatal(cookies)
 			}
 			c := cookies[0]
-			if c.Name != ".cratis-identity" || c.Value != "" || c.Path != "/" || c.Domain != "" || c.HttpOnly || c.Secure || c.SameSite != 0 || c.MaxAge != 0 || !c.Expires.Before(time.Now()) || c.Expires.Before(time.Now().Add(-25*time.Hour)) {
+			if c.Name != ".cratis-identity" || c.Value != "" || c.Path != "/" || c.Domain != "" || c.HttpOnly || !c.Secure || c.SameSite != 0 || c.MaxAge != 0 || !c.Expires.Before(time.Now()) || c.Expires.Before(time.Now().Add(-25*time.Hour)) {
 				t.Fatal(scheme, c)
 			}
-			for _, attribute := range []string{"HttpOnly", "Secure", "SameSite", "Max-Age", "SECRET"} {
+			for _, attribute := range []string{"HttpOnly", "SameSite", "Max-Age", "SECRET"} {
 				if strings.Contains(w.Header().Get("Set-Cookie"), attribute) {
 					t.Fatal(w.Header())
 				}

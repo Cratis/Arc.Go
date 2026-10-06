@@ -1,0 +1,34 @@
+// Copyright (c) Cratis. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+
+// Package logging sanitizes untrusted values before handing them to host loggers.
+package logging
+
+import (
+	"strconv"
+	"strings"
+	"unicode"
+)
+
+// Escaped marks a value already escaped by String. Only fully escaped values may
+// use this type; the sanitizing handler passes their text through unchanged.
+type Escaped string
+
+// String escapes control and Unicode format characters, including CR and LF, even when the host's
+// slog handler emits attribute values without quoting. Backslashes are escaped first
+// to distinguish literal escape sequences; other printable text is unchanged.
+func String(value string) string {
+	value = strings.ReplaceAll(value, `\`, `\\`)
+	value = strings.ReplaceAll(value, "\r", `\r`)
+	value = strings.ReplaceAll(value, "\n", `\n`)
+	var escaped strings.Builder
+	for _, r := range value {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || r == '\u2028' || r == '\u2029' {
+			quoted := strconv.QuoteRune(r)
+			escaped.WriteString(quoted[1 : len(quoted)-1])
+		} else {
+			escaped.WriteRune(r)
+		}
+	}
+	return escaped.String()
+}
