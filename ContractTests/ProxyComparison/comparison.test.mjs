@@ -1,7 +1,8 @@
 // Copyright (c) Cratis. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import ts from 'typescript';
@@ -27,11 +28,15 @@ test('generation and check ignore inherited workspace and toolchain overrides', 
     await compare(generated);
 });
 
-test('generation and offline consumer tidy succeed with an empty module cache', async () => {
-    const cache = await mkdtemp(join(output, '../cold-module-cache-'));
-    const generated = run(process.execPath, [join(directory, 'Matched/prepare.mjs')], directory, {
-        ...process.env, GOMODCACHE: cache
-    }).trim();
+test('generation and offline consumer tidy succeed with an empty module cache', async t => {
+    const cache = await mkdtemp(join(tmpdir(), 'arc-go-cold-module-cache-'));
+    const env = { ...process.env, GOMODCACHE: cache, GOWORK: 'off', GOTOOLCHAIN: 'local' };
+    // Go creates read-only module directories; clean them even when generation or assertions fail.
+    t.after(async () => {
+        run(process.env.GO || 'go', ['clean', '-modcache'], directory, env);
+        await assert.rejects(access(cache), { code: 'ENOENT' }, 'Cold module cache must not survive the test');
+    });
+    const generated = run(process.execPath, [join(directory, 'Matched/prepare.mjs')], directory, env).trim();
     await compare(generated);
     const manifest = await readFile(join(generated, '../go.mod'), 'utf8');
     assert.match(manifest, /github\.com\/coder\/websocket v/);
