@@ -85,6 +85,25 @@ func TestHandlerSanitizesGroupsAndPreservesErrorChains(t *testing.T) {
 	}
 }
 
+func TestHandlerEscapesRawAndAlreadyEscapedValuesIdentically(t *testing.T) {
+	const input = "text\\literal\r\n\t\u202e"
+	const want = `text\\literal\r\n\t\u202e`
+	h := &captureHandler{}
+	logger := logging.Sanitize(slog.New(h))
+	attrs := []slog.Attr{slog.Group("values", slog.String("raw", input), slog.Any("escaped", logging.Escaped(logging.String(input))))}
+	logger.With(attrs[0]).WarnContext(t.Context(), "diagnostic", attrs[0])
+	check := func(attr slog.Attr) {
+		t.Helper()
+		for _, child := range attr.Value.Group() {
+			if child.Value.Kind() != slog.KindString || child.Value.String() != want {
+				t.Fatalf("%s = %v, want string %q", child.Key, child.Value, want)
+			}
+		}
+	}
+	check(h.attrs[0])
+	h.record.Attrs(func(attr slog.Attr) bool { check(attr); return true })
+}
+
 func TestHandlerLogsJoinedErrorsWithVisibleSeparator(t *testing.T) {
 	h := &captureHandler{}
 	logger := logging.Sanitize(slog.New(h))

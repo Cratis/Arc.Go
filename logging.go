@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/cratis/arc.go/internal/logging"
 )
 
 type responseWriter struct {
@@ -138,9 +140,8 @@ func (a *Application) serveObserved(w http.ResponseWriter, r *http.Request) {
 	} else if _, pattern := a.rawMux.Handler(r); pattern != "" {
 		route = pattern
 	}
-	// Escape backslashes before line breaks at the sink as well as in the sanitizing logger wrapper.
-	route = strings.ReplaceAll(route, `\`, `\\`)
-	route = strings.ReplaceAll(route, "\r", `\r`)
-	route = strings.ReplaceAll(route, "\n", `\n`)
-	a.options.Logger.DebugContext(r.Context(), "Arc HTTP request completed", "method", r.Method, "route", route, "status", status, "duration", time.Since(started), "correlationId", w.Header().Get(a.options.HTTP.CorrelationHeader))
+	// String applies the full escaping rules; keep explicit CR/LF replacements
+	// visible to CodeQL at the sink and mark the value to avoid escaping it twice.
+	escapedRoute := logging.Escaped(strings.ReplaceAll(strings.ReplaceAll(logging.String(route), "\r", `\r`), "\n", `\n`))
+	a.options.Logger.DebugContext(r.Context(), "Arc HTTP request completed", "method", r.Method, "route", escapedRoute, "status", status, "duration", time.Since(started), "correlationId", w.Header().Get(a.options.HTTP.CorrelationHeader))
 }

@@ -63,6 +63,8 @@ func sanitizeAttr(attr slog.Attr) slog.Attr {
 		value = slog.GroupValue(clean...)
 	case slog.KindAny:
 		switch v := value.Any().(type) {
+		case Escaped:
+			value = slog.StringValue(string(v))
 		case error:
 			value = slog.AnyValue(sanitizedError{err: v})
 		case fmt.Stringer:
