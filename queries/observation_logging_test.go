@@ -46,7 +46,34 @@ func TestObservableFailureSanitizesBeforeHostLogHandler(t *testing.T) {
 		}
 		return true
 	})
-	if values["query"] != `query\r\nFORGED\t\x00\x1b\u0085\u2028\u2029` || values["error"] != `provider\r\nFORGED\t\x00\x1b\u0085\u2029` {
+	if values["query"] != `query\\r\\nFORGED\t\x00\x1b\u0085\u2028\u2029` || values["error"] != `provider\r\nFORGED\t\x00\x1b\u0085\u2029` {
 		t.Fatalf("unsafe log attributes: %q", values)
+	}
+}
+
+func TestObservableFailureDistinguishesLiteralEscapeFromNewline(t *testing.T) {
+	for _, tc := range []struct{ name, input, want string }{
+		{"literal escape", `a\nb`, `a\\\\nb`},
+		{"newline", "a\nb", `a\\nb`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := &observationLogCapture{}
+			var registry Registry
+			built, err := registry.Build(PipelineOptions{Logger: slog.New(h)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			built.(*queryPipeline).observableResult(t.Context(), FullyQualifiedQueryName(tc.input), Result[any]{}, errors.New("provider failed"))
+			var got string
+			h.record.Attrs(func(attr slog.Attr) bool {
+				if attr.Key == "query" {
+					got = attr.Value.String()
+				}
+				return true
+			})
+			if got != tc.want {
+				t.Fatalf("query = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

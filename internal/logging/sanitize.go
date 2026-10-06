@@ -11,8 +11,10 @@ import (
 )
 
 // String escapes control characters, including CR and LF, even when the host's
-// slog handler emits attribute values without quoting. Printable text is unchanged.
+// slog handler emits attribute values without quoting. Backslashes are escaped first
+// to distinguish literal escape sequences; other printable text is unchanged.
 func String(value string) string {
+	value = strings.ReplaceAll(value, `\`, `\\`)
 	value = strings.ReplaceAll(value, "\r", `\r`)
 	value = strings.ReplaceAll(value, "\n", `\n`)
 	var escaped strings.Builder

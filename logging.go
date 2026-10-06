@@ -138,8 +138,9 @@ func (a *Application) serveObserved(w http.ResponseWriter, r *http.Request) {
 	} else if _, pattern := a.rawMux.Handler(r); pattern != "" {
 		route = pattern
 	}
-	// Escape line breaks at the sink as well as in the sanitizing logger wrapper.
-	route = strings.ReplaceAll(route, "\n", `\n`)
+	// Escape backslashes before line breaks at the sink as well as in the sanitizing logger wrapper.
+	route = strings.ReplaceAll(route, `\`, `\\`)
 	route = strings.ReplaceAll(route, "\r", `\r`)
+	route = strings.ReplaceAll(route, "\n", `\n`)
 	a.options.Logger.DebugContext(r.Context(), "Arc HTTP request completed", "method", r.Method, "route", route, "status", status, "duration", time.Since(started), "correlationId", w.Header().Get(a.options.HTTP.CorrelationHeader))
 }
