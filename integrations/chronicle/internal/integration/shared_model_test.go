@@ -150,18 +150,24 @@ func awaitInventory(t *testing.T, ctx context.Context, reader *readmodels.Reader
 	defer cancel()
 	ticker := time.NewTicker(25 * time.Millisecond)
 	defer ticker.Stop()
+	// last keeps the latest successful read: the read cut off by the window
+	// boundary returns a zero instance that would hide the observed state.
+	var last readmodels.Instance[sharedmodel.Inventory]
 	for {
 		instance, err := reader.Get(deadline, "item-1")
-		if err != nil && deadline.Err() == nil {
+		if err != nil && !readEndedByWindow(deadline, err) {
 			require(t, err)
 		}
-		if err == nil && instance.Exists && reflect.DeepEqual(instance.Value, want) {
-			return true, false
+		if err == nil {
+			if instance.Exists && reflect.DeepEqual(instance.Value, want) {
+				return true, false
+			}
+			last = instance
 		}
 		select {
 		case <-deadline.Done():
-			t.Logf("last polling snapshot: exists=%t note=%s LastHandled=%s wantNote=%s", instance.Exists, diagnosticValue(instance.Value.Note), diagnosticValue(instance.LastHandled), diagnosticValue(want.Note))
-			t.Logf("projection did not materialize: got %+v, want %+v", instance, want)
+			t.Logf("last successful polling snapshot: exists=%t note=%s LastHandled=%s wantNote=%s", last.Exists, diagnosticValue(last.Value.Note), diagnosticValue(last.LastHandled), diagnosticValue(want.Note))
+			t.Logf("projection did not materialize: got %+v, want %+v", last, want)
 			return false, observerWaitElapsed(deadline)
 		case <-ticker.C:
 		}
