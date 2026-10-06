@@ -166,7 +166,7 @@ func awaitReactorOutcome(t *testing.T, ctx, poll context.Context, store *chronic
 		if ok {
 			return
 		}
-		if err != nil && wait.Err() == nil {
+		if err != nil && !readEndedByWindow(wait, err) {
 			t.Fatal(failure, err)
 		}
 		select {
