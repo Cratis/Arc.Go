@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -194,7 +195,10 @@ func (p *queryPipeline) observableResult(ctx context.Context, name FullyQualifie
 	if err != nil {
 		result = Merge(result, FromError[any](result.Details().CorrelationID, err))
 		if p.options.Logger != nil && ctx != nil && ctx.Err() == nil {
-			p.options.Logger.ErrorContext(ctx, "observable query failed", "query", string(name), "error", err)
+			// Strip line breaks at the sink as well as in the sanitizing logger wrapper.
+			queryName := strings.ReplaceAll(string(name), "\n", "")
+			queryName = strings.ReplaceAll(queryName, "\r", "")
+			p.options.Logger.ErrorContext(ctx, "observable query failed", "query", queryName, "error", err)
 		}
 	}
 	result = finalize(result, p.options.ExposeExceptionDetails)

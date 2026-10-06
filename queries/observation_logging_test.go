@@ -29,7 +29,7 @@ func TestObservableFailureSanitizesBeforeHostLogHandler(t *testing.T) {
 	}
 	p := built.(*queryPipeline)
 	failure := errors.New("provider\r\nFORGED\t\x00\x1b\u0085\u2029")
-	result := p.observableResult(t.Context(), "query\r\nFORGED", Result[any]{}, failure)
+	result := p.observableResult(t.Context(), "query\r\nFORGED\t\x00\x1b\u0085\u2028\u2029", Result[any]{}, failure)
 	if !result.HasExceptions() {
 		t.Fatal("failure no longer classified as exception")
 	}
