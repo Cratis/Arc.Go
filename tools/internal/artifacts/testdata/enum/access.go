@@ -5,6 +5,7 @@
 package access
 
 // Access exercises an imported, enum-only package and the C# Flags corpus.
+//
 //arc:enum parse=int32 flags=true
 type Access int32
 
