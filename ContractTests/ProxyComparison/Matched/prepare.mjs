@@ -16,6 +16,9 @@ export async function prepare() {
     await writeFile(join(consumer, 'go.mod'), (await readFile(join(tools, 'go.mod'), 'utf8'))
         .replace('module github.com/cratis/arc.go/tools', 'module example.test/proxy-comparison'));
     await writeFile(join(consumer, 'go.sum'), await readFile(join(tools, 'go.sum')));
+    // Full-graph downloads add otherwise-unused checksums; keep them in scratch files.
+    await writeFile(join(consumer, 'download.mod'), await readFile(join(tools, 'go.mod')));
+    await writeFile(join(consumer, 'download.sum'), await readFile(join(tools, 'go.sum')));
     await writeFile(join(consumer, 'input.go'), await readFile(join(directory, 'Matched/input.go.txt')));
     await writeFile(join(consumer, 'profile.json'), JSON.stringify({ formatVersion: 1, name: 'matched',
         clientHttp: { 'ProxyComparison.Listing.All': 'Get' }, typescript: { out: 'web' } }));
@@ -53,7 +56,7 @@ export async function generate() {
     const { consumer, tools, go } = prepared;
     const env = { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local' };
     // Download the full pinned graph, including runtime packages arc-gen does not import.
-    run(go, ['mod', 'download', 'all'], tools, env);
+    run(go, ['mod', 'download', '-modfile', join(consumer, 'download.mod'), 'all'], tools, env);
     run(go, ['run', './cmd/arc-gen', '-dir', consumer, '-config', join(consumer, 'profile.json'), '.'], tools, env);
     // Generated adapters may import more runtime packages, but never another module or version.
     tidyConsumer(prepared);

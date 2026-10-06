@@ -9,6 +9,8 @@ import { compare, compareFragments, fragments, pairedFiles } from './compare.mjs
 import { generate, prepare, tidyConsumer } from './Matched/prepare.mjs';
 import { directory, run } from './helpers.mjs';
 
+const toolsSum = join(directory, '../../tools/go.sum');
+const toolsChecksums = await readFile(toolsSum, 'utf8');
 const output = await generate();
 const ledger = JSON.parse(await readFile(join(directory, 'Matched/allowances.json')));
 
@@ -34,6 +36,7 @@ test('generation and offline consumer tidy succeed with an empty module cache', 
     const manifest = await readFile(join(generated, '../go.mod'), 'utf8');
     assert.match(manifest, /github\.com\/coder\/websocket v/);
     assert.doesNotMatch(manifest, /golang\.org\/x\/(tools|mod|sync)/);
+    assert.equal(await readFile(toolsSum, 'utf8'), toolsChecksums, 'Generation must not modify the tools module checksums');
 });
 
 test('consumer tidy rejects an injected import unavailable in the pinned runtime graph', async () => {
