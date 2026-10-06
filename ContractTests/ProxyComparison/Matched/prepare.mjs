@@ -21,19 +21,30 @@ export async function prepare() {
         clientHttp: { 'ProxyComparison.Listing.All': 'Get' }, typescript: { out: 'web' } }));
     // Observe completes the C# source: identity-less Listing, like C#'s JSON fallback.
     await writeFile(join(consumer, 'observable.go'), await readFile(join(directory, 'Matched/observable.go.txt')));
-    return { consumer, tools, go: process.env.GO || 'go' };
+    const runtime = join(consumer, 'runtime-baseline');
+    await mkdir(runtime);
+    await writeFile(join(runtime, 'go.mod'), (await readFile(join(consumer, 'go.mod'), 'utf8'))
+        .replace('module example.test/proxy-comparison', 'module example.test/runtime-baseline'));
+    await writeFile(join(runtime, 'go.sum'), await readFile(join(consumer, 'go.sum')));
+    await writeFile(join(runtime, 'input.go'), await readFile(join(consumer, 'input.go')));
+    await writeFile(join(runtime, 'observable.go'), await readFile(join(consumer, 'observable.go')));
+    // Include the adapter's runtime entry point while preserving the authored input's pins.
+    await writeFile(join(runtime, 'runtime.go'), 'package consumer\nimport _ "github.com/cratis/arc.go"\n');
+    return { consumer, tools, runtime, go: process.env.GO || 'go' };
 }
 
-export function tidyConsumer({ consumer, tools, go }) {
+export function tidyConsumer({ consumer, runtime, go }) {
     const env = { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local', GOPROXY: 'off', GONOPROXY: 'none', GOFLAGS: '-mod=mod' };
     const format = '{{if not .Main}}{{.Path}} {{.Version}}{{if .Replace}} => {{.Replace.Path}} {{.Replace.Version}}{{end}}{{end}}';
     const graph = cwd => run(go, ['list', '-m', '-f', format, 'all'], cwd, { ...env, GOFLAGS: '-mod=readonly' })
         .split('\n').map(line => line.trim()).filter(Boolean);
-    const pinned = new Set(graph(tools));
+    // Tidy the authored-input/runtime baseline, dropping arc-gen-only dependencies.
+    run(go, ['mod', 'tidy'], runtime, env);
+    const pinned = new Set(graph(runtime));
     // Offline resolution alone could admit an unrelated dependency already in the cache.
     run(go, ['mod', 'tidy'], consumer, env);
     for (const module of graph(consumer)) {
-        assert.ok(pinned.has(module), `Consumer module is outside the pinned tools graph: ${module}`);
+        assert.ok(pinned.has(module), `Consumer module is outside the pinned runtime graph: ${module}`);
     }
 }
 
@@ -41,8 +52,8 @@ export async function generate() {
     const prepared = await prepare();
     const { consumer, tools, go } = prepared;
     const env = { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local' };
-    // Populate only the pinned tools graph before offline consumer resolution.
-    run(go, ['mod', 'download'], tools, env);
+    // Download the full pinned graph, including runtime packages arc-gen does not import.
+    run(go, ['mod', 'download', 'all'], tools, env);
     run(go, ['run', './cmd/arc-gen', '-dir', consumer, '-config', join(consumer, 'profile.json'), '.'], tools, env);
     // Generated adapters may import more runtime packages, but never another module or version.
     tidyConsumer(prepared);

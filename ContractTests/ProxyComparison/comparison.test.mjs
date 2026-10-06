@@ -1,7 +1,7 @@
 // Copyright (c) Cratis. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 import assert from 'node:assert/strict';
-import { mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import ts from 'typescript';
@@ -25,7 +25,18 @@ test('generation and check ignore inherited workspace and toolchain overrides', 
     await compare(generated);
 });
 
-test('consumer tidy rejects an injected import unavailable in the pinned tools graph', async () => {
+test('generation and offline consumer tidy succeed with an empty module cache', async () => {
+    const cache = await mkdtemp(join(output, '../cold-module-cache-'));
+    const generated = run(process.execPath, [join(directory, 'Matched/prepare.mjs')], directory, {
+        ...process.env, GOMODCACHE: cache
+    }).trim();
+    await compare(generated);
+    const manifest = await readFile(join(generated, '../go.mod'), 'utf8');
+    assert.match(manifest, /github\.com\/coder\/websocket v/);
+    assert.doesNotMatch(manifest, /golang\.org\/x\/(tools|mod|sync)/);
+});
+
+test('consumer tidy rejects an injected import unavailable in the pinned runtime graph', async () => {
     const prepared = await prepare();
     await writeFile(join(prepared.consumer, 'unexpected.go'), 'package consumer\nimport _ "example.invalid/outside-pinned-tools-graph"\n');
     assert.throws(() => tidyConsumer(prepared), /module lookup disabled by GOPROXY=off/);
@@ -41,7 +52,13 @@ test('consumer tidy rejects an out-of-graph import even when it resolves offline
     await writeFile(join(prepared.consumer, 'unexpected.go'), 'package consumer\nimport _ "example.invalid/outside-pinned-tools-graph"\n');
     await writeFile(join(prepared.consumer, 'go.mod'), await readFile(join(prepared.consumer, 'go.mod'), 'utf8') +
         '\nreplace example.invalid/outside-pinned-tools-graph => ./unexpected-module\n');
-    assert.throws(() => tidyConsumer(prepared), /Consumer module is outside the pinned tools graph: example\.invalid\/outside-pinned-tools-graph/);
+    assert.throws(() => tidyConsumer(prepared), /Consumer module is outside the pinned runtime graph: example\.invalid\/outside-pinned-tools-graph/);
+});
+
+test('consumer tidy rejects a tooling-only dependency already present in the pinned tools graph', async () => {
+    const prepared = await prepare();
+    await writeFile(join(prepared.consumer, 'unexpected.go'), 'package consumer\nimport _ "golang.org/x/mod/module"\n');
+    assert.throws(() => tidyConsumer(prepared), /Consumer module is outside the pinned runtime graph: golang\.org\/x\/mod /);
 });
 
 test('every API fragment and every exact allowance rejects a new difference', async () => {
