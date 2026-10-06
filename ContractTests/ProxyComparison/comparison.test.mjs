@@ -156,10 +156,20 @@ test('consumer tidy rejects an out-of-graph import even when it resolves offline
 
 test('consumer tidy rejects a tooling-only dependency already present in the pinned tools graph', async () => {
     const prepared = await prepare();
+    const manifest = join(prepared.consumer, 'go.mod');
+    const originalPins = await readFile(manifest, 'utf8');
+    tidyConsumer(prepared);
+    // The control prunes unused tooling pins; restore the authored graph before injection.
+    await writeFile(manifest, originalPins);
+    // The pruned tools graph does not cache go.mod files for x/mod's own requirements.
+    // Warm that graph online in a test-only modfile so offline list reaches the guard.
+    const modfile = join(prepared.consumer, 'tooling.mod');
+    await writeFile(modfile, 'module example.test/tooling-graph\ngo 1.26.0\nrequire golang.org/x/mod v0.41.0\n');
+    const env = { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local' };
+    delete env.GOPROXY;
+    run(prepared.go, ['mod', 'download', '-modfile', modfile, 'all'], prepared.consumer, env);
     await writeFile(join(prepared.consumer, 'unexpected.go'), 'package consumer\nimport _ "golang.org/x/mod/module"\n');
-    // A warm module cache reaches the graph comparison; a cold one cannot load the
-    // dependencies of the newly required module offline. Both reject the consumer.
-    assert.throws(() => tidyConsumer(prepared), /Consumer module is outside the pinned runtime graph: golang\.org\/x\/mod |module lookup disabled by GOPROXY=off/);
+    assert.throws(() => tidyConsumer(prepared), /Consumer module is outside the pinned runtime graph: golang\.org\/x\/mod v0\.41\.0/);
 });
 
 test('every API fragment and every exact allowance rejects a new difference', async () => {
