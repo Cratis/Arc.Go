@@ -157,7 +157,9 @@ test('consumer tidy rejects an out-of-graph import even when it resolves offline
 test('consumer tidy rejects a tooling-only dependency already present in the pinned tools graph', async () => {
     const prepared = await prepare();
     await writeFile(join(prepared.consumer, 'unexpected.go'), 'package consumer\nimport _ "golang.org/x/mod/module"\n');
-    assert.throws(() => tidyConsumer(prepared), /Consumer module is outside the pinned runtime graph: golang\.org\/x\/mod /);
+    // A warm module cache reaches the graph comparison; a cold one cannot load the
+    // dependencies of the newly required module offline. Both reject the consumer.
+    assert.throws(() => tidyConsumer(prepared), /Consumer module is outside the pinned runtime graph: golang\.org\/x\/mod |module lookup disabled by GOPROXY=off/);
 });
 
 test('every API fragment and every exact allowance rejects a new difference', async () => {
