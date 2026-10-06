@@ -19,6 +19,9 @@ func (r *openAPIRenderer) model(node TypeDescriptor, direction string) (openAPIO
 	case "model":
 		return r.fields(node.Fields, direction, false)
 	case "enum":
+		if node.EnumDomain == "int32-parser" {
+			return nil, fmt.Errorf("Int32 enum parser input semantics are outside checkpoint profile; OpenAPI publication is not supported")
+		}
 		if node.EnumDomain != "open-underlying-integer" || len(node.Members) == 0 || node.Scalar == nil || node.Scalar.Representation != "integer" {
 			return nil, fmt.Errorf("enum requires its open integer domain and declared members")
 		}

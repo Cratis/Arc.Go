@@ -8,12 +8,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"go/constant"
 	"go/types"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/cratis/arc.go/metadata"
+	"github.com/cratis/arc.go/serialization"
 	"github.com/cratis/arc.go/validation"
 )
 
@@ -160,6 +163,13 @@ func buildGraph(analyses []*analysis, profile ApplicationProfile, wire bool) (*G
 		graph.Profile.OpenAPI = &copy
 	}
 	for _, a := range analyses {
+		for _, enum := range a.enums {
+			if enum.d.parse == "int32" {
+				if _, err := int32EnumMembers(enum); err != nil {
+					return nil, diagnostic(a.pkg, enum.pos, "%v", err)
+				}
+			}
+		}
 		if namespace, ok := profile.PackageNamespaces[a.pkg.PkgPath]; ok {
 			a.namespace = namespace
 			a.staticNamespace = true
@@ -302,6 +312,43 @@ func buildGraph(analyses []*analysis, profile ApplicationProfile, wire bool) (*G
 	fingerprint := sha256.Sum256(projection)
 	graph.Fingerprint = hex.EncodeToString(fingerprint[:])
 	return graph, nil
+}
+
+// int32EnumMembers validates the generator-owned parser independently of wire
+// consumers. Parse names are Go constant declarations, never TS export renames.
+func int32EnumMembers(enum *model) (map[string]int32, error) {
+	methods := codecMethodNames(enum.typ)
+	if slices.Contains(methods, "UnmarshalJSON") {
+		return nil, fmt.Errorf("arc:enum parse=int32 owns UnmarshalJSON; remove the hand-written method")
+	}
+	if len(methods) > 0 {
+		return nil, fmt.Errorf("arc:enum parse=int32 cannot be combined with a custom codec (%s)", methods[0])
+	}
+	return int32EnumDeclarationMembers(enum)
+}
+
+func int32EnumDeclarationMembers(enum *model) (map[string]int32, error) {
+	base, ok := enum.typ.Underlying().(*types.Basic)
+	if !ok || base.Kind() != types.Int32 {
+		return nil, fmt.Errorf("arc:enum parse=int32 requires an int32 underlying type")
+	}
+	members := map[string]int32{}
+	scope := enum.typ.Obj().Pkg().Scope()
+	for _, name := range scope.Names() {
+		object, ok := scope.Lookup(name).(*types.Const)
+		if !ok || !types.Identical(object.Type(), enum.typ) {
+			continue
+		}
+		value, fits := constant.Int64Val(object.Val())
+		if !fits || value < -2147483648 || value > 2147483647 {
+			return nil, fmt.Errorf("arc:enum parse=int32 member %s is outside int32", name)
+		}
+		members[name] = int32(value)
+	}
+	if _, err := serialization.NewInt32Enum(members); err != nil {
+		return nil, fmt.Errorf("arc:enum parse=int32: %w", err)
+	}
+	return members, nil
 }
 
 func roles(declarations ...*metadata.Authorization) []string {

@@ -46,6 +46,9 @@ func TestTraversalCodecProductionCLIRefusesBeforeAnyPublication(t *testing.T) {
 				if output, err := cli(check); err != nil {
 					t.Fatalf("seed generation/check=%v: %v\n%s", check, err, output)
 				}
+				if !check {
+					tidyConsumer(t, dir)
+				}
 			}
 			seed := outputInventory(t, dir)
 			adapter, proxy, manifest := false, false, false

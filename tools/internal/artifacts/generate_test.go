@@ -47,10 +47,45 @@ func consumer(t *testing.T) string {
 	put(t, filepath.Join(dir, "go.sum"), string(get(t, "../../go.sum")))
 	return dir
 }
+func tidyConsumer(t *testing.T, dir string) {
+	t.Helper()
+	// Generated adapters can introduce runtime imports absent from authored
+	// inputs. Resolve the independent consumer's graph before loading it again;
+	// do not rely on -mod=mod hiding an untidy manifest during compilation.
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, "go", "mod", "tidy")
+	command.Dir = dir
+	command.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=local")
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("tidy independent consumer: %v\n%s", err, output)
+	}
+}
+
 func generate(t *testing.T, config Config) {
 	t.Helper()
 	if err := Generate(t.Context(), config); err != nil {
 		t.Fatal(err)
+	}
+	if !config.Check {
+		// Keep copied pinned manifests for packages without any runtime imports.
+		// Tidy only after generated adapters have introduced their dependencies.
+		hasAdapter := false
+		if err := filepath.WalkDir(config.Dir, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !entry.IsDir() && filepath.Base(path) == Filename {
+				hasAdapter = true
+				return filepath.SkipAll
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if hasAdapter {
+			tidyConsumer(t, config.Dir)
+		}
 	}
 }
 

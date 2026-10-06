@@ -6,41 +6,53 @@ description: Accept the names, numbers and comma-separated flags that C# Arc cli
 A Go named integer writes and reads plain numbers. C# Arc's JSON configuration is
 more permissive on input: a client may send an enum as its number, its name in any
 letter case, several names separated by commas, or a decimal string. If your Go
-backend must accept the same input, opt a named `int32` type in to
-`serialization.Int32Enum`.
+backend must accept the same input, mark a named `int32` type with
+`//arc:enum parse=int32`. Arc-gen generates its parser declaration and
+`UnmarshalJSON` method over `serialization.NewInt32Enum`.
 
-Status: **Partial**. The parser matches Arc 22.48.2 with Fundamentals 7.19.6
-(`EnumConverter.cs`). The generator does not yet produce it; you write the
-`UnmarshalJSON` method yourself, and arc-gen still refuses such a type as an opaque
-custom codec.
+Status: **Implemented** for the pinned Int32 profile. The parser matches Arc
+22.48.2 with Fundamentals 7.19.6 (`EnumConverter.cs`). Generation supports
+standalone enum packages and imported generator-owned parsers; other backing
+widths and query-string parsing remain unsupported.
 
 ## Opt a type in
 
-This code is from `ExampleInt32Enum` in `serialization/enum_test.go`:
+This excerpt follows the compiled generator consumer in
+`tools/internal/artifacts/testdata/enum`. An enum may live alongside Arc commands
+or read models, or in its own package:
 
 ```go
-type state int32
+//arc:enum parse=int32 members=Read:Reader
+type State int32
 
-var stateCodec, stateCodecError = serialization.NewInt32Enum(map[string]state{"None": 0, "Read": 1, "Write": 4, "Alias": 4})
-
-func (s *state) UnmarshalJSON(data []byte) error {
-    if stateCodecError != nil {
-        return stateCodecError
-    }
-    value, err := stateCodec.ParseJSON(data)
-    if err != nil {
-        return err
-    }
-    *s = value
-    return nil
-}
+const (
+    Zero  State = 0
+    Read  State = 1
+    Write State = 4
+    Alias State = 4
+)
 ```
 
+Run arc-gen in that module to generate `zz_arc_generated.go`. Do not write your
+own `UnmarshalJSON` on an opted-in type: generation diagnoses it before publishing
+anything. Remove the method and regenerate to resolve the conflict. Other custom
+codec methods cannot be combined with this profile either.
+
+An enum-only package emits just the parser and `UnmarshalJSON`, importing only
+`serialization`; it does not declare `ArcBindings` or `RegisterArtifacts`.
+Generate an imported enum package before its consumers. If you add or rename a
+member, regenerate that package too. When TypeScript proxies are generated,
+consumer generation and `-check` refuse a stale imported parse map and name the
+package that needs regeneration. Go-only consumer generation does not check
+imported parse maps: run `arc-gen -check ./access` for an enum in the `access`
+package, or `arc-gen -check ./...` to check all packages in the module.
+
 Reading `{"state":"Read, Write"}` and writing it back produces `{"state":5}`. Run the
-example with:
+generated consumer with:
 
 ```bash
-go test -run ExampleInt32Enum ./serialization
+cd tools
+go test -run '^TestEnumGeneratedConsumerAndStableTypeScript$' ./internal/artifacts
 ```
 
 There is no global registration and no marshal hook: normal encoding already writes
@@ -48,7 +60,9 @@ the number. Declaring constants alone never installs the parser.
 
 `NewInt32Enum` copies the map. Names must be nonempty ASCII identifiers that are
 unique ignoring case; several names may share a value, as `Write` and `Alias` do
-here. Use the **original C# member names**, not renamed TypeScript exports. The
+here. Name Go constants with the **original C# member names**. The `members`
+option renames only TypeScript exports: `Read:Reader` still parses `"Read"`, not
+`"Reader"`. TypeScript output does not change when you enable `parse=int32`. The
 parser is immutable and safe for concurrent use. A nil or zero parser rejects all
 input.
 
@@ -79,12 +93,20 @@ Later Fundamentals versions changed numeric flags admission; this profile does n
 follow them. Ordinary Go integer types keep their open domain, other backing widths
 are unsupported, and query-string binding is not covered.
 
+OpenAPI publication does not yet support this parser's input semantics. Arc-gen
+refuses a document containing a `parse=int32` enum rather than publishing an
+integer-only input schema that rejects valid names and accepts undeclared numbers.
+Go adapters and TypeScript proxies remain supported without OpenAPI output.
+
 ## Evidence
 
 `serialization/enum_test.go` covers declaration validation, copying, zero and nil
 parsers, failure atomicity, null presence, collections and concurrent parsing.
 `ContractTests/EnumContract` compares 65 int32 reads and 8 writes with actual C#
 output captured from the pinned packages, and sends the numeric results through the
-real TypeScript Fundamentals 7.22.0 serializer. See its
+real TypeScript Fundamentals 7.22.0 serializer. The tools generated-consumer test
+also runs all 65 State and Access reads and all 8 writes through generated
+parsers and ordinary Arc serialization, verifies failure preserves the receiver,
+checks enum-only and imported packages, and checks byte-stable TypeScript output. See its
 [fixture README](https://github.com/Cratis/Arc.Go/blob/develop/ContractTests/EnumContract/README.md)
 for the exact profile and the [concepts page](index.md) for other wire values.

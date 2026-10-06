@@ -26,11 +26,15 @@ func servicePublicationConsumer(t *testing.T) func(*testing.T) (string, Config) 
 	generate(t, config)
 	rootOutput := string(get(t, filepath.Join(dir, Filename)))
 	otherOutput := string(get(t, filepath.Join(dir, "other", Filename)))
+	manifest := string(get(t, filepath.Join(dir, "go.mod")))
+	checksums := string(get(t, filepath.Join(dir, "go.sum")))
 	return func(t *testing.T) (string, Config) {
 		t.Helper()
 		dir, config := newConsumer(t)
 		put(t, filepath.Join(dir, Filename), rootOutput)
 		put(t, filepath.Join(dir, "other", Filename), otherOutput)
+		put(t, filepath.Join(dir, "go.mod"), manifest)
+		put(t, filepath.Join(dir, "go.sum"), checksums)
 		return dir, config
 	}
 }

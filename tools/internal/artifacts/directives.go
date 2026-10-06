@@ -23,6 +23,7 @@ type directives struct {
 	severity                                *validation.Severity
 	pos                                     token.Pos
 	flags                                   bool
+	parse                                   string
 	members                                 map[string]string
 	response                                string
 	derivedID, derivedBase, targetInterface string
@@ -65,7 +66,9 @@ func parseDirectives(group *ast.CommentGroup) (directives, error) {
 		case "model":
 			allowed = " name "
 		case "enum":
-			allowed = " name flags members "
+			allowed = " name flags members parse "
+		case "codec":
+			return d, fmt.Errorf("arc:codec is not implemented: complex-key dictionaries, geospatial, Type/Uri, enumerable-model-to-concept")
 		case "derived":
 			allowed = " id base interface "
 		case "query":
@@ -131,6 +134,10 @@ func parseDirectives(group *ast.CommentGroup) (directives, error) {
 			d.name, d.model, d.http = opts["name"], opts["model"], opts["http"]
 			d.path, d.hasPath = opts["path"]
 			d.response = opts["response"]
+			d.parse = opts["parse"]
+			if d.parse != "" && d.parse != "int32" {
+				return d, fmt.Errorf("enum parse must be int32")
+			}
 			if value, supplied := opts["flags"]; supplied {
 				if value != "true" && value != "false" {
 					return d, fmt.Errorf("flags must be true or false")

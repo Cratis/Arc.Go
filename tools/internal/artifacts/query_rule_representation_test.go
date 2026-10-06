@@ -159,6 +159,7 @@ func TestQueryRuleRepresentationProductionCLIRefusesBeforePublication(t *testing
 			if output, err := cli(false); err != nil {
 				t.Fatalf("initial publication: %v\n%s", err, output)
 			}
+			tidyConsumer(t, dir)
 			for _, tc := range []struct{ name, declaration, fieldType, rule string }{
 				{"struct length", "type TextValue struct { Value string }" + queryStringConceptCodecs, "*TextValue", "minLength"},
 				{"struct whitespace", "type TextValue struct { Value string }" + queryStringConceptCodecs, "*TextValue", "notEmpty"},
