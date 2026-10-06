@@ -52,6 +52,13 @@ func emit(a *analysis, services ...*serviceBindingsPlan) ([]byte, error) {
 	e.err = e.unique("arcErr")
 	e.zero = e.unique("arcZero")
 	e.scope = e.unique("arcScope")
+	for _, enum := range a.enums {
+		if enum.d.parse == "int32" {
+			if err := e.emitInt32Enum(enum); err != nil {
+				return nil, diagnostic(a.pkg, enum.pos, "%v", err)
+			}
+		}
+	}
 	e.collectDependencies()
 	e.line("// ArcBindings optionally supplies typed, stage-local dependencies without a container.")
 	e.line("// Nil callbacks use execution.Resolve and declare their exact DI keys at registration.")
@@ -166,6 +173,35 @@ func emit(a *analysis, services ...*serviceBindingsPlan) ([]byte, error) {
 		return nil, fmt.Errorf("format generated %s: %w", a.pkg.PkgPath, err)
 	}
 	return formatted, nil
+}
+
+func (e *emitter) emitInt32Enum(enum *model) error {
+	members, err := int32EnumMembers(enum)
+	if err != nil {
+		return err
+	}
+	codec := e.unique("arc" + enum.typ.Obj().Name() + "Enum")
+	codecError := e.unique(codec + "Error")
+	typ := e.typ(enum.typ)
+	e.line("var %s, %s = %s.NewInt32Enum(map[string]%s{", codec, codecError, e.imp(runtimePath+"/serialization"), typ)
+	names := make([]string, 0, len(members))
+	for name := range members {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		e.line("%q: %s,", name, name)
+	}
+	e.line("})")
+	e.line("// UnmarshalJSON accepts the pinned Arc Int32 enum input profile.")
+	e.line("// Failure preserves the receiver; normal JSON encoding writes numbers.")
+	e.line("func (%s *%s) UnmarshalJSON(data []byte) error {", e.value, typ)
+	e.line("if %s != nil { return %s }", codecError, codecError)
+	e.line("%s, %s := %s.ParseJSON(data)", e.prepared, e.err, codec)
+	e.line("if %s != nil { return %s }", e.err, e.err)
+	e.line("*%s = %s", e.value, e.prepared)
+	e.line("return nil\n}")
+	return nil
 }
 
 func (e *emitter) unique(base string) string {

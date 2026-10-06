@@ -1,5 +1,7 @@
-github.com/cratis/arc.go v0.0.0-20261003142617-78ebbf8fdff8 h1:53X4U05GM5FXuzPmA1c9aOMJuOci4GmckLrM8xOzZxI=
-github.com/cratis/arc.go v0.0.0-20261003142617-78ebbf8fdff8/go.mod h1:sNlv+dPCjq2kSh9Xp0TYBlFx9SUkAv3z4syai6AwLI8=
+github.com/coder/websocket v1.8.15 h1:6B2JPeOGlpff2Uz6vOEH1Vzpi0iUz20A+lPVhPHtNUA=
+github.com/coder/websocket v1.8.15/go.mod h1:NX3SzP+inril6yawo5CQXx8+fk145lPDC6pumgx0mVg=
+github.com/cratis/arc.go v0.0.0-20261006003625-1bc16445f410 h1:S6Lv3KgTns1W2fGdENM2oJy8YSjxFECgxV/q4liLb1Q=
+github.com/cratis/arc.go v0.0.0-20261006003625-1bc16445f410/go.mod h1:sNlv+dPCjq2kSh9Xp0TYBlFx9SUkAv3z4syai6AwLI8=
 github.com/cratis/fundamentals.go v0.2.0 h1:J5aVkRGdrJLA4Ayr1V/YRGs2oK80i346vJUq2gktLFs=
 github.com/cratis/fundamentals.go v0.2.0/go.mod h1:upTRXscJLeH63NqzzY51bPvvsgjtDpfug6a6VAaT2fI=
 github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
