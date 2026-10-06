@@ -37,6 +37,26 @@ export async function prepare() {
     return { consumer, tools, runtime, go: process.env.GO || 'go' };
 }
 
+// A tools-only indirect dependency (golang.org/x/mod today) can itself require an
+// older, already-superseded version of another tools-only module (golang.org/x/tools).
+// That superseded version's go.mod is never fetched while building the tools module
+// itself, because the main module's own go.mod already pins the winning version and
+// Go's module-graph pruning never needs to expand past it. But once "go mod tidy" on a
+// consumer drops the winning direct dependency (nothing in the consumer imports it) and
+// keeps only the indirect one, listing the consumer's module graph needs that superseded
+// go.mod after all. Probe for every indirect dependency while still online so the later
+// offline tidy/list never hits GOPROXY=off for a module it does not even know by name.
+async function warmPrunedIndirectGraph({ tools, go }, scratch, remainingTimeout) {
+    const manifest = await readFile(join(tools, 'go.mod'), 'utf8');
+    const indirect = [...manifest.matchAll(/^\s*(\S+)\s+(\S+)\s*\/\/\s*indirect\s*$/gm)];
+    if (indirect.length === 0) return;
+    const probe = join(scratch, 'probe.mod');
+    await writeFile(probe, `module example.test/pruned-graph-probe\n\ngo 1.26.0\n\nrequire (\n${
+        indirect.map(([, path, version]) => `\t${path} ${version}`).join('\n')}\n)\n`);
+    const env = { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local', GOFLAGS: '-mod=mod' };
+    run(go, ['list', '-m', '-modfile', probe, 'all'], tools, env, remainingTimeout());
+}
+
 export function tidyConsumer({ consumer, runtime, go }, remainingTimeout = () => 60000) {
     const env = { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local', GOPROXY: 'off', GONOPROXY: 'none', GOFLAGS: '-mod=mod' };
     const format = '{{if not .Main}}{{.Path}} {{.Version}}{{if .Replace}} => {{.Replace.Path}} {{.Replace.Version}}{{end}}{{end}}';
@@ -68,6 +88,7 @@ export async function generate(timeout) {
     const env = { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local' };
     // Download the full pinned graph, including runtime packages arc-gen does not import.
     run(go, ['mod', 'download', '-modfile', join(consumer, 'download.mod'), 'all'], tools, env, remainingTimeout());
+    await warmPrunedIndirectGraph(prepared, consumer, remainingTimeout);
     run(go, ['run', './cmd/arc-gen', '-dir', consumer, '-config', join(consumer, 'profile.json'), '.'], tools, env, remainingTimeout());
     // Generated adapters may import more runtime packages, but never another module or version.
     tidyConsumer(prepared, remainingTimeout);

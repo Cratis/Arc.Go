@@ -60,17 +60,17 @@ function recordGenerationSteps(t, elapsedPerStep = 0) {
 test('ordinary generation retains a 60-second timeout for every Go step', async t => {
     const calls = recordGenerationSteps(t);
     await generate();
-    assert.deepEqual(calls.map(call => call.timeout), Array(7).fill(60000));
+    assert.deepEqual(calls.map(call => call.timeout), Array(8).fill(60000));
 });
 
 test('cold generation passes the remaining shared budget to download, generation, tidy and list', async t => {
     const calls = recordGenerationSteps(t, 25000);
     await generate(180000);
     assert.deepEqual(calls.map(call => call.args.slice(0, 2)), [
-        ['mod', 'download'], ['run', './cmd/arc-gen'], ['mod', 'tidy'], ['list', '-m'],
+        ['mod', 'download'], ['list', '-m'], ['run', './cmd/arc-gen'], ['mod', 'tidy'], ['list', '-m'],
         ['mod', 'tidy'], ['list', '-m'], ['run', './cmd/arc-gen']
     ]);
-    assert.deepEqual(calls.map(call => call.timeout), [180000, 155000, 130000, 105000, 80000, 55000, 30000]);
+    assert.deepEqual(calls.map(call => call.timeout), [180000, 155000, 130000, 105000, 80000, 55000, 30000, 5000]);
 });
 
 test('an exhausted generation deadline starts no further Go subprocess', async t => {
@@ -94,7 +94,7 @@ test('a timed-out generation step starts no further Go subprocess', async t => {
         syncBuiltinESMExports();
     });
     await assert.rejects(generate(180000), /ETIMEDOUT/);
-    assert.deepEqual(calls, [['mod', 'download'], ['run', './cmd/arc-gen']]);
+    assert.deepEqual(calls, [['mod', 'download'], ['list', '-m']]);
 });
 
 // This fake Go has no descendants: the test proves only direct-child reaping,
@@ -157,9 +157,7 @@ test('consumer tidy rejects an out-of-graph import even when it resolves offline
 test('consumer tidy rejects a tooling-only dependency already present in the pinned tools graph', async () => {
     const prepared = await prepare();
     await writeFile(join(prepared.consumer, 'unexpected.go'), 'package consumer\nimport _ "golang.org/x/mod/module"\n');
-    // A warm module cache reaches the graph comparison; a cold one cannot load the
-    // dependencies of the newly required module offline. Both reject the consumer.
-    assert.throws(() => tidyConsumer(prepared), /Consumer module is outside the pinned runtime graph: golang\.org\/x\/mod |module lookup disabled by GOPROXY=off/);
+    assert.throws(() => tidyConsumer(prepared), /Consumer module is outside the pinned runtime graph: golang\.org\/x\/mod /);
 });
 
 test('every API fragment and every exact allowance rejects a new difference', async () => {
