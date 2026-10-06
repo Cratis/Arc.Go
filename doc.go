@@ -19,7 +19,7 @@
 // HTTP CQRS does not require event sourcing.
 //
 // Code generation, Chronicle and MongoDB live in separate nested modules that are
-// not part of this module and are versioned on their own:
+// not part of this module and are not yet released:
 // github.com/cratis/arc.go/tools provides arc-gen, which emits registration
 // adapters, TypeScript proxies, OpenAPI documents and Screenplay output, and
 // github.com/cratis/arc.go/integrations/chronicle and

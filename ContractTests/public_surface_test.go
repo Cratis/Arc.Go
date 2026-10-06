@@ -4,6 +4,8 @@
 package contracttests_test
 
 import (
+	"go/parser"
+	"go/token"
 	"io/fs"
 	"os"
 	"path"
@@ -28,6 +30,17 @@ func TestFixturePackagesStayOutOfThePublicAPI(t *testing.T) {
 				return fs.SkipDir
 			}
 			return nil
+		}
+		// Source comments and fixture instructions must name the internal host too.
+		switch path.Ext(name) {
+		case ".go", ".md", ".mjs":
+			content, err := os.ReadFile(name)
+			if err != nil {
+				return err
+			}
+			if strings.Contains(string(content), path.Join("ContractTests", "taskboard", "host")) {
+				t.Errorf("%s still refers to the old taskboard host path; use ContractTests/internal/taskboard/host", name)
+			}
 		}
 		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
 			return nil
@@ -54,4 +67,29 @@ func TestFixturePackagesStayOutOfThePublicAPI(t *testing.T) {
 			t.Errorf("fixture package %s is missing; found %v", want, internal)
 		}
 	}
+}
+
+func TestPackageOverviewIdentifiesUnreleasedNestedModules(t *testing.T) {
+	file, err := parser.ParseFile(token.NewFileSet(), "../doc.go", nil, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if file.Doc == nil {
+		t.Fatal("root package overview is missing")
+	}
+	for _, paragraph := range strings.Split(file.Doc.Text(), "\n\n") {
+		if !strings.Contains(paragraph, "separate nested modules") {
+			continue
+		}
+		if !strings.Contains(paragraph, "not yet released") {
+			t.Error("nested modules must be identified as not yet released in the package overview")
+		}
+		for _, module := range []string{"tools", "integrations/chronicle", "integrations/mongodb"} {
+			if !strings.Contains(paragraph, "github.com/cratis/arc.go/"+module) {
+				t.Errorf("nested module %s is missing from the release-status paragraph", module)
+			}
+		}
+		return
+	}
+	t.Fatal("root package overview does not explain the separate nested modules")
 }
