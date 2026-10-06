@@ -8,6 +8,7 @@ package integration_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -59,7 +60,7 @@ func TestOneModelProjectsAndServesArcNamespaceQuery(t *testing.T) {
 			require(t, err)
 			logInventorySetup(t, store)
 			defer func() {
-				if t.Failed() {
+				if t.Failed() || t.Skipped() {
 					diagnoseInventory(t, ctx, store, model)
 				}
 			}()
@@ -112,9 +113,11 @@ func TestOneModelProjectsAndServesArcNamespaceQuery(t *testing.T) {
 }
 
 // awaitInventoryOrKnownStall waits for the projected inventory. On timeout it
-// fails, except in the freshly ensured TenantB namespace where the upstream
-// kernel strand (Chronicle#4548) is skipped when the projection observer is
-// active, subscribed, behind a known tail and has no failed partitions.
+// fails, except in the freshly ensured TenantB namespace where two upstream
+// kernel defects are skipped for an active, subscribed projection observer with
+// no failed partitions: the strand (Chronicle#4548), where the observer stays
+// behind a known tail, and the skipped event (Chronicle#4583), where the
+// observer advanced past the event but the read model was never written for it.
 func awaitInventoryOrKnownStall(t *testing.T, ctx context.Context, store *chronicle.EventStore, model readmodels.Model[sharedmodel.Inventory], reader *readmodels.Reader[sharedmodel.Inventory], want sharedmodel.Inventory, position *events.SequenceNumber, namespace string) {
 	t.Helper()
 	materialized, waitElapsed := awaitInventory(t, ctx, reader, want)
@@ -134,12 +137,35 @@ func awaitInventoryOrKnownStall(t *testing.T, ctx context.Context, store *chroni
 		}
 		stall, evidence := observeStall(t, ctx, store, observation.ID(projection.Identifier()), projection.EventSequence(), *position, 0, waitElapsed, failure)
 		if stall.matchesChronicle4548() {
-			knownKernelDefectObserved(t, chronicle4548+": catch-up job reuse strands observers in a freshly ensured namespace; re-enable with https://github.com/Cratis/Arc.Go/issues/43", failure, evidence)
+			knownKernelDefectObserved(t, chronicle4548+": catch-up job reuse strands observers in a freshly ensured namespace; re-enable with "+projectionStrandIssue, failure, evidence)
+			return
+		}
+		lag, evidence := observeProjectionLag(t, ctx, reader, stall, evidence, failure)
+		if lag.matchesChronicle4583() {
+			knownKernelDefectObserved(t, chronicle4583+": catch-up advanced the projection observer past an event it never projected; re-enable with "+projectionStrandIssue, failure, evidence)
 			return
 		}
 		t.Fatal(failure, evidence)
 	}
 	t.Fatal(failure, "; projection for the model not registered")
+}
+
+// observeProjectionLag reads the read model after the projection observer
+// state, so a stale model is compared with a position the observer already
+// reported, and fails the test when the model is unreadable.
+func observeProjectionLag(t *testing.T, parent context.Context, reader *readmodels.Reader[sharedmodel.Inventory], stall reactorStall, evidence, failure string) (projectionLag, string) {
+	t.Helper()
+	read, cancel := context.WithTimeout(context.WithoutCancel(parent), 5*time.Second)
+	defer cancel()
+	instance, err := reader.Get(read, "item-1")
+	if err != nil {
+		t.Fatal(failure, evidence, "; read model unavailable:", err)
+	}
+	lag := projectionLag{Observer: stall, ModelExists: instance.Exists, ModelLastHandled: unavailable}
+	if instance.LastHandled != nil {
+		lag.ModelLastHandled = uint64(*instance.LastHandled)
+	}
+	return lag, fmt.Sprintf("%s model exists=%t LastHandled=%s value=%+v note=%s", evidence, instance.Exists, diagnosticValue(instance.LastHandled), instance.Value, diagnosticValue(instance.Value.Note))
 }
 
 // awaitInventory reports whether want materialized and whether the full

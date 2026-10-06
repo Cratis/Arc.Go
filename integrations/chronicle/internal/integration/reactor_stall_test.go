@@ -60,8 +60,8 @@ type reactorStall struct {
 	UnresolvedFailures int
 	// Active and Subscribed report the kernel's observer state.
 	Active, Subscribed bool
-	// LastHandled and Tail are the observer's kernel sequence numbers.
-	LastHandled, Tail uint64
+	// LastHandled, Next and Tail are the observer's kernel sequence numbers.
+	LastHandled, Next, Tail uint64
 }
 
 // matchesChronicle4548 reports whether a stall is the kernel strand from
@@ -82,6 +82,60 @@ func (s reactorStall) matchesChronicle4548() bool {
 	behind := s.LastHandled == unavailable || s.LastHandled < s.Position
 	known := s.Tail != unavailable && s.Tail >= s.Position
 	return s.WaitElapsed && s.Delivered == 0 && s.UnresolvedFailures == 0 && s.Active && s.Subscribed && behind && known
+}
+
+// matchesChronicle4548FrozenTail reports whether a reactor stall is the
+// Chronicle#4548 strand observed after its tail froze: the same idle, active,
+// subscribed observer with no delivery and no failure, but whose own tail is
+// below the event because the strand began before the event was appended.
+//
+// Kernel evidence (19.32.1, Observation debug logging, 2 of 80 runs): in both
+// failures the reactor's catch-up job completed, the observer routed back into
+// catch-up, logged "Found already running job" for the finishing job, and logged
+// nothing further for that observer, which is the #4548 finishing-job reuse.
+// The stranded observer stays in its catch-up state, so later appends never
+// update its tail; it reported Next == Tail == 1 and LastHandled 0 while the
+// event was at position 2. The variant requires Next == Tail so an observer that
+// knows of events it has not processed, or that has moved past its tail, is not
+// mistaken for this strand. It applies to reactors only: projections have not
+// shown it.
+func (s reactorStall) matchesChronicle4548FrozenTail() bool {
+	behind := s.LastHandled == unavailable || s.LastHandled < s.Position
+	frozen := s.Tail != unavailable && s.Tail < s.Position && s.Next == s.Tail
+	return s.WaitElapsed && s.Delivered == 0 && s.UnresolvedFailures == 0 && s.Active && s.Subscribed && behind && frozen
+}
+
+// projectionLag is the observable state of a projection whose read model did
+// not reach the expected value before its deadline.
+type projectionLag struct {
+	// Observer is the projection observer's kernel state; Delivered is always zero.
+	Observer reactorStall
+	// ModelExists reports whether the read-model instance exists.
+	ModelExists bool
+	// ModelLastHandled is the instance's reported position, unavailable when absent.
+	ModelLastHandled uint64
+}
+
+// matchesChronicle4583 reports whether a projection lag is the kernel skip from
+// https://github.com/Cratis/Chronicle/issues/4583: after the full polling window
+// the active, subscribed projection observer reports having handled the event
+// (LastHandled at or past it, Next beyond it, the event within its tail) with no
+// failed partition, yet the read model was never written for it. Catch-up moved
+// the observer-wide position past an event its partition never handled.
+//
+// The read model must exist with a reported position below the event, or not
+// exist at all; an instance at or past the event with the wrong value is a
+// projection defect, and one without a reported position is not evidence of
+// the skip. Kernel evidence (19.32.1): after the observer handled sequence 0,
+// an append at 1 made Observing detect missed events and start a catch-up job
+// from 1; that job completed without a step for the item-1 partition and the
+// observer advanced to Next 2 while the read model stayed at LastHandled 0.
+func (p projectionLag) matchesChronicle4583() bool {
+	o := p.Observer
+	advanced := o.LastHandled != unavailable && o.LastHandled >= o.Position && o.Next != unavailable && o.Next > o.Position
+	known := o.Tail != unavailable && o.Tail >= o.Position
+	stale := !p.ModelExists || (p.ModelLastHandled != unavailable && p.ModelLastHandled < o.Position)
+	return o.WaitElapsed && o.Delivered == 0 && o.UnresolvedFailures == 0 && o.Active && o.Subscribed && advanced && known && stale
 }
 
 func TestReactorStallMatchesChronicle4548OnlyForTheKernelStrand(t *testing.T) {
@@ -105,11 +159,89 @@ func TestReactorStallMatchesChronicle4548OnlyForTheKernelStrand(t *testing.T) {
 		{"observer advanced", func(s reactorStall) reactorStall { s.LastHandled = 2; return s }, false},
 		{"event unknown to observer", func(s reactorStall) reactorStall { s.Tail = 1; return s }, false},
 		{"tail unavailable", func(s reactorStall) reactorStall { s.Tail = unavailable; return s }, false},
+		{"frozen tail below the event", func(s reactorStall) reactorStall { s.Tail, s.Next = 1, 1; return s }, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			if got := c.stall(stranded).matchesChronicle4548(); got != c.want {
 				t.Fatalf("matchesChronicle4548() = %t, want %t for %+v", got, c.want, c.stall(stranded))
+			}
+		})
+	}
+}
+
+func TestReactorStallMatchesChronicle4548FrozenTailOnlyForTheStrandedTail(t *testing.T) {
+	// The state captured from a local 19.32.1 repro of the stranded reactor.
+	frozen := reactorStall{WaitElapsed: true, Position: 2, Active: true, Subscribed: true, LastHandled: 0, Next: 1, Tail: 1}
+	cases := []struct {
+		name  string
+		stall func(reactorStall) reactorStall
+		want  bool
+	}{
+		{"tail frozen below the event", func(s reactorStall) reactorStall { return s }, true},
+		{"nothing handled yet", func(s reactorStall) reactorStall { s.LastHandled = unavailable; return s }, true},
+		{"parent context exhausted", func(s reactorStall) reactorStall { s.WaitElapsed = false; return s }, false},
+		{"delivered to Arc", func(s reactorStall) reactorStall { s.Delivered = 1; return s }, false},
+		{"failure recorded", func(s reactorStall) reactorStall { s.UnresolvedFailures = 1; return s }, false},
+		{"observer inactive", func(s reactorStall) reactorStall { s.Active = false; return s }, false},
+		{"client unsubscribed", func(s reactorStall) reactorStall { s.Subscribed = false; return s }, false},
+		{"observer advanced", func(s reactorStall) reactorStall { s.LastHandled = 2; return s }, false},
+		{"tail unavailable", func(s reactorStall) reactorStall { s.Tail = unavailable; return s }, false},
+		{"next behind the tail", func(s reactorStall) reactorStall { s.Next = 0; return s }, false},
+		{"next past the tail", func(s reactorStall) reactorStall { s.Next = 2; return s }, false},
+		{"tail reaches the event", func(s reactorStall) reactorStall { s.Tail, s.Next = 2, 2; return s }, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := c.stall(frozen).matchesChronicle4548FrozenTail(); got != c.want {
+				t.Fatalf("matchesChronicle4548FrozenTail() = %t, want %t for %+v", got, c.want, c.stall(frozen))
+			}
+		})
+	}
+}
+
+func TestProjectionLagMatchesChronicle4583OnlyForTheSkippedEvent(t *testing.T) {
+	// The state captured from a local 19.32.1 repro of the skipped event.
+	skipped := projectionLag{
+		Observer:    reactorStall{WaitElapsed: true, Position: 1, Active: true, Subscribed: true, LastHandled: 1, Next: 2, Tail: 1},
+		ModelExists: true, ModelLastHandled: 0,
+	}
+	cases := []struct {
+		name string
+		lag  func(projectionLag) projectionLag
+		want bool
+	}{
+		{"read model behind the handled event", func(p projectionLag) projectionLag { return p }, true},
+		{"read model never written", func(p projectionLag) projectionLag {
+			p.ModelExists, p.ModelLastHandled = false, unavailable
+			return p
+		}, true},
+		{"observer past the event", func(p projectionLag) projectionLag {
+			p.Observer.LastHandled, p.Observer.Next, p.Observer.Tail = 3, 4, 3
+			return p
+		}, true},
+		{"parent context exhausted", func(p projectionLag) projectionLag { p.Observer.WaitElapsed = false; return p }, false},
+		{"failure recorded", func(p projectionLag) projectionLag { p.Observer.UnresolvedFailures = 1; return p }, false},
+		{"delivery counted", func(p projectionLag) projectionLag { p.Observer.Delivered = 1; return p }, false},
+		{"observer inactive", func(p projectionLag) projectionLag { p.Observer.Active = false; return p }, false},
+		{"observer unsubscribed", func(p projectionLag) projectionLag { p.Observer.Subscribed = false; return p }, false},
+		{"observer behind the event (Chronicle#4548)", func(p projectionLag) projectionLag {
+			p.Observer.LastHandled, p.Observer.Next = 0, 1
+			return p
+		}, false},
+		{"nothing handled", func(p projectionLag) projectionLag { p.Observer.LastHandled = unavailable; return p }, false},
+		{"next not past the event", func(p projectionLag) projectionLag { p.Observer.Next = 1; return p }, false},
+		{"next unavailable", func(p projectionLag) projectionLag { p.Observer.Next = unavailable; return p }, false},
+		{"tail below the event", func(p projectionLag) projectionLag { p.Observer.Tail = 0; return p }, false},
+		{"tail unavailable", func(p projectionLag) projectionLag { p.Observer.Tail = unavailable; return p }, false},
+		{"read model at the event with the wrong value", func(p projectionLag) projectionLag { p.ModelLastHandled = 1; return p }, false},
+		{"read model past the event", func(p projectionLag) projectionLag { p.ModelLastHandled = 2; return p }, false},
+		{"read model without a reported position", func(p projectionLag) projectionLag { p.ModelLastHandled = unavailable; return p }, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := c.lag(skipped).matchesChronicle4583(); got != c.want {
+				t.Fatalf("matchesChronicle4583() = %t, want %t for %+v", got, c.want, c.lag(skipped))
 			}
 		})
 	}

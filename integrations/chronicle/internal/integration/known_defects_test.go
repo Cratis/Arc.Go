@@ -19,6 +19,14 @@ const runKnownFlakesEnv = "ARC_CHRONICLE_RUN_KNOWN_FLAKES"
 // is reused and strands an observer behind the event-log tail.
 const chronicle4548 = "known upstream kernel defect https://github.com/Cratis/Chronicle/issues/4548"
 
+// chronicle4583 names the upstream kernel defect where observer-wide catch-up
+// progress moves past an event its partition never handled.
+const chronicle4583 = "known upstream kernel defect https://github.com/Cratis/Chronicle/issues/4583"
+
+// projectionStrandIssue tracks re-enabling the shared-model kernel contract
+// once the Chronicle#4548 and Chronicle#4583 fixes ship.
+const projectionStrandIssue = "https://github.com/Cratis/Arc.Go/issues/43"
+
 // reactorStrandIssue tracks re-enabling the reactor kernel contract once the
 // Chronicle#4548 fix ships.
 const reactorStrandIssue = "https://github.com/Cratis/Arc.Go/issues/44"
