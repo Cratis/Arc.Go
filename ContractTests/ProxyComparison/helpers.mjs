@@ -3,13 +3,48 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { chmodSync, lstatSync, mkdtempSync, readdirSync, realpathSync, rmSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { basename, dirname, join, resolve, sep } from 'node:path';
 
 export const directory = import.meta.dirname;
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
+const moduleCachePrefix = 'arc-go-proxy-test-module-cache-';
+const ownedModuleCaches = new Set();
+
+export function createModuleCache() {
+    const cache = mkdtempSync(join(realpathSync(tmpdir()), moduleCachePrefix));
+    ownedModuleCaches.add(cache);
+    return cache;
+}
+
+export function removeModuleCache(cache) {
+    const path = resolve(cache);
+    const temporaryRoot = realpathSync(tmpdir());
+    assert.ok(path.startsWith(temporaryRoot + sep) && dirname(path) === temporaryRoot &&
+        basename(path).startsWith(moduleCachePrefix) && ownedModuleCaches.has(path),
+        'Refusing to remove a directory outside the owned test temp module cache');
+    assert.equal(realpathSync(path), path, 'Refusing to remove a redirected test module cache');
+    const makeWritable = entry => {
+        const stat = lstatSync(entry);
+        // Never follow module-cache symlinks into another directory or chmod their targets.
+        if (stat.isSymbolicLink()) return;
+        chmodSync(entry, stat.mode | 0o200);
+        if (stat.isDirectory()) {
+            for (const name of readdirSync(entry)) makeWritable(join(entry, name));
+        }
+    };
+    makeWritable(path);
+    rmSync(path, { recursive: true });
+    ownedModuleCaches.delete(path);
+}
+
 export function run(command, args, cwd = directory, env = process.env, timeout = 60000) {
+    // GO may name an arbitrary wrapper; block clean even for overridden executables
+    // and Go's global flags. Cache cleanup must use the owned-directory helper.
+    assert.ok(!args.includes('clean'), 'Refusing to run go clean in proxy comparison tests');
     const child = spawnSync(command, args, { cwd, env, encoding: 'utf8', timeout, maxBuffer: 10 * 1024 * 1024 });
     assert.equal(child.error, undefined, child.error?.message);
     assert.equal(child.status, 0, `${command} ${args.join(' ')}\n${child.stdout}\n${child.stderr}`);

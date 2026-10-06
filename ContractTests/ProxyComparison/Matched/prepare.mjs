@@ -6,7 +6,8 @@ import { join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { directory, run } from '../helpers.mjs';
 
-export async function prepare() {
+export async function prepare(baseEnv = process.env) {
+    const env = { ...baseEnv, GOWORK: 'off', GOTOOLCHAIN: 'local' };
     const root = resolve(directory, '../..');
     const scratch = process.env.AI_WORK_OUTPUT || join(root, '.ai-work/proxy-comparison');
     await mkdir(scratch, { recursive: true });
@@ -34,11 +35,11 @@ export async function prepare() {
     await writeFile(join(runtime, 'observable.go'), await readFile(join(consumer, 'observable.go')));
     // Include the adapter's runtime entry point while preserving the authored input's pins.
     await writeFile(join(runtime, 'runtime.go'), 'package consumer\nimport _ "github.com/cratis/arc.go"\n');
-    return { consumer, tools, runtime, go: process.env.GO || 'go' };
+    return { consumer, tools, runtime, go: env.GO || 'go', env };
 }
 
-export function tidyConsumer({ consumer, runtime, go }, remainingTimeout = () => 60000) {
-    const env = { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local', GOPROXY: 'off', GONOPROXY: 'none', GOFLAGS: '-mod=mod' };
+export function tidyConsumer({ consumer, runtime, go, env: baseEnv }, remainingTimeout = () => 60000) {
+    const env = { ...baseEnv, GOPROXY: 'off', GONOPROXY: 'none', GOFLAGS: '-mod=mod' };
     const format = '{{if not .Main}}{{.Path}} {{.Version}}{{if .Replace}} => {{.Replace.Path}} {{.Replace.Version}}{{end}}{{end}}';
     const graph = cwd => run(go, ['list', '-m', '-f', format, 'all'], cwd, { ...env, GOFLAGS: '-mod=readonly' }, remainingTimeout())
         .split('\n').map(line => line.trim()).filter(Boolean);
@@ -52,7 +53,7 @@ export function tidyConsumer({ consumer, runtime, go }, remainingTimeout = () =>
     }
 }
 
-export async function generate(timeout) {
+export async function generate(timeout, baseEnv = process.env) {
     assert.ok(timeout === undefined || (Number.isSafeInteger(timeout) && timeout > 0), 'Generation timeout must be a positive integer in milliseconds');
     const deadline = timeout === undefined ? undefined : performance.now() + timeout;
     // A single cold-cache budget prevents sequential steps from outliving the outer process.
@@ -63,9 +64,8 @@ export async function generate(timeout) {
         assert.ok(remaining > 0, 'Proxy generation deadline exceeded before starting the next Go step');
         return remaining;
     };
-    const prepared = await prepare();
-    const { consumer, tools, go } = prepared;
-    const env = { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local' };
+    const prepared = await prepare(baseEnv);
+    const { consumer, tools, go, env } = prepared;
     // Download the full pinned graph, including runtime packages arc-gen does not import.
     run(go, ['mod', 'download', '-modfile', join(consumer, 'download.mod'), 'all'], tools, env, remainingTimeout());
     run(go, ['run', './cmd/arc-gen', '-dir', consumer, '-config', join(consumer, 'profile.json'), '.'], tools, env, remainingTimeout());
