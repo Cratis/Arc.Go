@@ -27,6 +27,8 @@ export async function generate() {
     const { consumer, tools, go } = await prepare();
     const env = { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local' };
     run(go, ['run', './cmd/arc-gen', '-dir', consumer, '-config', join(consumer, 'profile.json'), '.'], tools, env);
+    // Generated adapters can import runtime packages absent from the authored input; resolve them before verification.
+    run(go, ['mod', 'tidy'], consumer, env);
     // -check is production CLI verification, not a comparison with hand-written Go output.
     run(go, ['run', './cmd/arc-gen', '-dir', consumer, '-config', join(consumer, 'profile.json'), '-check', '.'], tools, env);
     return join(consumer, 'web');
