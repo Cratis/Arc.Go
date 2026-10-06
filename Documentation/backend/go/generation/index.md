@@ -143,7 +143,7 @@ not a duplicate generated validator.
 
 ## Check a working example
 
-The checked-in [consumer declarations](../../../../ContractTests/generatedconsumer/artifacts.go)
+The checked-in [consumer declarations](../../../../ContractTests/internal/generatedconsumer/artifacts.go)
 and [pipeline tests](../../../../ContractTests/generated_adapters_test.go) exercise
 both authoring forms, plain bindings, and the Fundamentals container. From the
 repository root:

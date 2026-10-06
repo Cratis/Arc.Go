@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	arc "github.com/cratis/arc.go"
-	fixture "github.com/cratis/arc.go/ContractTests/generatedconsumer"
+	fixture "github.com/cratis/arc.go/ContractTests/internal/generatedconsumer"
 	"github.com/cratis/arc.go/commands"
 	"github.com/cratis/arc.go/execution"
 	"github.com/cratis/arc.go/identity"

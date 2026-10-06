@@ -6,7 +6,7 @@ package contracttests_test
 import (
 	"testing"
 
-	"github.com/cratis/arc.go/ContractTests/taskboard"
+	"github.com/cratis/arc.go/ContractTests/internal/taskboard"
 	"github.com/cratis/arc.go/arctest"
 	"github.com/cratis/arc.go/queries"
 )

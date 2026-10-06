@@ -97,12 +97,13 @@ func TestProductionCLIObservableMixedFamilyPublication(t *testing.T) {
 }
 
 func TestProductionCLIRealClientFixtureIndependentConsumption(t *testing.T) {
-	fixture := filepath.Join("..", "..", "..", "ContractTests", "observables")
+	fixture := filepath.Join("..", "..", "..", "ContractTests", "internal", "observables")
+	frontend := filepath.Join("..", "..", "..", "ContractTests", "observables", "frontend")
 	dir := consumer(t) // Released Fundamentals and pushed Arc pins; no workspace/replace.
 	put(t, filepath.Join(dir, "generatedconsumerfixture", "model.go"), string(get(t, filepath.Join(fixture, "generatedconsumerfixture", "model.go"))))
 	for _, file := range []string{"fixture.go", "signals.go", "fixture_test.go"} {
 		input := string(get(t, filepath.Join(fixture, "clientfixture", file)))
-		input = strings.ReplaceAll(input, "github.com/cratis/arc.go/ContractTests/observables/", "example.test/consumer/")
+		input = strings.ReplaceAll(input, "github.com/cratis/arc.go/ContractTests/internal/observables/", "example.test/consumer/")
 		put(t, filepath.Join(dir, "clientfixture", file), input)
 	}
 	cli := func(check bool) {
@@ -125,7 +126,7 @@ func TestProductionCLIRealClientFixtureIndependentConsumption(t *testing.T) {
 	cli(true)
 	assertOutputInventory(t, dir, before)
 	for _, file := range []string{"All.ts", "Private.ts", "Item.ts", "index.ts"} {
-		if !bytes.Equal(get(t, filepath.Join(dir, "web", "Contracts", "Items", file)), get(t, filepath.Join(fixture, "frontend", "Generated", "Contracts", "Items", file))) {
+		if !bytes.Equal(get(t, filepath.Join(dir, "web", "Contracts", "Items", file)), get(t, filepath.Join(frontend, "Generated", "Contracts", "Items", file))) {
 			t.Fatalf("checked client fixture differs from production CLI: %s", file)
 		}
 	}

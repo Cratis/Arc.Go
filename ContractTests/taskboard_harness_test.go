@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cratis/arc.go/ContractTests/taskboard"
+	"github.com/cratis/arc.go/ContractTests/internal/taskboard"
 )
 
 func TestConformanceGateRejectsVacuousCaseSelection(t *testing.T) {

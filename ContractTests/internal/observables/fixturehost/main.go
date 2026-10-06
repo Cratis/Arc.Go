@@ -14,7 +14,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/cratis/arc.go/ContractTests/observables/clientfixture"
+	"github.com/cratis/arc.go/ContractTests/internal/observables/clientfixture"
 )
 
 func main() {

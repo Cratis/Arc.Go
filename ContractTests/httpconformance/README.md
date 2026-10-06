@@ -61,7 +61,7 @@ per-query `WithRenderer`. Ordinary lists remain the unpaged control.
 
 ## Corpus and comparison
 
-`corpus.go` fixes 14 named groups and 36 requests, each executed against both
+`corpus_test.go` fixes 14 named groups and 36 requests, each executed against both
 hosts. Every group includes GET and QUERY. The corpus covers baselines, ordinary
 list paging, count-before-window ascending/descending sorting, empty selection,
 out-of-range pages, scalar binding, missing/empty/null defaults, malformed page

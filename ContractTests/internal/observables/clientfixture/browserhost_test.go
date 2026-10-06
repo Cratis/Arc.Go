@@ -16,7 +16,7 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/cratis/arc.go/ContractTests/observables/clientfixture"
+	"github.com/cratis/arc.go/ContractTests/internal/observables/clientfixture"
 )
 
 func TestBrowserHostRequiresListenerAndReport(t *testing.T) {

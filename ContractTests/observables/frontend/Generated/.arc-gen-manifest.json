@@ -1,13 +1,13 @@
 {
   "format": 1,
   "owner": "adapter-only",
-  "scope": "9b855e9df65a7e36000c591e21ebe3da0ad0e49a31ae4f662b3fef1d0c67ffc0",
-  "fingerprint": "9aea1d313e25f4861e72e26768d7f9c395b1a50bf1f8eb8a19a22f8d25cfff93",
+  "scope": "d01a6aa35e4bc86761814d8ce6b83ae811848357b4ada78e7ec8541808d9c76d",
+  "fingerprint": "64588544882a14a771dce5d112ce9dd055e4a86060d45ff2d17097daa7331846",
   "files": [
     {
       "root": "go",
-      "path": "ContractTests/observables/generatedconsumerfixture/zz_arc_generated.go",
-      "hash": "36940dc83bdc09665ad8e4e90a6a59e4e17447940fe4bfd01e6cc345058977a6"
+      "path": "ContractTests/internal/observables/generatedconsumerfixture/zz_arc_generated.go",
+      "hash": "57cdf12d7018e87ca2b07d4f262b8e132b6a80f8e36d18b14ae333f4f11d7c88"
     },
     {
       "root": "ts",

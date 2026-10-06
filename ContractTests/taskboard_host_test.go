@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cratis/arc.go/ContractTests/taskboard"
+	"github.com/cratis/arc.go/ContractTests/internal/taskboard"
 )
 
 func TestTaskBoardHTTPConformance(t *testing.T) {
@@ -56,7 +56,7 @@ func TestTaskBoardHTTPConformance(t *testing.T) {
 
 // Reusing the compiled test executable avoids nested go builds and ensures the
 // child is race-instrumented in the race lane. It calls the exact host function
-// used by ContractTests/taskboard/host, not a handwritten test HTTP handler.
+// used by ContractTests/internal/taskboard/host, not a handwritten test HTTP handler.
 func TestTaskBoardHostChild(t *testing.T) {
 	if os.Getenv("ARC_GO_TASKBOARD_CHILD") != "1" {
 		return
