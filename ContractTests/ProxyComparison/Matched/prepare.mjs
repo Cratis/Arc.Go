@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { directory, run } from '../helpers.mjs';
 
 export async function prepare() {
@@ -36,33 +37,46 @@ export async function prepare() {
     return { consumer, tools, runtime, go: process.env.GO || 'go' };
 }
 
-export function tidyConsumer({ consumer, runtime, go }) {
+export function tidyConsumer({ consumer, runtime, go }, remainingTimeout = () => 60000) {
     const env = { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local', GOPROXY: 'off', GONOPROXY: 'none', GOFLAGS: '-mod=mod' };
     const format = '{{if not .Main}}{{.Path}} {{.Version}}{{if .Replace}} => {{.Replace.Path}} {{.Replace.Version}}{{end}}{{end}}';
-    const graph = cwd => run(go, ['list', '-m', '-f', format, 'all'], cwd, { ...env, GOFLAGS: '-mod=readonly' })
+    const graph = cwd => run(go, ['list', '-m', '-f', format, 'all'], cwd, { ...env, GOFLAGS: '-mod=readonly' }, remainingTimeout())
         .split('\n').map(line => line.trim()).filter(Boolean);
     // Tidy the authored-input/runtime baseline, dropping arc-gen-only dependencies.
-    run(go, ['mod', 'tidy'], runtime, env);
+    run(go, ['mod', 'tidy'], runtime, env, remainingTimeout());
     const pinned = new Set(graph(runtime));
     // Offline resolution alone could admit an unrelated dependency already in the cache.
-    run(go, ['mod', 'tidy'], consumer, env);
+    run(go, ['mod', 'tidy'], consumer, env, remainingTimeout());
     for (const module of graph(consumer)) {
         assert.ok(pinned.has(module), `Consumer module is outside the pinned runtime graph: ${module}`);
     }
 }
 
-export async function generate() {
+export async function generate(timeout) {
+    assert.ok(timeout === undefined || (Number.isSafeInteger(timeout) && timeout > 0), 'Generation timeout must be a positive integer in milliseconds');
+    const deadline = timeout === undefined ? undefined : performance.now() + timeout;
+    // A single cold-cache budget prevents sequential steps from outliving the outer process.
+    // Ordinary invocations retain the helper's 60s per-step timeout.
+    const remainingTimeout = () => {
+        if (deadline === undefined) return 60000;
+        const remaining = Math.floor(deadline - performance.now());
+        assert.ok(remaining > 0, 'Proxy generation deadline exceeded before starting the next Go step');
+        return remaining;
+    };
     const prepared = await prepare();
     const { consumer, tools, go } = prepared;
     const env = { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local' };
     // Download the full pinned graph, including runtime packages arc-gen does not import.
-    run(go, ['mod', 'download', '-modfile', join(consumer, 'download.mod'), 'all'], tools, env);
-    run(go, ['run', './cmd/arc-gen', '-dir', consumer, '-config', join(consumer, 'profile.json'), '.'], tools, env);
+    run(go, ['mod', 'download', '-modfile', join(consumer, 'download.mod'), 'all'], tools, env, remainingTimeout());
+    run(go, ['run', './cmd/arc-gen', '-dir', consumer, '-config', join(consumer, 'profile.json'), '.'], tools, env, remainingTimeout());
     // Generated adapters may import more runtime packages, but never another module or version.
-    tidyConsumer(prepared);
+    tidyConsumer(prepared, remainingTimeout);
     // -check is production CLI verification, not a comparison with hand-written Go output.
-    run(go, ['run', './cmd/arc-gen', '-dir', consumer, '-config', join(consumer, 'profile.json'), '-check', '.'], tools, env);
+    run(go, ['run', './cmd/arc-gen', '-dir', consumer, '-config', join(consumer, 'profile.json'), '-check', '.'], tools, env, remainingTimeout());
     return join(consumer, 'web');
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === import.meta.filename) console.log(await generate());
+if (process.argv[1] && resolve(process.argv[1]) === import.meta.filename) {
+    const timeout = process.env.ARC_PROXY_COMPARISON_TIMEOUT_MS;
+    console.log(await generate(timeout === undefined ? undefined : Number(timeout)));
+}

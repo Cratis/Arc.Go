@@ -1,9 +1,12 @@
 // Copyright (c) Cratis. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 import assert from 'node:assert/strict';
+import childProcess from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
 import { access, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import test from 'node:test';
 import ts from 'typescript';
 import { compare, compareFragments, fragments, pairedFiles } from './compare.mjs';
@@ -36,18 +39,75 @@ test('subprocess execution enforces an explicit timeout', () => {
     assert.throws(() => run(process.execPath, ['-e', 'setInterval(() => {}, 10000)'], directory, process.env, 100), /ETIMEDOUT/);
 });
 
-// Measured locally at 3.8s with an empty module cache (Go 1.27.1). Allow 180s
-// for the ~59MB pinned graph over a slower proxy, two arc-gen runs and two tidies.
+function recordGenerationSteps(t, elapsedPerStep = 0) {
+    const calls = [];
+    let elapsed = 0;
+    const clock = t.mock.method(performance, 'now', () => elapsed);
+    const spawn = t.mock.method(childProcess, 'spawnSync', (command, args, options) => {
+        calls.push({ command, args, timeout: options.timeout });
+        elapsed += elapsedPerStep;
+        return { status: 0, stdout: '', stderr: '' };
+    });
+    syncBuiltinESMExports();
+    t.after(() => {
+        spawn.mock.restore();
+        clock.mock.restore();
+        syncBuiltinESMExports();
+    });
+    return calls;
+}
+
+test('ordinary generation retains a 60-second timeout for every Go step', async t => {
+    const calls = recordGenerationSteps(t);
+    await generate();
+    assert.deepEqual(calls.map(call => call.timeout), Array(7).fill(60000));
+});
+
+test('cold generation passes the remaining shared budget to download, generation, tidy and list', async t => {
+    const calls = recordGenerationSteps(t, 25000);
+    await generate(180000);
+    assert.deepEqual(calls.map(call => call.args.slice(0, 2)), [
+        ['mod', 'download'], ['run', './cmd/arc-gen'], ['mod', 'tidy'], ['list', '-m'],
+        ['mod', 'tidy'], ['list', '-m'], ['run', './cmd/arc-gen']
+    ]);
+    assert.deepEqual(calls.map(call => call.timeout), [180000, 155000, 130000, 105000, 80000, 55000, 30000]);
+});
+
+test('an exhausted generation deadline starts no further Go subprocess', async t => {
+    const calls = recordGenerationSteps(t, 180000);
+    await assert.rejects(generate(180000), /deadline exceeded before starting the next Go step/);
+    assert.equal(calls.length, 1);
+});
+
+test('script timeout reaches the inner Go process and reaps it before returning for cleanup', async () => {
+    const { consumer } = await prepare();
+    const go = join(consumer, 'slow-go.mjs');
+    const pidFile = join(consumer, 'slow-go.pid');
+    await writeFile(go, `#!${process.execPath}\nimport { writeFileSync } from 'node:fs';\nwriteFileSync(process.env.ARC_TEST_GO_PID, String(process.pid));\nsetInterval(() => {}, 10000);\n`, { mode: 0o700 });
+    const env = { ...process.env, GO: go, ARC_TEST_GO_PID: pidFile, ARC_PROXY_COMPARISON_TIMEOUT_MS: '1000' };
+    assert.throws(() => run(process.execPath, [join(directory, 'Matched/prepare.mjs')], directory, env, 5000), error => {
+        assert.match(error.message, /ETIMEDOUT/);
+        assert.ok(error.message.includes(`spawnSync ${go}`), 'The inner Go timeout must fail before the outer Node timeout');
+        return true;
+    });
+    const pid = Number(await readFile(pidFile, 'utf8'));
+    assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' }, 'The Go process must be gone before cleanup');
+});
+
+// Allow a shared 180s for the ~59MB pinned graph over a slower proxy and all Go
+// steps. The outer process gets 15s more to report the inner failure before cleanup.
 const coldGenerationTimeout = 180000;
-test('generation and offline consumer tidy succeed with an empty module cache', { timeout: coldGenerationTimeout + 30000 }, async t => {
+const coldProcessTimeout = coldGenerationTimeout + 15000;
+test('generation and offline consumer tidy succeed with an empty module cache', { timeout: coldProcessTimeout + 30000 }, async t => {
     const cache = await mkdtemp(join(tmpdir(), 'arc-go-cold-module-cache-'));
-    const env = { ...process.env, GOMODCACHE: cache, GOWORK: 'off', GOTOOLCHAIN: 'local' };
+    const env = { ...process.env, GOMODCACHE: cache, GOWORK: 'off', GOTOOLCHAIN: 'local',
+        ARC_PROXY_COMPARISON_TIMEOUT_MS: String(coldGenerationTimeout) };
     // Go creates read-only module directories; clean them even when generation or assertions fail.
     t.after(async () => {
         run(process.env.GO || 'go', ['clean', '-modcache'], directory, env);
         await assert.rejects(access(cache), { code: 'ENOENT' }, 'Cold module cache must not survive the test');
     });
-    const generated = run(process.execPath, [join(directory, 'Matched/prepare.mjs')], directory, env, coldGenerationTimeout).trim();
+    const generated = run(process.execPath, [join(directory, 'Matched/prepare.mjs')], directory, env, coldProcessTimeout).trim();
     await compare(generated);
     const manifest = await readFile(join(generated, '../go.mod'), 'utf8');
     assert.match(manifest, /github\.com\/coder\/websocket v/);
