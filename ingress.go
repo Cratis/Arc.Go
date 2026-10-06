@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"runtime/debug"
 	"strconv"
@@ -249,8 +250,23 @@ func privateCache(w http.ResponseWriter) {
 	}
 	w.Header().Set("Vary", tokens+"Cookie")
 }
+
+// plainHTTPLocalhost is the explicit development-only exception to Secure
+// cookies. Forwarded headers are not trusted to relax transport security.
+func plainHTTPLocalhost(r *http.Request) bool {
+	if r.TLS != nil || (r.URL.Scheme != "" && r.URL.Scheme != "http") {
+		return false
+	}
+	host := r.Host
+	if name, _, err := net.SplitHostPort(host); err == nil {
+		host = name
+	}
+	host = strings.Trim(host, "[]")
+	return strings.EqualFold(host, "localhost") || net.ParseIP(host).IsLoopback()
+}
+
 func expireLegacyCookie(w http.ResponseWriter, r *http.Request) {
 	if _, err := r.Cookie(".cratis-identity"); err == nil {
-		http.SetCookie(w, &http.Cookie{Name: ".cratis-identity", Path: "/", Value: "", Expires: time.Now().Add(-24 * time.Hour)})
+		http.SetCookie(w, &http.Cookie{Name: ".cratis-identity", Path: "/", Value: "", Expires: time.Now().Add(-24 * time.Hour), Secure: !plainHTTPLocalhost(r)})
 	}
 }

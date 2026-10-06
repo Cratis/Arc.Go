@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -92,11 +93,26 @@ func (w *SSEWriter) Write(ctx context.Context, json []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	frame := make([]byte, 0, len(json)+8)
+	size, err := sseFrameSize(len(json))
+	if err != nil {
+		return err
+	}
+	frame := make([]byte, 0, size)
 	frame = append(frame, "data: "...)
 	frame = append(frame, json...)
 	frame = append(frame, '\n', '\n')
 	return w.write(frame)
+}
+
+// sseFrameSize checks the allocation ceiling before adding framing overhead.
+// Transport callers enforce their configured MaxResponseBytes before Write;
+// this platform ceiling preserves those limits without imposing a lower one.
+func sseFrameSize(payloadSize int) (int, error) {
+	const overhead = 8
+	if payloadSize < 0 || payloadSize > math.MaxInt-overhead {
+		return 0, errors.New("SSE frame exceeds allocation limit")
+	}
+	return payloadSize + overhead, nil
 }
 
 func (w *SSEWriter) write(frame []byte) error {
