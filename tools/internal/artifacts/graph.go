@@ -11,6 +11,7 @@ import (
 	"go/constant"
 	"go/types"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -320,11 +321,12 @@ func int32EnumMembers(enum *model) (map[string]int32, error) {
 	if !ok || base.Kind() != types.Int32 {
 		return nil, fmt.Errorf("arc:enum parse=int32 requires an int32 underlying type")
 	}
-	for _, method := range codecMethodNames(enum.typ) {
-		if method == "UnmarshalJSON" {
-			return nil, fmt.Errorf("arc:enum parse=int32 owns UnmarshalJSON; remove the hand-written method")
-		}
-		return nil, fmt.Errorf("arc:enum parse=int32 cannot be combined with a custom codec (%s)", method)
+	methods := codecMethodNames(enum.typ)
+	if slices.Contains(methods, "UnmarshalJSON") {
+		return nil, fmt.Errorf("arc:enum parse=int32 owns UnmarshalJSON; remove the hand-written method")
+	}
+	if len(methods) > 0 {
+		return nil, fmt.Errorf("arc:enum parse=int32 cannot be combined with a custom codec (%s)", methods[0])
 	}
 	members := map[string]int32{}
 	scope := enum.typ.Obj().Pkg().Scope()

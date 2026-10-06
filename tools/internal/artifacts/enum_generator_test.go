@@ -20,6 +20,16 @@ func TestEnumGeneratedConsumerAndStableTypeScript(t *testing.T) {
 	put(t, filepath.Join(dir, "input.go"), source)
 	config := Config{Dir: dir, TypeScriptOut: "web"}
 	generate(t, config)
+	// The generated adapter introduces the runtime root package and its
+	// transitive dependencies. Tidy the independent consumer before checking it.
+	tidyCtx, tidyCancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer tidyCancel()
+	tidy := exec.CommandContext(tidyCtx, "go", "mod", "tidy")
+	tidy.Dir = dir
+	tidy.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=local")
+	if output, err := tidy.CombinedOutput(); err != nil {
+		t.Fatalf("tidy generated enum consumer: %v\n%s", err, output)
+	}
 	adapter := get(t, filepath.Join(dir, Filename))
 	if !bytes.Contains(adapter, []byte(".NewInt32Enum(map[string]State")) || !bytes.Contains(adapter, []byte(`"Read":`)) || bytes.Contains(adapter, []byte(`"Reader":`)) {
 		t.Fatalf("generated parser did not preserve original declarations:\n%s", adapter)
@@ -59,7 +69,10 @@ func TestEnumGeneratorRejectsInvalidDeclarationsBeforePublication(t *testing.T) 
 		{"handwritten", "//arc:enum parse=int32\ntype State int32\nconst Read State = 1\nfunc (*State) UnmarshalJSON([]byte) error { panic(\"executed\") }", "owns UnmarshalJSON"},
 		{"custom_output", "//arc:enum parse=int32\ntype State int32\nconst Read State = 1\nfunc (State) MarshalJSON() ([]byte, error) { panic(\"executed\") }", "custom codec"},
 		{"unsupported_parser", "//arc:enum parse=int64\ntype State int64", "enum parse must be int32"},
-		{"unsupported_codec", "//arc:codec kind=geospatial\ntype Point struct{}", "arc:codec is not implemented"},
+		{"geospatial_codec", "//arc:codec kind=geospatial\ntype Point struct{}", "arc:codec is not implemented"},
+		{"dictionary_codec", "//arc:codec kind=complex-key-dictionary\ntype Dictionary struct{}", "arc:codec is not implemented"},
+		{"type_uri_codec", "//arc:codec kind=type-uri\ntype URI struct{}", "arc:codec is not implemented"},
+		{"enumerable_concept_codec", "//arc:codec kind=enumerable-model-to-concept\ntype Model struct{}", "arc:codec is not implemented"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := consumer(t)

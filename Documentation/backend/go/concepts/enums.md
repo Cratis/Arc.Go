@@ -6,41 +6,44 @@ description: Accept the names, numbers and comma-separated flags that C# Arc cli
 A Go named integer writes and reads plain numbers. C# Arc's JSON configuration is
 more permissive on input: a client may send an enum as its number, its name in any
 letter case, several names separated by commas, or a decimal string. If your Go
-backend must accept the same input, opt a named `int32` type in to
-`serialization.Int32Enum`.
+backend must accept the same input, mark a named `int32` type with
+`//arc:enum parse=int32`. Arc-gen generates its parser declaration and
+`UnmarshalJSON` method over `serialization.NewInt32Enum`.
 
 Status: **Partial**. The parser matches Arc 22.48.2 with Fundamentals 7.19.6
-(`EnumConverter.cs`). The generator does not yet produce it; you write the
-`UnmarshalJSON` method yourself, and arc-gen still refuses such a type as an opaque
-custom codec.
+(`EnumConverter.cs`). Generation currently requires a package containing commands
+or read models. Enum-only packages and imported generated enum admission are not
+implemented yet.
 
 ## Opt a type in
 
-This code is from `ExampleInt32Enum` in `serialization/enum_test.go`:
+This excerpt follows the compiled generator consumer in
+`tools/internal/artifacts/testdata/enum`. Put it in a package containing your Arc
+commands or read models:
 
 ```go
-type state int32
+//arc:enum parse=int32 members=Read:Reader
+type State int32
 
-var stateCodec, stateCodecError = serialization.NewInt32Enum(map[string]state{"None": 0, "Read": 1, "Write": 4, "Alias": 4})
-
-func (s *state) UnmarshalJSON(data []byte) error {
-    if stateCodecError != nil {
-        return stateCodecError
-    }
-    value, err := stateCodec.ParseJSON(data)
-    if err != nil {
-        return err
-    }
-    *s = value
-    return nil
-}
+const (
+    Zero  State = 0
+    Read  State = 1
+    Write State = 4
+    Alias State = 4
+)
 ```
 
+Run arc-gen in that module to generate `zz_arc_generated.go`. Do not write your
+own `UnmarshalJSON` on an opted-in type: generation diagnoses it before publishing
+anything. Remove the method and regenerate to resolve the conflict. Other custom
+codec methods cannot be combined with this profile either.
+
 Reading `{"state":"Read, Write"}` and writing it back produces `{"state":5}`. Run the
-example with:
+generated consumer with:
 
 ```bash
-go test -run ExampleInt32Enum ./serialization
+cd tools
+go test -run '^TestEnumGeneratedConsumerAndStableTypeScript$' ./internal/artifacts
 ```
 
 There is no global registration and no marshal hook: normal encoding already writes
@@ -48,7 +51,9 @@ the number. Declaring constants alone never installs the parser.
 
 `NewInt32Enum` copies the map. Names must be nonempty ASCII identifiers that are
 unique ignoring case; several names may share a value, as `Write` and `Alias` do
-here. Use the **original C# member names**, not renamed TypeScript exports. The
+here. Name Go constants with the **original C# member names**. The `members`
+option renames only TypeScript exports: `Read:Reader` still parses `"Read"`, not
+`"Reader"`. TypeScript output does not change when you enable `parse=int32`. The
 parser is immutable and safe for concurrent use. A nil or zero parser rejects all
 input.
 
@@ -85,6 +90,9 @@ are unsupported, and query-string binding is not covered.
 parsers, failure atomicity, null presence, collections and concurrent parsing.
 `ContractTests/EnumContract` compares 65 int32 reads and 8 writes with actual C#
 output captured from the pinned packages, and sends the numeric results through the
-real TypeScript Fundamentals 7.22.0 serializer. See its
+real TypeScript Fundamentals 7.22.0 serializer. The tools generated-consumer test
+also runs the State read corpus through generated `UnmarshalJSON` and ordinary
+Arc binding, verifies failure preserves the receiver, and checks byte-stable
+TypeScript output. See its
 [fixture README](https://github.com/Cratis/Arc.Go/blob/develop/ContractTests/EnumContract/README.md)
 for the exact profile and the [concepts page](index.md) for other wire values.
