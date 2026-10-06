@@ -59,6 +59,9 @@ func emit(a *analysis, services ...*serviceBindingsPlan) ([]byte, error) {
 			}
 		}
 	}
+	if len(a.commands)+len(a.models)+len(a.queries)+len(a.validators)+len(a.policies) == 0 && !hasDerivedModels(a) && (len(services) == 0 || services[0] == nil) {
+		return e.source()
+	}
 	e.collectDependencies()
 	e.line("// ArcBindings optionally supplies typed, stage-local dependencies without a container.")
 	e.line("// Nil callbacks use execution.Resolve and declare their exact DI keys at registration.")
@@ -154,10 +157,14 @@ func emit(a *analysis, services ...*serviceBindingsPlan) ([]byte, error) {
 	if len(services) > 0 {
 		e.emitServices(services[0])
 	}
+	return e.source()
+}
+
+func (e *emitter) source() ([]byte, error) {
 	var out bytes.Buffer
 	out.WriteString(Header)
 	out.WriteString("// Copyright (c) Cratis. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\n")
-	fmt.Fprintf(&out, "package %s\n\nimport (\n", a.pkg.Name)
+	fmt.Fprintf(&out, "package %s\n\nimport (\n", e.analysis.pkg.Name)
 	paths := make([]string, 0, len(e.imports))
 	for path := range e.imports {
 		paths = append(paths, path)
@@ -170,7 +177,7 @@ func emit(a *analysis, services ...*serviceBindingsPlan) ([]byte, error) {
 	out.Write(e.body.Bytes())
 	formatted, err := format.Source(out.Bytes())
 	if err != nil {
-		return nil, fmt.Errorf("format generated %s: %w", a.pkg.PkgPath, err)
+		return nil, fmt.Errorf("format generated %s: %w", e.analysis.pkg.PkgPath, err)
 	}
 	return formatted, nil
 }

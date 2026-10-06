@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/cratis/arc.go/internal/modelshape"
@@ -470,10 +471,10 @@ func (w *wireAnalyzer) reference(pkg *types.Package, reference string) (types.Ty
 
 // ownsEnumParser admits only the method from the generator's owned file, not
 // an application codec that happens to accompany an enum directive.
-func (w *wireAnalyzer) ownsEnumParser(named *types.Named) bool {
+func (w *wireAnalyzer) ownsEnumParser(named *types.Named, members map[string]int32) (bool, error) {
 	pkg := w.packages[named.Obj().Pkg().Path()]
 	if pkg == nil || pkg.Fset == nil {
-		return false
+		return false, nil
 	}
 	for i := range named.NumMethods() {
 		method := named.Method(i)
@@ -482,15 +483,84 @@ func (w *wireAnalyzer) ownsEnumParser(named *types.Named) bool {
 		}
 		path := pkg.Fset.Position(method.Pos()).Filename
 		if filepath.Base(path) != Filename {
-			return false
+			return false, nil
 		}
 		for _, file := range pkg.Syntax {
-			if pkg.Fset.Position(file.Pos()).Filename == path && len(file.Comments) > 0 && len(file.Comments[0].List) > 0 {
-				return owned([]byte(file.Comments[0].List[0].Text))
+			if pkg.Fset.Position(file.Pos()).Filename != path || len(file.Comments) == 0 || len(file.Comments[0].List) == 0 || !owned([]byte(file.Comments[0].List[0].Text)) {
+				continue
 			}
+			if !enumParserMatches(pkg, file, named, members) {
+				return false, fmt.Errorf("imported enum parser for %s is stale; run arc-gen on %s", named.Obj().Name(), pkg.PkgPath)
+			}
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
+}
+
+// enumParserMatches checks the generated parse map against current declarations.
+// Constant references (rather than copied values) keep changed numeric values
+// current, but added/removed names must be regenerated in the dependency package.
+func enumParserMatches(pkg *packages.Package, file *ast.File, named *types.Named, members map[string]int32) bool {
+	candidates, matches := 0, 0
+	ast.Inspect(file, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok || len(call.Args) != 1 {
+			return true
+		}
+		selector, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		function, ok := pkg.TypesInfo.Uses[selector.Sel].(*types.Func)
+		if !ok || function.Pkg() == nil || function.Pkg().Path() != runtimePath+"/serialization" || function.Name() != "NewInt32Enum" {
+			return true
+		}
+		literal, ok := call.Args[0].(*ast.CompositeLit)
+		if !ok {
+			return true
+		}
+		mapType, ok := pkg.TypesInfo.TypeOf(literal).(*types.Map)
+		if !ok || !types.Identical(mapType.Key(), types.Typ[types.String]) || !types.Identical(mapType.Elem(), named) {
+			return true
+		}
+		candidates++
+		if len(literal.Elts) != len(members) {
+			return false
+		}
+		seen := map[string]bool{}
+		for _, element := range literal.Elts {
+			entry, ok := element.(*ast.KeyValueExpr)
+			if !ok {
+				return false
+			}
+			key, ok := entry.Key.(*ast.BasicLit)
+			if !ok || key.Kind != token.STRING {
+				return false
+			}
+			name, err := strconv.Unquote(key.Value)
+			if err != nil || seen[name] {
+				return false
+			}
+			value, exists := members[name]
+			identifier, ok := entry.Value.(*ast.Ident)
+			if !exists || !ok || identifier.Name != name {
+				return false
+			}
+			constantObject, ok := pkg.TypesInfo.Uses[identifier].(*types.Const)
+			if !ok || constantObject != named.Obj().Pkg().Scope().Lookup(name) {
+				return false
+			}
+			number, fits := constant.Int64Val(constantObject.Val())
+			if !fits || number != int64(value) {
+				return false
+			}
+			seen[name] = true
+		}
+		matches++
+		return false
+	})
+	return candidates == 1 && matches == 1
 }
 
 func (w *wireAnalyzer) describeValue(t types.Type) (WireType, error) {
@@ -552,11 +622,18 @@ func (w *wireAnalyzer) describeValue(t types.Type) (WireType, error) {
 		}
 		declaration := w.declarations[key]
 		if methods := codecMethodNames(named); len(methods) > 0 {
-			if len(methods) == 1 && methods[0] == "UnmarshalJSON" && declaration != nil && declaration.d.kind == "enum" && declaration.d.parse == "int32" && w.ownsEnumParser(named) {
-				if _, err := int32EnumDeclarationMembers(declaration); err != nil {
+			if len(methods) == 1 && methods[0] == "UnmarshalJSON" && declaration != nil && declaration.d.kind == "enum" && declaration.d.parse == "int32" {
+				members, err := int32EnumDeclarationMembers(declaration)
+				if err != nil {
 					return WireType{}, w.fail(t, "%v", err)
 				}
-				return w.enum(declaration)
+				owned, err := w.ownsEnumParser(named, members)
+				if err != nil {
+					return WireType{}, w.fail(t, "%v", err)
+				}
+				if owned {
+					return w.enum(declaration)
+				}
 			}
 			if slices.Contains(methods, "MarshalJSONWith") {
 				return WireType{}, w.fail(t, "opaque custom codec requires an explicit wire import mapping: %s implements MarshalJSONWith (or declare explicit input/output schemas with contract-v2 wireSchemas)", key)
@@ -870,6 +947,12 @@ func (w *wireAnalyzer) enum(model *model) (WireType, error) {
 		}
 		node.Scalar = scalar
 		node.EnumDomain = "open-underlying-integer"
+		if model.d.parse == "int32" {
+			// Numeric input is closed to declared values, while strings also
+			// accept names, OR combinations and any Int32 decimal spelling.
+			// Do not project this parser as an ordinary open integer schema.
+			node.EnumDomain = "int32-parser"
+		}
 	}
 	if pkg := w.packages[model.typ.Obj().Pkg().Path()]; pkg != nil {
 		node.Source = filepath.Base(pkg.Fset.Position(model.pos).Filename)

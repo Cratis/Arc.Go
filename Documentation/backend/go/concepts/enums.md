@@ -38,6 +38,12 @@ own `UnmarshalJSON` on an opted-in type: generation diagnoses it before publishi
 anything. Remove the method and regenerate to resolve the conflict. Other custom
 codec methods cannot be combined with this profile either.
 
+An enum-only package emits just the parser and `UnmarshalJSON`, importing only
+`serialization`; it does not declare `ArcBindings` or `RegisterArtifacts`.
+Generate an imported enum package before its consumers. If you add or rename a
+member, regenerate that package too: consumer generation and `-check` refuse a
+stale imported parse map and name the package that needs regeneration.
+
 Reading `{"state":"Read, Write"}` and writing it back produces `{"state":5}`. Run the
 generated consumer with:
 
@@ -83,6 +89,11 @@ must be able to post it back.
 Later Fundamentals versions changed numeric flags admission; this profile does not
 follow them. Ordinary Go integer types keep their open domain, other backing widths
 are unsupported, and query-string binding is not covered.
+
+OpenAPI publication does not yet support this parser's input semantics. Arc-gen
+refuses a document containing a `parse=int32` enum rather than publishing an
+integer-only input schema that rejects valid names and accepts undeclared numbers.
+Go adapters and TypeScript proxies remain supported without OpenAPI output.
 
 ## Evidence
 
