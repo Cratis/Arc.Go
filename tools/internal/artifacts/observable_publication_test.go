@@ -31,6 +31,7 @@ func TestProductionCLIObservableMixedFamilyPublication(t *testing.T) {
 	if output, err := cli(); err != nil {
 		t.Fatalf("production observable CLI: %v\n%s", err, output)
 	}
+	tidyConsumer(t, dir)
 	before := outputInventory(t, dir)
 	if output, err := cli("-check"); err != nil {
 		t.Fatalf("production observable check: %v\n%s", err, output)
@@ -119,6 +120,7 @@ func TestProductionCLIRealClientFixtureIndependentConsumption(t *testing.T) {
 		}
 	}
 	cli(false)
+	tidyConsumer(t, dir)
 	before := outputInventory(t, dir)
 	cli(true)
 	assertOutputInventory(t, dir, before)
@@ -143,6 +145,7 @@ func TestCompetingObservableIdentitiesRejectAllProductionPublication(t *testing.
 	if err := Generate(t.Context(), Config{Dir: bootstrap, TypeScriptOut: "web"}); err != nil {
 		t.Fatal(err)
 	}
+	tidyConsumer(t, bootstrap)
 	copyFiles := copyFixtureFiles(t, bootstrap)
 	for _, fields := range []string{
 		"ID string `json:\"-\"`; Id string `json:\"id\"`",

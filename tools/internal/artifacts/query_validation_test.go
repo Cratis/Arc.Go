@@ -41,6 +41,7 @@ func TestQueryValidationProductionConsumer(t *testing.T) {
 	if output, err := cli(false); err != nil {
 		t.Fatalf("production generation: %v\n%s", err, output)
 	}
+	tidyConsumer(t, dir)
 	if output, err := cli(true); err != nil {
 		t.Fatalf("production check: %v\n%s", err, output)
 	}

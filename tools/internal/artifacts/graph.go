@@ -317,16 +317,20 @@ func buildGraph(analyses []*analysis, profile ApplicationProfile, wire bool) (*G
 // int32EnumMembers validates the generator-owned parser independently of wire
 // consumers. Parse names are Go constant declarations, never TS export renames.
 func int32EnumMembers(enum *model) (map[string]int32, error) {
-	base, ok := enum.typ.Underlying().(*types.Basic)
-	if !ok || base.Kind() != types.Int32 {
-		return nil, fmt.Errorf("arc:enum parse=int32 requires an int32 underlying type")
-	}
 	methods := codecMethodNames(enum.typ)
 	if slices.Contains(methods, "UnmarshalJSON") {
 		return nil, fmt.Errorf("arc:enum parse=int32 owns UnmarshalJSON; remove the hand-written method")
 	}
 	if len(methods) > 0 {
 		return nil, fmt.Errorf("arc:enum parse=int32 cannot be combined with a custom codec (%s)", methods[0])
+	}
+	return int32EnumDeclarationMembers(enum)
+}
+
+func int32EnumDeclarationMembers(enum *model) (map[string]int32, error) {
+	base, ok := enum.typ.Underlying().(*types.Basic)
+	if !ok || base.Kind() != types.Int32 {
+		return nil, fmt.Errorf("arc:enum parse=int32 requires an int32 underlying type")
 	}
 	members := map[string]int32{}
 	scope := enum.typ.Obj().Pkg().Scope()

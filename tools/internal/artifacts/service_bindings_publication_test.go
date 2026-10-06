@@ -213,6 +213,7 @@ func runServiceCLI(t *testing.T, dir, config, pattern string) []byte {
 	if err != nil {
 		t.Fatalf("production service CLI: %v\n%s", err, output)
 	}
+	tidyConsumer(t, dir)
 	return output
 }
 
@@ -299,6 +300,9 @@ func TestProductionCLIServiceBindingsExternalCompiledWitness(t *testing.T) {
 		if err != nil {
 			t.Fatalf("production CLI: %v\n%s", err, output)
 		}
+		if len(extra) == 0 {
+			tidyConsumer(t, dir)
+		}
 		return output
 	}
 	inventory := cli()
@@ -331,7 +335,7 @@ func TestProductionCLIServiceBindingsExternalCompiledWitness(t *testing.T) {
 	}
 	decoder := json.NewDecoder(bytes.NewReader(output))
 	found := map[string]bool{}
-	pins := map[string]string{runtimePath: "v0.0.0-20261003142617-78ebbf8fdff8", "github.com/cratis/fundamentals.go": "v0.2.0"}
+	pins := map[string]string{runtimePath: "v0.0.0-20261006003625-1bc16445f410", "github.com/cratis/fundamentals.go": "v0.2.0"}
 	checkout, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)

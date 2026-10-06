@@ -48,6 +48,7 @@ func TestProductionCLIRejectsLegacyAdapterWithoutManifestOwnership(t *testing.T)
 	if output, err := cli(); err != nil {
 		t.Fatalf("adapter-only compatibility failed: %v\n%s", err, output)
 	}
+	tidyConsumer(t, dir)
 	if len(get(t, filepath.Join(dir, Filename))) == 0 {
 		t.Fatal("adapter-only invocation did not emit an adapter")
 	}
@@ -81,6 +82,7 @@ func TestProductionCLIPlansPublishesAndChecksActualRuntimeContract(t *testing.T)
 	if output, err := cli(); err != nil {
 		t.Fatalf("production CLI failed: %v\n%s", err, output)
 	}
+	tidyConsumer(t, dir)
 	if output, err := cli("-check"); err != nil {
 		t.Fatalf("production CLI check failed: %v\n%s", err, output)
 	}

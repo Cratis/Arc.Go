@@ -17,19 +17,15 @@ import (
 func TestEnumGeneratedConsumerAndStableTypeScript(t *testing.T) {
 	dir := consumer(t)
 	source := string(get(t, "testdata/enum/consumer.go"))
+	put(t, filepath.Join(dir, "access", "input.go"), string(get(t, "testdata/enum/access.go")))
+	// Publish the enum-only package first; the root then imports its generated
+	// codec without selecting or editing the dependency package.
+	generate(t, Config{Dir: dir, Patterns: []string{"./access"}})
+	tidyConsumer(t, dir)
+	accessAdapter := get(t, filepath.Join(dir, "access", Filename))
 	put(t, filepath.Join(dir, "input.go"), source)
 	config := Config{Dir: dir, TypeScriptOut: "web"}
 	generate(t, config)
-	// The generated adapter introduces the runtime root package and its
-	// transitive dependencies. Tidy the independent consumer before checking it.
-	tidyCtx, tidyCancel := context.WithTimeout(t.Context(), 30*time.Second)
-	defer tidyCancel()
-	tidy := exec.CommandContext(tidyCtx, "go", "mod", "tidy")
-	tidy.Dir = dir
-	tidy.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=local")
-	if output, err := tidy.CombinedOutput(); err != nil {
-		t.Fatalf("tidy generated enum consumer: %v\n%s", err, output)
-	}
 	adapter := get(t, filepath.Join(dir, Filename))
 	if !bytes.Contains(adapter, []byte(".NewInt32Enum(map[string]State")) || !bytes.Contains(adapter, []byte(`"Read":`)) || bytes.Contains(adapter, []byte(`"Reader":`)) {
 		t.Fatalf("generated parser did not preserve original declarations:\n%s", adapter)
@@ -48,15 +44,52 @@ func TestEnumGeneratedConsumerAndStableTypeScript(t *testing.T) {
 	put(t, filepath.Join(dir, "input.go"), source)
 	generate(t, config)
 	put(t, filepath.Join(dir, "consumer_test.go"), string(get(t, "testdata/enum/consumer_test.go")))
+	if !bytes.Equal(accessAdapter, get(t, filepath.Join(dir, "access", Filename))) {
+		t.Fatal("root generation changed the unselected enum package")
+	}
+	generate(t, Config{Dir: dir, Patterns: []string{"./..."}})
+	generate(t, Config{Dir: dir, Patterns: []string{"./..."}, Check: true})
 	put(t, filepath.Join(dir, "profile.json"), string(get(t, "../../../ContractTests/EnumContract/profile.json")))
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "test", "-mod=mod", "-count=1", "-timeout=30s", "./...")
+	tidyConsumer(t, dir)
+	cmd := exec.CommandContext(ctx, "go", "test", "-mod=readonly", "-count=1", "-timeout=30s", "./...")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=local")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("enum consumer: %v\n%s", err, output)
+	}
+}
+
+func TestEnumOnlyParserOptOutRemovesOwnedAdapter(t *testing.T) {
+	dir := consumer(t)
+	input := "package consumer\n//arc:enum parse=int32\ntype State int32\nconst Read State = 1\n"
+	put(t, filepath.Join(dir, "input.go"), input)
+	generate(t, Config{Dir: dir})
+	generate(t, Config{Dir: dir, Check: true})
+	put(t, filepath.Join(dir, "input.go"), strings.Replace(input, " parse=int32", "", 1))
+	if err := Generate(t.Context(), Config{Dir: dir, Check: true}); err == nil {
+		t.Fatal("check accepted stale enum parser")
+	}
+	generate(t, Config{Dir: dir})
+	if _, err := os.Stat(filepath.Join(dir, Filename)); !os.IsNotExist(err) {
+		t.Fatalf("opt-out retained parser: %v", err)
+	}
+}
+
+func TestImportedEnumDoesNotAdmitHandWrittenCodec(t *testing.T) {
+	dir := consumer(t)
+	put(t, filepath.Join(dir, "access", "input.go"), "package access\n//arc:enum parse=int32\ntype Access int32\nconst Read Access = 1\nfunc (*Access) UnmarshalJSON([]byte) error { panic(\"must not execute\") }\n")
+	put(t, filepath.Join(dir, "input.go"), "//arc:namespace EnumContract\npackage consumer\nimport \"example.test/consumer/access\"\n//arc:readmodel\ntype Envelope struct { Access access.Access }\nfunc (Envelope) All() ([]Envelope,error) { return nil,nil }\n")
+	for _, check := range []bool{false, true} {
+		err := Generate(t.Context(), Config{Dir: dir, TypeScriptOut: "web", Check: check})
+		if err == nil || !strings.Contains(err.Error(), "opaque custom codec") {
+			t.Fatalf("imported hand-written codec admitted: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, Filename)); !os.IsNotExist(err) {
+			t.Fatalf("rejection published adapter: %v", err)
+		}
 	}
 }
 

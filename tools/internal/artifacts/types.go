@@ -468,6 +468,31 @@ func (w *wireAnalyzer) reference(pkg *types.Package, reference string) (types.Ty
 	return nil, fmt.Errorf("unknown wire type reference %q", reference)
 }
 
+// ownsEnumParser admits only the method from the generator's owned file, not
+// an application codec that happens to accompany an enum directive.
+func (w *wireAnalyzer) ownsEnumParser(named *types.Named) bool {
+	pkg := w.packages[named.Obj().Pkg().Path()]
+	if pkg == nil || pkg.Fset == nil {
+		return false
+	}
+	for i := range named.NumMethods() {
+		method := named.Method(i)
+		if method.Name() != "UnmarshalJSON" {
+			continue
+		}
+		path := pkg.Fset.Position(method.Pos()).Filename
+		if filepath.Base(path) != Filename {
+			return false
+		}
+		for _, file := range pkg.Syntax {
+			if pkg.Fset.Position(file.Pos()).Filename == path && len(file.Comments) > 0 && len(file.Comments[0].List) > 0 {
+				return owned([]byte(file.Comments[0].List[0].Text))
+			}
+		}
+	}
+	return false
+}
+
 func (w *wireAnalyzer) describeValue(t types.Type) (WireType, error) {
 	// The traversal hook owns runtime output before scalar/struct inference,
 	// including application concepts. Keep declared schemas and import mappings
@@ -525,13 +550,19 @@ func (w *wireAnalyzer) describeValue(t types.Type) (WireType, error) {
 		if model := w.interfaceModels[key]; model != nil {
 			return w.describe(model.typ)
 		}
+		declaration := w.declarations[key]
 		if methods := codecMethodNames(named); len(methods) > 0 {
+			if len(methods) == 1 && methods[0] == "UnmarshalJSON" && declaration != nil && declaration.d.kind == "enum" && declaration.d.parse == "int32" && w.ownsEnumParser(named) {
+				if _, err := int32EnumDeclarationMembers(declaration); err != nil {
+					return WireType{}, w.fail(t, "%v", err)
+				}
+				return w.enum(declaration)
+			}
 			if slices.Contains(methods, "MarshalJSONWith") {
 				return WireType{}, w.fail(t, "opaque custom codec requires an explicit wire import mapping: %s implements MarshalJSONWith (or declare explicit input/output schemas with contract-v2 wireSchemas)", key)
 			}
 			return WireType{}, w.fail(t, "opaque custom codec requires an explicit wire import mapping")
 		}
-		declaration := w.declarations[key]
 		if declaration != nil && declaration.d.kind == "enum" {
 			return w.enum(declaration)
 		}

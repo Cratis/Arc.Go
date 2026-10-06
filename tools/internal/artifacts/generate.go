@@ -217,7 +217,7 @@ func Generate(ctx context.Context, config Config) error {
 		if services != nil && services.owner == a {
 			packageServices = services
 		}
-		if len(a.commands)+len(a.models) > 0 || hasDerivedModels(a) || packageServices != nil {
+		if len(a.commands)+len(a.models) > 0 || hasDerivedModels(a) || hasEnumParsers(a) || packageServices != nil {
 			data, err = emit(a, packageServices)
 			if err != nil {
 				return err
@@ -313,6 +313,15 @@ func Generate(ctx context.Context, config Config) error {
 		}
 	}
 	return reportServices(config.Report, services, false)
+}
+
+func hasEnumParsers(a *analysis) bool {
+	for _, enum := range a.enums {
+		if enum.d.parse == "int32" {
+			return true
+		}
+	}
+	return false
 }
 
 func packageDirectory(pkg *packages.Package) (string, error) {

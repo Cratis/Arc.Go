@@ -4,7 +4,10 @@
 //arc:namespace EnumContract
 package consumer
 
+import "example.test/consumer/access"
+
 // State keeps original parse names separate from TypeScript exports.
+//
 //arc:enum parse=int32 members=Read:Reader
 type State int32
 
@@ -19,7 +22,11 @@ const (
 )
 
 // Envelope exposes the enum through a real query contract.
+//
 //arc:readmodel
-type Envelope struct{ State State }
+type Envelope struct {
+	State  State
+	Access access.Access
+}
 
 func (Envelope) All() ([]Envelope, error) { return nil, nil }

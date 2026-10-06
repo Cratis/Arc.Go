@@ -10,16 +10,16 @@ backend must accept the same input, mark a named `int32` type with
 `//arc:enum parse=int32`. Arc-gen generates its parser declaration and
 `UnmarshalJSON` method over `serialization.NewInt32Enum`.
 
-Status: **Partial**. The parser matches Arc 22.48.2 with Fundamentals 7.19.6
-(`EnumConverter.cs`). Generation currently requires a package containing commands
-or read models. Enum-only packages and imported generated enum admission are not
-implemented yet.
+Status: **Implemented** for the pinned Int32 profile. The parser matches Arc
+22.48.2 with Fundamentals 7.19.6 (`EnumConverter.cs`). Generation supports
+standalone enum packages and imported generator-owned parsers; other backing
+widths and query-string parsing remain unsupported.
 
 ## Opt a type in
 
 This excerpt follows the compiled generator consumer in
-`tools/internal/artifacts/testdata/enum`. Put it in a package containing your Arc
-commands or read models:
+`tools/internal/artifacts/testdata/enum`. An enum may live alongside Arc commands
+or read models, or in its own package:
 
 ```go
 //arc:enum parse=int32 members=Read:Reader
@@ -91,8 +91,8 @@ parsers, failure atomicity, null presence, collections and concurrent parsing.
 `ContractTests/EnumContract` compares 65 int32 reads and 8 writes with actual C#
 output captured from the pinned packages, and sends the numeric results through the
 real TypeScript Fundamentals 7.22.0 serializer. The tools generated-consumer test
-also runs the State read corpus through generated `UnmarshalJSON` and ordinary
-Arc binding, verifies failure preserves the receiver, and checks byte-stable
-TypeScript output. See its
+also runs all 65 State and Access reads and all 8 writes through generated
+parsers and ordinary Arc serialization, verifies failure preserves the receiver,
+checks enum-only and imported packages, and checks byte-stable TypeScript output. See its
 [fixture README](https://github.com/Cratis/Arc.Go/blob/develop/ContractTests/EnumContract/README.md)
 for the exact profile and the [concepts page](index.md) for other wire values.
