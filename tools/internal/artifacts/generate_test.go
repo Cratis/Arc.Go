@@ -70,11 +70,20 @@ func generate(t *testing.T, config Config) {
 	if !config.Check {
 		// Keep copied pinned manifests for packages without any runtime imports.
 		// Tidy only after generated adapters have introduced their dependencies.
-		matches, err := filepath.Glob(filepath.Join(config.Dir, Filename))
-		if err != nil {
+		hasAdapter := false
+		if err := filepath.WalkDir(config.Dir, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !entry.IsDir() && filepath.Base(path) == Filename {
+				hasAdapter = true
+				return filepath.SkipAll
+			}
+			return nil
+		}); err != nil {
 			t.Fatal(err)
 		}
-		if len(matches) > 0 {
+		if hasAdapter {
 			tidyConsumer(t, config.Dir)
 		}
 	}

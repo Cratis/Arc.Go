@@ -305,6 +305,7 @@ func TestArcGenCLIPublishesArtifactsAndChecks(t *testing.T) {
 	if output, err := run(); err != nil {
 		t.Fatalf("arc-gen artifact publication failed: %v\n%s", err, output)
 	}
+	tidyConsumer(t, dir)
 	if output, err := run("-check"); err != nil || !bytes.Contains(output, []byte("verified")) {
 		t.Fatalf("arc-gen artifact check failed: %v\n%s", err, output)
 	}
