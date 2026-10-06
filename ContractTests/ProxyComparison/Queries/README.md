@@ -87,7 +87,7 @@ For actual Arc taskboard All/ByID snapshot GET and QUERY round-trips, build the
 existing host unchanged from the repository root, then test from ProxyComparison:
 
 ```sh
-GOWORK=off GOTOOLCHAIN=local go build -o .ai-work/output/ts-query/taskboard-host ./ContractTests/taskboard/host
+GOWORK=off GOTOOLCHAIN=local go build -o .ai-work/output/ts-query/taskboard-host ./ContractTests/internal/taskboard/host
 node --test --test-timeout=30000 Queries/roundtrip.test.mjs
 ARC_QUERY_DECORATORS=legacy node --test --test-timeout=30000 Queries/roundtrip.test.mjs
 ```

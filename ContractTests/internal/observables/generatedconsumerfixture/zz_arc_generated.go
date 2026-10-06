@@ -19,7 +19,7 @@ import (
 // Nil callbacks use execution.Resolve and declare their exact DI keys at registration.
 // Callbacks are borrowed, may run concurrently, and must not retain the operation scope.
 type ArcBindings struct {
-	// ResolveItemFeed resolves github.com/cratis/arc.go/ContractTests/observables/generatedconsumerfixture.ItemFeed only when its execution stage is reached.
+	// ResolveItemFeed resolves github.com/cratis/arc.go/ContractTests/internal/observables/generatedconsumerfixture.ItemFeed only when its execution stage is reached.
 	ResolveItemFeed func(arcgencontext.Context, *arcgenexecution.Scope) (ItemFeed, error)
 }
 
@@ -81,7 +81,7 @@ func RegisterArtifacts(arcBuilder *arcgenarc.Builder, bindings ...ArcBindings) e
 	); arcErr != nil {
 		return arcErr
 	}
-	if arcErr := arcBuilder.ExpectGeneratedEndpoints("adapter-only:9aea1d313e25f4861e72e26768d7f9c395b1a50bf1f8eb8a19a22f8d25cfff93", []arcgenmetadata.Endpoint{
+	if arcErr := arcBuilder.ExpectGeneratedEndpoints("adapter-only:64588544882a14a771dce5d112ce9dd055e4a86060d45ff2d17097daa7331846", []arcgenmetadata.Endpoint{
 		{Identity: "Contracts.Items.Item.All", Method: "GET", Path: "/items", ValidateOnly: false},
 		{Identity: "Contracts.Items.Item.All", Method: "QUERY", Path: "/items", ValidateOnly: false},
 		{Identity: "Contracts.Items.Item.Private", Method: "GET", Path: "/api/contracts/items/private", ValidateOnly: false},

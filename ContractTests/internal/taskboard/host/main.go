@@ -11,7 +11,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/cratis/arc.go/ContractTests/taskboard"
+	"github.com/cratis/arc.go/ContractTests/internal/taskboard"
 )
 
 func run() error {

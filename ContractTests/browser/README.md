@@ -27,7 +27,7 @@ stages need the earlier stages' outputs:
 - `install` runs `npm ci --engine-strict`.
 - `bundle` builds `app.jsx` with esbuild **0.25.10** into
   `.ai-work/browser-contract/assets`, using development React.
-- `host-build` builds `./ContractTests/browser/host`.
+- `host-build` builds `./ContractTests/internal/browser/host`.
 - `runtime` runs `host.test.mjs` and `browser.test.mjs` with a 60-second bound
   per case and 240 seconds for the stage. Startup-failure regressions use real
   subprocesses and prove termination and joining, including a SIGKILL fallback.

@@ -17,7 +17,7 @@ import (
 	"time"
 
 	arc "github.com/cratis/arc.go"
-	"github.com/cratis/arc.go/ContractTests/observables/generatedconsumerfixture"
+	"github.com/cratis/arc.go/ContractTests/internal/observables/generatedconsumerfixture"
 	"github.com/cratis/arc.go/execution"
 	"github.com/cratis/arc.go/metadata"
 	"github.com/cratis/arc.go/observable"

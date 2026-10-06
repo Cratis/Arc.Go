@@ -57,7 +57,7 @@ go test -race -count=1 -timeout=5m -run "^($heavy)\$" ./...
 go test -race -count=1 -timeout=3m -skip "^($heavy)\$" ./...
 ```
 
-Regenerate the checked-in consumer adapters from `tools/` with `go run ./cmd/arc-gen -dir .. ./ContractTests/generatedconsumer`; verify them with the same command plus `-check` before the package pattern. Generator tests also compile and execute independent consumers against the pinned runtime version.
+Regenerate the checked-in consumer adapters from `tools/` with `go run ./cmd/arc-gen -dir .. ./ContractTests/internal/generatedconsumer`; verify them with the same command plus `-check` before the package pattern. Generator tests also compile and execute independent consumers against the pinned runtime version.
 
 Repeat the build, vet, test (with Go 1.26 and 1.27), race, tidy-diff, lint (`--config=../.golangci.yml`), and vulnerability gates from `recipes/`. Its tests include a documentation check: every Go block under `Documentation/backend/go/recipes/` must be an exact `// recipe:start` region of the module's tested code, and every region must be documented. Change the code and the page together.
 

@@ -43,7 +43,7 @@ prerequisites fail; no tests silently skip. The script runs `npm ci --engine-str
 generates and checks the model-bound Go adapter and TypeScript proxies through
 production `arc-gen`, strictly compiles the manual and generated queries with both
 decorator modes, builds
-`./ContractTests/observables/fixturehost`, and starts that executable on
+`./ContractTests/internal/observables/fixturehost`, and starts that executable on
 `127.0.0.1:0`. It checks readiness through Arc HTTP admission, executes the Node
 client cases, signals shutdown and awaits the host's real exit. Each producer has
 a separate exit check and bound (120 seconds; runtime 60 seconds). Announcement,

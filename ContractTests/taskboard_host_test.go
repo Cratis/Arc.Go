@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cratis/arc.go/ContractTests/taskboard"
+	"github.com/cratis/arc.go/ContractTests/internal/taskboard"
 )
 
 func TestTaskBoardHTTPConformance(t *testing.T) {

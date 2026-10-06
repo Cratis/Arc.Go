@@ -76,7 +76,7 @@ validate/execute envelope expectations. The existing host is reused unchanged:
 
 ```sh
 # From repository root:
-GOWORK=off GOTOOLCHAIN=local go build -o .ai-work/output/ts-command/taskboard-host ./ContractTests/taskboard/host
+GOWORK=off GOTOOLCHAIN=local go build -o .ai-work/output/ts-command/taskboard-host ./ContractTests/internal/taskboard/host
 # From ProxyComparison:
 node --test --test-timeout=30000 Commands/roundtrip.test.mjs
 ```

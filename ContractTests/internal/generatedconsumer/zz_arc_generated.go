@@ -20,11 +20,11 @@ import (
 // Nil callbacks use execution.Resolve and declare their exact DI keys at registration.
 // Callbacks are borrowed, may run concurrently, and must not retain the operation scope.
 type ArcBindings struct {
-	// ResolveItemQueries resolves github.com/cratis/arc.go/ContractTests/generatedconsumer.ItemQueries only when its execution stage is reached.
+	// ResolveItemQueries resolves github.com/cratis/arc.go/ContractTests/internal/generatedconsumer.ItemQueries only when its execution stage is reached.
 	ResolveItemQueries func(arcgencontext.Context, *arcgenexecution.Scope) (ItemQueries, error)
-	// ResolveReader resolves github.com/cratis/arc.go/ContractTests/generatedconsumer.Reader only when its execution stage is reached.
+	// ResolveReader resolves github.com/cratis/arc.go/ContractTests/internal/generatedconsumer.Reader only when its execution stage is reached.
 	ResolveReader func(arcgencontext.Context, *arcgenexecution.Scope) (Reader, error)
-	// ResolveWriter resolves github.com/cratis/arc.go/ContractTests/generatedconsumer.Writer only when its execution stage is reached.
+	// ResolveWriter resolves github.com/cratis/arc.go/ContractTests/internal/generatedconsumer.Writer only when its execution stage is reached.
 	ResolveWriter func(arcgencontext.Context, *arcgenexecution.Scope) (Writer, error)
 }
 

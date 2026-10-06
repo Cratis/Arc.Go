@@ -14,7 +14,7 @@ The original and this adaptation are Copyright (c) Cratis, MIT licensed; see
 | Original `contract.py` SHA-256 | `7413e4eea0fa6d287adfc221d7a3fc8a7a9b64c81f91506ea26f19acd752201d` |
 | Published C# fixture dependency | Arc `22.14.0` |
 | Go assertions | `ContractTests/taskboard_contract_test.go` |
-| Real Go host | `ContractTests/taskboard/host` |
+| Real Go host | `ContractTests/internal/taskboard/host` |
 
 The original source was read at the pinned clean revision. CI needs neither a
 sibling clone nor Python/.NET: the reviewed Go assertions are committed here.
@@ -72,7 +72,7 @@ child. It is a separate process using real Arc `Application.Serve`, not an
 To launch the standalone host manually:
 
 ```sh
-go run ./ContractTests/taskboard/host
+go run ./ContractTests/internal/taskboard/host
 ```
 
 It binds `127.0.0.1:0` and prints exactly one readiness line, with the allocated

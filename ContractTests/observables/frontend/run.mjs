@@ -99,10 +99,10 @@ for (const name of stages) {
     } else if (name === 'compile') await stage('npm', ['run', 'compile'], directory);
     else if (name === 'compile-modern') await stage('npm', ['run', 'compile:modern'], directory);
     else if (name === 'generate' || name === 'generate-check') {
-        await stage('go', ['run', './cmd/arc-gen', '-dir', '..', '-typescript-out', 'ContractTests/observables/frontend/Generated', ...(name === 'generate-check' ? ['-check'] : []), './ContractTests/observables/generatedconsumerfixture'], join(root, 'tools'));
+        await stage('go', ['run', './cmd/arc-gen', '-dir', '..', '-typescript-out', 'ContractTests/observables/frontend/Generated', ...(name === 'generate-check' ? ['-check'] : []), './ContractTests/internal/observables/generatedconsumerfixture'], join(root, 'tools'));
     }
     else if (name === 'fixture-build') {
         await mkdir(output, { recursive: true });
-        await stage('go', ['build', '-o', executable, './ContractTests/observables/fixturehost'], root);
+        await stage('go', ['build', '-o', executable, './ContractTests/internal/observables/fixturehost'], root);
     } else await runtime(name);
 }

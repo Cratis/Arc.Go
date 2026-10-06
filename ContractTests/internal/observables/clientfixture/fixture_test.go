@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cratis/arc.go/ContractTests/observables/clientfixture"
+	"github.com/cratis/arc.go/ContractTests/internal/observables/clientfixture"
 )
 
 func TestGeneratedRegistrationSuppressesFactoriesAndResolvesOnlyAcceptedSources(t *testing.T) {

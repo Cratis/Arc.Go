@@ -13,7 +13,7 @@ import (
 	"time"
 
 	arc "github.com/cratis/arc.go"
-	"github.com/cratis/arc.go/ContractTests/taskboard"
+	"github.com/cratis/arc.go/ContractTests/internal/taskboard"
 	"github.com/cratis/arc.go/concepts"
 )
 
