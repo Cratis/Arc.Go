@@ -28,7 +28,18 @@ test('generation and check ignore inherited workspace and toolchain overrides', 
     await compare(generated);
 });
 
-test('generation and offline consumer tidy succeed with an empty module cache', async t => {
+test('subprocess execution returns stdout with the default timeout', () => {
+    assert.equal(run(process.execPath, ['-e', 'process.stdout.write("completed")']), 'completed');
+});
+
+test('subprocess execution enforces an explicit timeout', () => {
+    assert.throws(() => run(process.execPath, ['-e', 'setInterval(() => {}, 10000)'], directory, process.env, 100), /ETIMEDOUT/);
+});
+
+// Measured locally at 3.8s with an empty module cache (Go 1.27.1). Allow 180s
+// for the ~59MB pinned graph over a slower proxy, two arc-gen runs and two tidies.
+const coldGenerationTimeout = 180000;
+test('generation and offline consumer tidy succeed with an empty module cache', { timeout: coldGenerationTimeout + 30000 }, async t => {
     const cache = await mkdtemp(join(tmpdir(), 'arc-go-cold-module-cache-'));
     const env = { ...process.env, GOMODCACHE: cache, GOWORK: 'off', GOTOOLCHAIN: 'local' };
     // Go creates read-only module directories; clean them even when generation or assertions fail.
@@ -36,7 +47,7 @@ test('generation and offline consumer tidy succeed with an empty module cache', 
         run(process.env.GO || 'go', ['clean', '-modcache'], directory, env);
         await assert.rejects(access(cache), { code: 'ENOENT' }, 'Cold module cache must not survive the test');
     });
-    const generated = run(process.execPath, [join(directory, 'Matched/prepare.mjs')], directory, env).trim();
+    const generated = run(process.execPath, [join(directory, 'Matched/prepare.mjs')], directory, env, coldGenerationTimeout).trim();
     await compare(generated);
     const manifest = await readFile(join(generated, '../go.mod'), 'utf8');
     assert.match(manifest, /github\.com\/coder\/websocket v/);
