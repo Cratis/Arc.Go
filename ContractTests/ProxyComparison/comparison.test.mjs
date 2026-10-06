@@ -3,25 +3,41 @@
 import assert from 'node:assert/strict';
 import childProcess from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
-import { chmodSync, existsSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { access, mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import test, { after } from 'node:test';
+import test, { after, before } from 'node:test';
+import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
 import { compare, compareFragments, fragments, pairedFiles } from './compare.mjs';
 import { generate, prepare, tidyConsumer } from './Matched/prepare.mjs';
 import { createModuleCache, directory, removeModuleCache, run } from './helpers.mjs';
 
 const moduleCache = createModuleCache();
-const goEnv = { ...process.env, GOMODCACHE: moduleCache };
+let goEnv, toolsChecksums, output, ledger;
 after(() => removeModuleCache(moduleCache));
 
+function sharedCacheEnvironment(sourceCache, baseEnv = process.env) {
+    // Go reads the real cache only as a file proxy; all downloads and extraction
+    // go to this run's single owned cache, reused by every non-cold test.
+    const proxy = pathToFileURL(join(sourceCache, 'cache/download')).href;
+    return { ...baseEnv, GOMODCACHE: moduleCache,
+        GOPROXY: `${proxy},${baseEnv.GOPROXY ?? 'https://proxy.golang.org,direct'}`,
+        GOFLAGS: `${baseEnv.GOFLAGS ?? ''} -trimpath`.trim() };
+}
+
 const toolsSum = join(directory, '../../tools/go.sum');
-const toolsChecksums = await readFile(toolsSum, 'utf8');
-const output = await generate(undefined, goEnv);
-const ledger = JSON.parse(await readFile(join(directory, 'Matched/allowances.json')));
+before(async () => {
+    // go env only reads configuration; it never downloads into the real cache.
+    const sourceCache = process.env.GOMODCACHE || run(process.env.GO || 'go', ['env', 'GOMODCACHE'], directory,
+        { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local' }).trim();
+    goEnv = sharedCacheEnvironment(sourceCache);
+    toolsChecksums = await readFile(toolsSum, 'utf8');
+    output = await generate(undefined, goEnv);
+    ledger = JSON.parse(await readFile(join(directory, 'Matched/allowances.json')));
+});
 
 test('production arc-gen output compares file-by-file against untouched pinned C# captures', async () => {
     await compare(output);
@@ -31,7 +47,8 @@ test('generation and check ignore inherited workspace and toolchain overrides', 
     const generated = run(process.execPath, [join(directory, 'Matched/prepare.mjs')], directory, {
         ...goEnv,
         GOWORK: join(output, 'missing.go.work'),
-        GOTOOLCHAIN: 'invalid-toolchain'
+        GOTOOLCHAIN: 'invalid-toolchain',
+        GOPROXY: 'off' // All non-cold generation shares the already warmed owned cache.
     }).trim();
     await compare(generated);
 });
@@ -59,12 +76,61 @@ test('subprocess execution refuses Go cleanup before spawning any executable', t
     assert.equal(spawn.mock.callCount(), 0);
 });
 
-test('module cache cleanup refuses paths outside the owned test temp directory', () => {
-    for (const path of [directory, join(homedir(), 'go/pkg/mod'), tmpdir(),
-        join(tmpdir(), 'arc-go-proxy-test-module-cache-unowned'), join(moduleCache, 'nested')]) {
+test('module cache cleanup refuses paths outside the owned test temp directory', t => {
+    // Canonicalize /var on macOS so this exercises ownership, not the root guard.
+    const unowned = mkdtempSync(join(realpathSync(tmpdir()), 'arc-go-proxy-test-module-cache-'));
+    t.after(() => rmSync(unowned, { recursive: true }));
+    for (const path of [directory, join(homedir(), 'go/pkg/mod'), tmpdir(), unowned, join(moduleCache, 'nested')]) {
         assert.throws(() => removeModuleCache(path), /outside the owned test temp module cache/);
     }
+    assert.ok(existsSync(unowned), 'An unowned directory must survive cleanup refusal');
     assert.ok(existsSync(moduleCache));
+});
+
+test('module cache cleanup refuses a redirected owned root', async t => {
+    const cache = createModuleCache();
+    const moved = `${cache}-moved`;
+    renameSync(cache, moved);
+    t.after(() => {
+        rmSync(cache);
+        renameSync(moved, cache);
+        removeModuleCache(cache);
+    });
+    await symlink(moved, cache, 'dir');
+    assert.throws(() => removeModuleCache(cache), /redirected test module cache/);
+    assert.ok(existsSync(moved), 'The redirected target must survive cleanup refusal');
+});
+
+test('shared test cache uses the real cache as a read-only proxy and preserves caller options', () => {
+    const source = join(moduleCache, 'source cache');
+    const proxy = 'https://mirror.example.test/go,https://fallback.example.test/go';
+    const baseEnv = { GOMODCACHE: source, GOPROXY: proxy, GOFLAGS: '-mod=readonly' };
+    const env = sharedCacheEnvironment(source, baseEnv);
+    assert.equal(env.GOMODCACHE, moduleCache);
+    assert.equal(env.GOPROXY, `${pathToFileURL(join(source, 'cache/download')).href},${proxy}`);
+    assert.equal(env.GOFLAGS, '-mod=readonly -trimpath');
+    assert.deepEqual(baseEnv, { GOMODCACHE: source, GOPROXY: proxy, GOFLAGS: '-mod=readonly' });
+    assert.equal(sharedCacheEnvironment(source, {}).GOPROXY,
+        `${pathToFileURL(join(source, 'cache/download')).href},https://proxy.golang.org,direct`);
+});
+
+test('suite setup failure still removes its owned module cache', async () => {
+    const { consumer } = await prepare(goEnv);
+    const go = join(consumer, 'failing-go.mjs');
+    const cacheFile = join(consumer, 'failed-setup-cache.txt');
+    await writeFile(go, `#!${process.execPath}\nimport { writeFileSync } from 'node:fs';\nwriteFileSync(process.env.ARC_TEST_CACHE_FILE, process.env.GOMODCACHE);\nconsole.error('intentional setup failure');\nprocess.exit(1);\n`, { mode: 0o700 });
+    const env = { ...goEnv, GO: go, ARC_TEST_CACHE_FILE: cacheFile };
+    // Run an independent runner: Node otherwise suppresses nested --test runs.
+    delete env.NODE_TEST_CONTEXT;
+    const child = childProcess.spawnSync(process.execPath, ['--test', join(directory, 'comparison.test.mjs')], {
+        cwd: directory, env, encoding: 'utf8', timeout: 10000
+    });
+    assert.equal(child.error, undefined, child.error?.message);
+    assert.equal(child.status, 1, child.stdout + child.stderr);
+    assert.match(child.stdout + child.stderr, /intentional setup failure/);
+    const failedCache = await readFile(cacheFile, 'utf8');
+    assert.notEqual(failedCache, moduleCache);
+    await assert.rejects(access(failedCache), { code: 'ENOENT' }, 'Setup failure must run suite cache cleanup');
 });
 
 test('module cache cleanup removes read-only files without following symlinks', async t => {
@@ -168,7 +234,9 @@ const coldGenerationTimeout = 180000;
 const coldProcessTimeout = coldGenerationTimeout + 15000;
 test('generation and offline consumer tidy succeed with an empty module cache', { timeout: coldProcessTimeout + 30000 }, async t => {
     const cache = createModuleCache();
-    const env = { ...goEnv, GOMODCACHE: cache, GOWORK: 'off', GOTOOLCHAIN: 'local',
+    // Unlike ordinary tests, do not seed this cache from the real download cache.
+    const env = { ...goEnv, GOPROXY: process.env.GOPROXY ?? 'https://proxy.golang.org,direct',
+        GOMODCACHE: cache, GOWORK: 'off', GOTOOLCHAIN: 'local',
         ARC_PROXY_COMPARISON_TIMEOUT_MS: String(coldGenerationTimeout) };
     // Cleanup never invokes Go and can only remove the cache this test created.
     t.after(async () => {
@@ -208,6 +276,7 @@ async function warmToolingGraph(prepared) {
     const modfile = join(prepared.consumer, 'tooling.mod');
     await writeFile(modfile, 'module example.test/tooling-graph\ngo 1.26.0\nrequire golang.org/x/mod v0.41.0\n');
     const env = { ...prepared.env };
+    if (env.GOPROXY === 'off') delete env.GOPROXY;
     run(prepared.go, ['mod', 'download', '-modfile', modfile, 'all'], prepared.consumer, env);
 }
 
@@ -238,6 +307,16 @@ test('tooling graph warm-up preserves the caller-configured Go proxy', async t =
     assert.equal(calls[0].env.GOWORK, 'off');
     assert.equal(calls[0].env.GOTOOLCHAIN, 'local');
     assert.equal(process.env.GOPROXY, proxy, 'Warm-up must not mutate the caller environment');
+});
+
+test('tooling graph warm-up drops only the disabled Go proxy without mutating its input', async t => {
+    const calls = recordGenerationSteps(t);
+    const prepared = await prepare({ ...goEnv, GOPROXY: 'off' });
+    await warmToolingGraph(prepared);
+    assert.equal(calls.length, 1);
+    assert.equal(Object.hasOwn(calls[0].env, 'GOPROXY'), false);
+    assert.equal(calls[0].env.GOMODCACHE, moduleCache);
+    assert.equal(prepared.env.GOPROXY, 'off');
 });
 
 test('consumer tidy rejects a tooling-only dependency already present in the pinned tools graph', async () => {
