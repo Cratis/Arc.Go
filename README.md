@@ -4,6 +4,7 @@
 [![Build](https://github.com/Cratis/Arc.Go/actions/workflows/build.yml/badge.svg)](https://github.com/Cratis/Arc.Go/actions/workflows/build.yml)
 [![Release](https://github.com/Cratis/Arc.Go/actions/workflows/publish.yml/badge.svg)](https://github.com/Cratis/Arc.Go/actions/workflows/publish.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Discord](https://img.shields.io/discord/1182595891576717413?label=Discord&logo=discord&color=7289da)](https://discord.gg/kt4AMpV8WV)
 
 The Go framework for [Cratis Arc](https://github.com/Cratis/Arc), bringing Arc's application-building approach to Go.
 
@@ -45,6 +46,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full checks and release conventio
 
 ## Community and security
 
+- [Questions and help on Discord](https://discord.gg/kt4AMpV8WV) — ask questions and get help from the Cratis team and other developers
 - [Cratis](https://www.cratis.io/) and the [Cratis repositories](https://github.com/Cratis)
 - [Contribution guide](CONTRIBUTING.md)
 - [Private vulnerability reporting](SECURITY.md)
