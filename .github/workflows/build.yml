@@ -42,6 +42,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ matrix.go }}
+          check-latest: true
           cache: ${{ hashFiles('go.sum') != '' }}
           cache-dependency-path: go.sum
       - name: Download dependencies
@@ -68,6 +69,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.27.x'
+          check-latest: true
           cache: ${{ hashFiles('go.sum') != '' }}
           cache-dependency-path: go.sum
       - run: go test -race -count=1 -timeout=3m ./...
@@ -83,6 +85,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26.x'
+          check-latest: true
           cache: ${{ hashFiles('go.sum') != '' }}
           cache-dependency-path: go.sum
       - name: Verify gofmt
@@ -125,6 +128,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.27.x'
+          check-latest: true
           cache: ${{ hashFiles('go.sum') != '' }}
           cache-dependency-path: go.sum
       - name: Install pinned govulncheck
@@ -142,6 +146,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.27.x'
+          check-latest: true
           cache: false
       - name: Install actionlint
         run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
@@ -167,6 +172,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26.x'
+          check-latest: true
           cache-dependency-path: tools/go.sum
       - name: Download dependencies
         run: go mod download
@@ -212,6 +218,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: '1.26.x'
+          check-latest: true
           cache-dependency-path: integrations/chronicle/go.sum
       - run: go mod download
       - run: go mod verify
@@ -257,6 +264,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: ${{ matrix.go }}
+          check-latest: true
           cache-dependency-path: integrations/mongodb/go.sum
       - run: go mod download
       - run: go mod verify
@@ -278,6 +286,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: '1.26.x'
+          check-latest: true
           cache-dependency-path: integrations/mongodb/go.sum
       - run: go mod download
       - run: go test -race -count=1 -timeout=3m ./...
@@ -303,6 +312,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: '1.27.x'
+          check-latest: true
           cache-dependency-path: integrations/mongodb/go.sum
       - name: Install pinned govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
@@ -327,6 +337,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: '1.27.x'
+          check-latest: true
           cache-dependency-path: integrations/mongodb/go.sum
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a
         with:
@@ -371,6 +382,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: '1.27.x'
+          check-latest: true
           cache-dependency-path: integrations/chronicle/go.sum
       - name: Wait for kernel
         run: timeout 180 bash -c 'until curl -skf https://localhost:35000/health > /dev/null; do sleep 2; done'
@@ -398,6 +410,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26.x'
+          check-latest: true
           cache-dependency-path: recipes/go.sum
       - run: go mod download
       - run: go mod verify
@@ -414,6 +427,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.27.x'
+          check-latest: true
           cache-dependency-path: recipes/go.sum
       - name: Compile recipes (Go 1.27)
         run: go build ./...
