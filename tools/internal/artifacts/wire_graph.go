@@ -86,62 +86,92 @@ func (w *wireAnalyzer) collectDependencyDeclarations() error {
 }
 
 func (w *wireAnalyzer) collectFileDeclarations(pkg *packages.Package, path string, file *ast.File) error {
-	if file.Doc != nil {
-		d, err := parseDirectives(file.Doc)
-		if err != nil {
-			return diagnostic(pkg, file.Doc.Pos(), "%v", err)
-		}
-		if d.hasNamespace {
-			if _, selected := w.namespaces[path]; !selected {
-				w.namespaces[path] = d.namespace
-			}
-		}
+	if err := w.collectFileNamespace(pkg, path, file); err != nil {
+		return err
 	}
 	for _, declaration := range file.Decls {
-		gen, ok := declaration.(*ast.GenDecl)
-		if !ok {
-			continue
-		}
-		for _, spec := range gen.Specs {
-			typeSpec, ok := spec.(*ast.TypeSpec)
-			if !ok {
-				continue
-			}
-			if err := w.collectTypeSpecDeclaration(pkg, gen, typeSpec); err != nil {
-				return err
-			}
+		if err := w.collectDeclaration(pkg, declaration); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-func (w *wireAnalyzer) collectTypeSpecDeclaration(pkg *packages.Package, gen *ast.GenDecl, typeSpec *ast.TypeSpec) error {
+func (w *wireAnalyzer) collectFileNamespace(pkg *packages.Package, path string, file *ast.File) error {
+	if file.Doc == nil {
+		return nil
+	}
+	d, err := parseDirectives(file.Doc)
+	if err != nil {
+		return diagnostic(pkg, file.Doc.Pos(), "%v", err)
+	}
+	if !d.hasNamespace {
+		return nil
+	}
+	if _, selected := w.namespaces[path]; !selected {
+		w.namespaces[path] = d.namespace
+	}
+	return nil
+}
+
+func (w *wireAnalyzer) collectDeclaration(pkg *packages.Package, declaration ast.Decl) error {
+	gen, ok := declaration.(*ast.GenDecl)
+	if !ok {
+		return nil
+	}
+	for _, spec := range gen.Specs {
+		typeSpec, ok := spec.(*ast.TypeSpec)
+		if !ok {
+			continue
+		}
+		if err := w.collectTypeSpecDeclaration(pkg, gen, typeSpec); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func typeSpecDirectives(pkg *packages.Package, gen *ast.GenDecl, typeSpec *ast.TypeSpec) (directives, error) {
 	group := typeSpec.Doc
 	if group == nil && len(gen.Specs) == 1 {
 		group = gen.Doc
 	}
 	d, err := parseDirectives(group)
 	if err != nil {
-		return diagnostic(pkg, typeSpec.Pos(), "%v", err)
+		return d, diagnostic(pkg, typeSpec.Pos(), "%v", err)
 	}
-	if d.kind != "enum" && d.kind != "model" {
-		return nil
-	}
+	return d, nil
+}
+
+func declaredNamedType(pkg *packages.Package, typeSpec *ast.TypeSpec) *types.Named {
 	object := pkg.Types.Scope().Lookup(typeSpec.Name.Name)
 	if object == nil {
 		return nil
 	}
-	named, ok := types.Unalias(object.Type()).(*types.Named)
-	if !ok || d.ignore {
+	named, _ := types.Unalias(object.Type()).(*types.Named)
+	return named
+}
+
+func (w *wireAnalyzer) collectTypeSpecDeclaration(pkg *packages.Package, gen *ast.GenDecl, typeSpec *ast.TypeSpec) error {
+	d, err := typeSpecDirectives(pkg, gen, typeSpec)
+	if err != nil {
+		return err
+	}
+	if d.kind != "enum" && d.kind != "model" {
+		return nil
+	}
+	named := declaredNamedType(pkg, typeSpec)
+	if named == nil || d.ignore {
 		return nil
 	}
 	key := typeKey(named)
-	if w.declarations[key] == nil {
-		if d.name == "" {
-			d.name = named.Obj().Name()
-		}
-		w.declarations[key] = &model{typ: named, d: d, pos: typeSpec.Pos()}
+	if w.declarations[key] != nil {
+		return nil
 	}
+	if d.name == "" {
+		d.name = named.Obj().Name()
+	}
+	w.declarations[key] = &model{typ: named, d: d, pos: typeSpec.Pos()}
 	return nil
 }
 
@@ -164,17 +194,40 @@ func (w *wireAnalyzer) indexInterfaceModels() error {
 }
 
 func (w *wireAnalyzer) describeAnalysisRoots(a *analysis) error {
+	if err := w.describeCommandRoots(a); err != nil {
+		return err
+	}
+	if err := w.describeQueryRoots(a); err != nil {
+		return err
+	}
+	return w.describeExportRoots(a)
+}
+
+func (w *wireAnalyzer) describeCommandRoots(a *analysis) error {
 	for i := range a.commands {
 		if err := w.describeCommand(a, &a.commands[i]); err != nil {
 			return err
 		}
 	}
+	return nil
+}
+
+func (w *wireAnalyzer) describeQueryRoots(a *analysis) error {
 	for i := range a.queries {
 		if err := w.describeQuery(a, &a.queries[i]); err != nil {
 			return err
 		}
 	}
-	return w.describeExportRoots(a)
+	return nil
+}
+
+func anyTagRules(fields []FieldDescriptor) bool {
+	for _, field := range fields {
+		if field.TagRules() {
+			return true
+		}
+	}
+	return false
 }
 
 func (w *wireAnalyzer) describeCommand(a *analysis, command *command) error {
@@ -182,6 +235,23 @@ func (w *wireAnalyzer) describeCommand(a *analysis, command *command) error {
 	if descriptor.Excluded && w.profile.OpenAPI == nil {
 		return nil
 	}
+	if err := w.describeCommandInput(command); err != nil {
+		return err
+	}
+	override := w.commandResponseOverride(command)
+	if override == "none" {
+		descriptor.ResponseKind = "none"
+		return nil
+	}
+	output := command.handle.output
+	if output == nil {
+		return nil
+	}
+	return w.describeCommandResponse(a, command, output, override)
+}
+
+func (w *wireAnalyzer) describeCommandInput(command *command) error {
+	descriptor := command.descriptor
 	input, err := w.describe(command.typ)
 	if err != nil {
 		return err
@@ -193,65 +263,92 @@ func (w *wireAnalyzer) describeCommand(a *analysis, command *command) error {
 	if !descriptor.Excluded {
 		w.tsRoots = append(w.tsRoots, input)
 	}
-	for _, field := range descriptor.Fields {
-		if field.TagRules() {
-			descriptor.PortableRules = true
+	if anyTagRules(descriptor.Fields) {
+		descriptor.PortableRules = true
+	}
+	return nil
+}
+
+func (w *wireAnalyzer) commandResponseOverride(command *command) string {
+	if configured, exists := w.profile.Responses[command.descriptor.Declaration.Type.Identity()]; exists {
+		return configured
+	}
+	return command.d.response
+}
+
+// unwrapCommandResponse sets the response kind from the handler output and
+// returns the type that carries the response value.
+func (w *wireAnalyzer) unwrapCommandResponse(descriptor *CommandDescriptor, output types.Type, override string) (types.Type, error) {
+	if namedType(output, runtimePath+"/commands", "Outcome") {
+		named := types.Unalias(output).(*types.Named)
+		if named.TypeArgs().Len() != 1 {
+			return nil, w.fail(output, "invalid framework response wrapper")
 		}
+		output = named.TypeArgs().At(0)
+		descriptor.ResponseKind = "value"
+		if namedType(output, runtimePath+"/commands", "NoResponse") {
+			descriptor.ResponseKind = "none"
+		}
+		return output, nil
 	}
-	output := command.handle.output
-	override := command.d.response
-	if configured, exists := w.profile.Responses[descriptor.Declaration.Type.Identity()]; exists {
-		override = configured
+	switch override {
+	case "value":
+		descriptor.ResponseKind = "value"
+	case "":
+	default:
+		return nil, w.fail(output, "response override must be none or value")
 	}
-	if override == "none" {
+	return output, nil
+}
+
+// declaredResponseField returns the profile-declared client response field
+// for the command when one is present.
+func (w *wireAnalyzer) declaredResponseField(descriptor *CommandDescriptor) (ResponseField, bool) {
+	field, exists := w.profile.ResponseFields[descriptor.Declaration.Type.Identity()]["response"]
+	return field, exists
+}
+
+// resolveAmbiguousResponse settles an unknown response kind from the profile
+// declaration in contract mode and returns the declared field that supplies
+// the response value, or nil when the declaration does not apply.
+func (w *wireAnalyzer) resolveAmbiguousResponse(descriptor *CommandDescriptor) *ResponseField {
+	if descriptor.ResponseKind != "unknown" || !w.contract {
+		return nil
+	}
+	field, exists := w.declaredResponseField(descriptor)
+	if !exists {
+		return nil
+	}
+	if field.Absent {
 		descriptor.ResponseKind = "none"
 		return nil
 	}
-	if output == nil {
-		return nil
+	descriptor.ResponseKind = "value"
+	return &field
+}
+
+func (w *wireAnalyzer) describeResponseValue(output types.Type, declared *ResponseField) (WireType, error) {
+	response, err := w.describe(output)
+	if declared != nil {
+		return w.declaredResponse(*declared)
 	}
-	return w.describeCommandResponse(a, command, output, override)
+	return response, err
 }
 
 func (w *wireAnalyzer) describeCommandResponse(a *analysis, command *command, output types.Type, override string) error {
 	descriptor := command.descriptor
-	profile := w.profile
-	if namedType(output, runtimePath+"/commands", "Outcome") {
-		named := types.Unalias(output).(*types.Named)
-		if named.TypeArgs().Len() != 1 {
-			return w.fail(output, "invalid framework response wrapper")
-		}
-		output = named.TypeArgs().At(0)
-		if namedType(output, runtimePath+"/commands", "NoResponse") {
-			descriptor.ResponseKind = "none"
-		} else {
-			descriptor.ResponseKind = "value"
-		}
-	} else if override == "value" {
-		descriptor.ResponseKind = "value"
-	} else if override != "" {
-		return w.fail(output, "response override must be none or value")
+	output, err := w.unwrapCommandResponse(descriptor, output, override)
+	if err != nil {
+		return err
 	}
-	ambiguous := descriptor.ResponseKind == "unknown"
-	if ambiguous && w.contract {
-		if field, exists := profile.ResponseFields[descriptor.Declaration.Type.Identity()]["response"]; exists {
-			if field.Absent {
-				descriptor.ResponseKind = "none"
-			} else {
-				descriptor.ResponseKind = "value"
-			}
-		}
-	}
+	declared := w.resolveAmbiguousResponse(descriptor)
 	if descriptor.ResponseKind == "unknown" {
 		return diagnostic(a.pkg, command.handle.decl.Pos(), "client response is ambiguous; use commands.Outcome[T] or an explicit response=none/value contract")
 	}
 	if descriptor.ResponseKind != "value" {
 		return nil
 	}
-	response, err := w.describe(output)
-	if field, exists := profile.ResponseFields[descriptor.Declaration.Type.Identity()]["response"]; w.contract && ambiguous && exists && !field.Absent {
-		response, err = w.declaredResponse(field)
-	}
+	response, err := w.describeResponseValue(output, declared)
 	if err != nil {
 		return err
 	}
@@ -267,9 +364,40 @@ func (w *wireAnalyzer) describeQuery(a *analysis, query *query) error {
 	if descriptor.Excluded && w.profile.OpenAPI == nil {
 		return nil
 	}
-	result, err := w.describe(query.model.typ)
+	result, err := w.describeQueryResult(query)
 	if err != nil {
 		return err
+	}
+	if err := w.describeQueryProjection(query); err != nil {
+		return err
+	}
+	if err := validateQueryEmission(a, query); err != nil {
+		return err
+	}
+	w.collectQueryResultMembers(query, result)
+	if query.args != nil && !namedType(query.args, runtimePath+"/queries", "NoArguments") {
+		return w.describeQueryArguments(query)
+	}
+	return nil
+}
+
+func (w *wireAnalyzer) describeQueryProjection(query *query) error {
+	if w.contract {
+		if err := w.describeQueryContract(query); err != nil {
+			return err
+		}
+	}
+	if !query.descriptor.Excluded {
+		w.tsRoots = append(w.tsRoots, query.descriptor.Result)
+	}
+	return nil
+}
+
+func (w *wireAnalyzer) describeQueryResult(query *query) (WireType, error) {
+	descriptor := query.descriptor
+	result, err := w.describe(query.model.typ)
+	if err != nil {
+		return result, err
 	}
 	descriptor.Result = result
 	descriptor.Result.Nullable = query.shape.nullable
@@ -277,23 +405,25 @@ func (w *wireAnalyzer) describeQuery(a *analysis, query *query) error {
 	if query.shape.collection {
 		element, err := w.describe(query.shape.element)
 		if err != nil {
-			return err
+			return result, err
 		}
 		descriptor.Result = WireType{Kind: "array", Element: &element}
 	}
-	if w.contract {
-		if err := w.describeQueryContract(query); err != nil {
-			return err
-		}
+	return result, nil
+}
+
+func validateQueryEmission(a *analysis, query *query) error {
+	if query.emission == nil || !query.shape.collection {
+		return nil
 	}
-	if !descriptor.Excluded {
-		w.tsRoots = append(w.tsRoots, descriptor.Result)
+	if err := validateObservableGoIdentity(query.model.typ); err != nil {
+		return diagnostic(a.pkg, query.call.decl.Pos(), "%v", err)
 	}
-	if query.emission != nil && query.shape.collection {
-		if err := validateObservableGoIdentity(query.model.typ); err != nil {
-			return diagnostic(a.pkg, query.call.decl.Pos(), "%v", err)
-		}
-	}
+	return nil
+}
+
+func (w *wireAnalyzer) collectQueryResultMembers(query *query, result WireType) {
+	descriptor := query.descriptor
 	for _, field := range w.nodes[result.Target].Fields {
 		if field.Identity {
 			descriptor.Declaration.ReadModelIdentityMember = field.Name
@@ -302,10 +432,6 @@ func (w *wireAnalyzer) describeQuery(a *analysis, query *query) error {
 			descriptor.SortFields = append(descriptor.SortFields, field.Name)
 		}
 	}
-	if query.args != nil && !namedType(query.args, runtimePath+"/queries", "NoArguments") {
-		return w.describeQueryArguments(query)
-	}
-	return nil
 }
 
 func (w *wireAnalyzer) describeQueryContract(query *query) error {
@@ -341,22 +467,39 @@ func (w *wireAnalyzer) describeQueryArguments(query *query) error {
 	}
 	descriptor.Parameters = fields
 	if !descriptor.Excluded {
-		for _, field := range fields {
-			if w.typescriptRequested && w.contract {
-				if field.Binding.PreservePresence {
-					return w.fail(query.args, "query preservePresence requires an explicit presence-compatible client contract")
-				}
-				if field.Name == "constructor" || field.Name == "__proto__" || field.Name == "prototype" {
-					return w.fail(query.args, "reserved frontend wire field %q", field.Name)
-				}
-			}
-			w.tsRoots = append(w.tsRoots, field.Type)
+		if err := w.addQueryArgumentRoots(query, fields); err != nil {
+			return err
 		}
 	}
+	if anyTagRules(fields) {
+		descriptor.PortableRules = true
+	}
+	return nil
+}
+
+func isReservedFrontendField(name string) bool {
+	return name == "constructor" || name == "__proto__" || name == "prototype"
+}
+
+func (w *wireAnalyzer) validateQueryArgumentField(query *query, field FieldDescriptor) error {
+	if !w.typescriptRequested || !w.contract {
+		return nil
+	}
+	if field.Binding.PreservePresence {
+		return w.fail(query.args, "query preservePresence requires an explicit presence-compatible client contract")
+	}
+	if isReservedFrontendField(field.Name) {
+		return w.fail(query.args, "reserved frontend wire field %q", field.Name)
+	}
+	return nil
+}
+
+func (w *wireAnalyzer) addQueryArgumentRoots(query *query, fields []FieldDescriptor) error {
 	for _, field := range fields {
-		if field.TagRules() {
-			descriptor.PortableRules = true
+		if err := w.validateQueryArgumentField(query, field); err != nil {
+			return err
 		}
+		w.tsRoots = append(w.tsRoots, field.Type)
 	}
 	return nil
 }
@@ -364,17 +507,25 @@ func (w *wireAnalyzer) describeQueryArguments(query *query) error {
 func (w *wireAnalyzer) describeExportRoots(a *analysis) error {
 	for _, roots := range [][]*model{a.exports, a.enums} {
 		for _, root := range roots {
-			excluded := excluded(w.profile, (metadata.TypeName{Namespace: a.namespace, Name: root.d.name}).Identity())
-			if w.profile.OpenAPI != nil || !excluded {
-				wire, err := w.describe(root.typ)
-				if err != nil {
-					return err
-				}
-				if !excluded {
-					w.tsRoots = append(w.tsRoots, wire)
-				}
+			if err := w.describeExportRoot(a, root); err != nil {
+				return err
 			}
 		}
+	}
+	return nil
+}
+
+func (w *wireAnalyzer) describeExportRoot(a *analysis, root *model) error {
+	excluded := excluded(w.profile, (metadata.TypeName{Namespace: a.namespace, Name: root.d.name}).Identity())
+	if w.profile.OpenAPI == nil && excluded {
+		return nil
+	}
+	wire, err := w.describe(root.typ)
+	if err != nil {
+		return err
+	}
+	if !excluded {
+		w.tsRoots = append(w.tsRoots, wire)
 	}
 	return nil
 }
@@ -417,26 +568,20 @@ func (w *wireAnalyzer) describeResponseFields() (*WireType, error) {
 }
 
 func (w *wireAnalyzer) finishGraph(analyses []*analysis) error {
-	graph, profile := w.graph, w.profile
+	graph := w.graph
 	validationState, err := w.describeResponseFields()
 	if err != nil {
 		return err
 	}
-	if profile.OpenAPI != nil {
+	if w.profile.OpenAPI != nil {
 		framework, err := frameworkContracts(graph, validationState)
 		if err != nil {
 			return err
 		}
 		graph.Framework = framework
 	}
-	if profile.Server != nil && profile.Server.Identity.DetailsType != "" {
-		t, err := w.reference(nil, profile.Server.Identity.DetailsType)
-		if err != nil {
-			return err
-		}
-		if _, err := w.describe(t); err != nil {
-			return err
-		}
+	if err := w.describeIdentityDetails(); err != nil {
+		return err
 	}
 	for _, key := range sortedKeys(w.nodes) {
 		graph.Types = append(graph.Types, *w.nodes[key])
@@ -451,6 +596,19 @@ func (w *wireAnalyzer) finishGraph(analyses []*analysis) error {
 	return nil
 }
 
+func (w *wireAnalyzer) describeIdentityDetails() error {
+	server := w.profile.Server
+	if server == nil || server.Identity.DetailsType == "" {
+		return nil
+	}
+	t, err := w.reference(nil, server.Identity.DetailsType)
+	if err != nil {
+		return err
+	}
+	_, err = w.describe(t)
+	return err
+}
+
 func (w *wireAnalyzer) validateGraph() error {
 	graph := w.graph
 	if w.contract {
@@ -458,15 +616,23 @@ func (w *wireAnalyzer) validateGraph() error {
 			return err
 		}
 	}
-	if w.contract && w.typescriptRequested {
-		if err := w.validateTypeScriptContract(); err != nil {
-			return err
-		}
-	} else if w.typescript {
-		if err := rejectConstructorCycles(graph.Types); err != nil {
-			return err
-		}
+	if err := w.validateTypeScriptWalk(); err != nil {
+		return err
 	}
+	return w.validateWireSchemas()
+}
+
+func (w *wireAnalyzer) validateTypeScriptWalk() error {
+	if w.contract && w.typescriptRequested {
+		return w.validateTypeScriptContract()
+	}
+	if w.typescript {
+		return rejectConstructorCycles(w.graph.Types)
+	}
+	return nil
+}
+
+func (w *wireAnalyzer) validateWireSchemas() error {
 	for _, key := range sortedKeys(w.profile.WireSchemas) {
 		if !w.seenTypes[key] {
 			return fmt.Errorf("unknown or unreachable wireSchemas type reference %q", key)
