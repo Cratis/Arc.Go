@@ -1,0 +1,7 @@
+# actionlint 1.7.12 does not know the `queue` key of `concurrency` yet
+# (https://github.com/rhysd/actionlint/issues/657). GitHub supports it, and Publish relies on it
+# to keep every pending release. Remove this once a pinned actionlint release understands it.
+paths:
+  .github/workflows/publish.yml:
+    ignore:
+      - 'unexpected key "queue" for "concurrency" section'

@@ -8,11 +8,12 @@ on:
 permissions:
   contents: read
 
-# GitHub can replace an older PENDING run even with cancellation disabled.
-# Operational requirement: let Publish complete before the next release-bound merge.
+# Never cancel a release in flight, and never drop a pending one: with `queue: max` GitHub keeps up
+# to 100 pending runs first-in first-out, instead of replacing an older pending run with a newer one
+# (which loses that merge's release). GitHub rejects `queue: max` combined with `cancel-in-progress`.
 concurrency:
   group: go-publish-${{ github.repository }}
-  cancel-in-progress: false
+  queue: max
 
 jobs:
   verify:
