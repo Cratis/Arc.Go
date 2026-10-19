@@ -3,9 +3,9 @@ module github.com/cratis/arc.go/integrations/mongodb
 go 1.26
 
 require (
-	github.com/cratis/arc.go v0.0.0-20261003154536-d4fec76875ae
-	github.com/cratis/fundamentals.go v0.1.0
-	go.mongodb.org/mongo-driver/v2 v2.9.1
+	github.com/cratis/arc.go v0.1.1
+	github.com/cratis/fundamentals.go v0.3.2
+	go.mongodb.org/mongo-driver/v2 v2.9.2
 )
 
 require (
