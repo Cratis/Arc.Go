@@ -13,10 +13,10 @@ Make the client response distinct from server-consumed values. Go does not need 
 | NoResponse or nil | Successful void output |
 | Singular validation.Result | Built-in validation control; findings survive after Handle |
 | authorization.Decision | Built-in authorization control |
-| Respond[R](response, effects...) | One reserved response; every effect must be consumed |
-| Effects[R](effects...) | Every nonnil leaf must be consumed |
-| Values[R](values...) | At most one unhandled response; ambiguity fails before effects |
-| Control[R](fragment) | Explicitly merge infrastructure verdicts and diagnostics |
+| `Respond[R](response, effects...)` | One reserved response; every effect must be consumed |
+| `Effects[R](effects...)` | Every nonnil leaf must be consumed |
+| `Values[R](values...)` | At most one unhandled response; ambiguity fails before effects |
+| `Control[R](fragment)` | Explicitly merge infrastructure verdicts and diagnostics |
 | Zero Outcome[R] | Successful void output |
 
 Slices, arrays, and maps are single leaves, never implicitly flattened. Nested explicit Outcome graphs flatten in declaration order with a 64-level limit. Typed nil leaves are absent; zero, false, and empty string are present.
