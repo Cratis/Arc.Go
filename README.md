@@ -47,6 +47,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full checks and release conventio
 ## Community and security
 
 - [Questions and help on Discord](https://discord.gg/kt4AMpV8WV) — ask questions and get help from the Cratis team and other developers
+- [Documentation](https://www.cratis.io/arc/go/)
 - [Cratis](https://www.cratis.io/) and the [Cratis repositories](https://github.com/Cratis)
 - [Contribution guide](CONTRIBUTING.md)
 - [Private vulnerability reporting](SECURITY.md)
