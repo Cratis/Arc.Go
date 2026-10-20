@@ -1,7 +1,8 @@
 // Copyright (c) Cratis. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-// Package arc is the composition entry point for Cratis Arc for Go.
+// Package arc provides the Cratis Arc CQRS application framework for Go and is
+// its composition entry point.
 //
 // NewBuilder composes explicit typed command/query registrations, authentication,
 // identity and discovery. Build is single-attempt and activates no dependencies;
