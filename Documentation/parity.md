@@ -447,7 +447,7 @@ catalogs/schema as well as identity/development listings; current C# does not
 uniformly apply those headers. Raw handlers cannot steal reserved routes. Schema
 bounds fail explicitly, never publish empty placeholders for unsupported shapes.
 Framework recipes add no runtime dependencies; their installed-version adapter
-matrix remains application-owned. CI's other OS/Go lanes and CodeQL are remote-only.
+matrix remains application-owned. CI's other OS/Go lanes are remote-only.
 
 ## Intentional differences and migration
 
