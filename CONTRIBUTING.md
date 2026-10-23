@@ -85,7 +85,7 @@ These run real client code in Node, including mounted generated hooks. They do n
 
 The separate [paired snapshot HTTP checkpoint](ContractTests/httpconformance/README.md) requires Python 3, exact .NET SDK `10.0.401` / runtime `10.0.12`, and Arc source revision `7c1e78075b737df64f69fddfaae83374f75e3612`. Its run instructions extract source outside the sibling checkout, restore all seven locked projects, build Release, verify exact provenance, prove generated activation, and execute every paired request. Native inventory/comparator/lifecycle tests run with the root tests without .NET. The paired result is bounded to 36 requests / 14 groups, with 34 strict matches and two exact successful ordinary-list page/size allowances; it is not a full HTTP or CI-matrix claim.
 
-Hosted CI also runs the ordinary build, vet, and tests on macOS and Windows. Workflow lint invokes ShellCheck when it is available. Foundation behavioral and wire-fixture tests run without external services. They are not HTTP integration tests; add explicitly bounded integration checks before claiming HTTP contract conformance. CodeQL runs separately in GitHub Actions.
+Hosted CI also runs the ordinary build, vet, and tests on macOS and Windows. Workflow lint invokes ShellCheck when it is available. Foundation behavioral and wire-fixture tests run without external services. They are not HTTP integration tests; add explicitly bounded integration checks before claiming HTTP contract conformance.
 
 ## Zero-container guarantee
 
