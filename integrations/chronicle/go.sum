@@ -4,8 +4,8 @@ github.com/cratis/arc.go v0.0.0-20261005222852-3e2a69270f46 h1:KiXo9MMFW7KJ/er/w
 github.com/cratis/arc.go v0.0.0-20261005222852-3e2a69270f46/go.mod h1:sNlv+dPCjq2kSh9Xp0TYBlFx9SUkAv3z4syai6AwLI8=
 github.com/cratis/chronicle.go v0.0.0-20261003210034-9e0c8d5ba5f1 h1:Fzkn43TQ4K98TYvCStpjeu0JACBBWezQEPPrzCezTBI=
 github.com/cratis/chronicle.go v0.0.0-20261003210034-9e0c8d5ba5f1/go.mod h1:gRtI5xgb37OisJXDor6syh0KubKUfu3T24ZyRmVqQmM=
-github.com/cratis/fundamentals.go v0.1.0 h1:SMabIppmBRcOnrV1YdmLqKw2v59mb4+wDX78UZuAyOM=
-github.com/cratis/fundamentals.go v0.1.0/go.mod h1:upTRXscJLeH63NqzzY51bPvvsgjtDpfug6a6VAaT2fI=
+github.com/cratis/fundamentals.go v0.3.3 h1:e/ysxXvOlbDzlOEpixMcoctIzYlYJOpCC0jOxv9moDQ=
+github.com/cratis/fundamentals.go v0.3.3/go.mod h1:upTRXscJLeH63NqzzY51bPvvsgjtDpfug6a6VAaT2fI=
 github.com/golang/protobuf v1.5.4 h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek=
 github.com/golang/protobuf v1.5.4/go.mod h1:lnTiLA8Wa4RWRcIUkrtSVa5nRhsEGBg48fD6rSs7xps=
 github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
