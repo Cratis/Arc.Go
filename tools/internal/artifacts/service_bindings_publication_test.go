@@ -335,7 +335,7 @@ func TestProductionCLIServiceBindingsExternalCompiledWitness(t *testing.T) {
 	}
 	decoder := json.NewDecoder(bytes.NewReader(output))
 	found := map[string]bool{}
-	pins := map[string]string{runtimePath: "v0.0.0-20261006003625-1bc16445f410", "github.com/cratis/fundamentals.go": "v0.2.0"}
+	pins := map[string]string{runtimePath: "v0.0.0-20261006003625-1bc16445f410", "github.com/cratis/fundamentals.go": "v0.3.3"}
 	checkout, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)

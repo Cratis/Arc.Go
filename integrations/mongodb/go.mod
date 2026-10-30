@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/cratis/arc.go v0.0.0-20261003154536-d4fec76875ae
-	github.com/cratis/fundamentals.go v0.1.0
+	github.com/cratis/fundamentals.go v0.3.3
 	go.mongodb.org/mongo-driver/v2 v2.9.1
 )
 
