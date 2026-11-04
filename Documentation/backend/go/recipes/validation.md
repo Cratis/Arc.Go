@@ -3,12 +3,16 @@ title: Validate with go-playground/validator
 description: Report go-playground/validator rules as Arc validation results through a validator callback.
 ---
 
-Arc's portable `validate:"required"` tag covers presence, but your commands
-need e-mail formats, lengths and rules on nested items. You already know
-[go-playground/validator](https://github.com/go-playground/validator). This
-recipe runs it inside an Arc validator, so its failures become ordinary Arc
-validation results: the handler never runs, `/validate` reports the same
-findings, and the frontend sees members it can attach to form fields.
+Arc's portable `validate:"required"` tag covers presence. Use
+[go-playground/validator](https://github.com/go-playground/validator) for
+email formats, lengths and nested-item rules, then adapt its failures to Arc
+validation results. Invalid input is rejected before the handler runs;
+`/validate` reports the same findings, with members a frontend can attach to
+form fields.
+
+The registration fragment uses an application-owned `structvalidation`
+package containing the copied helpers and their imports. It is not an import
+from the unpublished recipes module.
 
 ## Configure the rules
 
@@ -35,6 +39,10 @@ func NewRules() *validator.Validate {
 }
 ```
 
+Create and configure the rules during application setup, before serving
+requests. Reuse the configured instance; a `*validator.Validate` is safe for
+concurrent use.
+
 :::caution[Arc owns validate and rules]
 go-playground reads `validate` by default, and so does Arc. Arc rejects an
 unknown rule such as `validate:"email"` when you register the command. Arc also
@@ -45,6 +53,11 @@ for go-playground, including on declarations consumed by arc-gen.
 :::
 
 ## Adapt failures to Arc results
+
+The adapter validates the bound command or query value with the configured
+rules, then maps each rule failure to an Arc finding. Keep `wireMember` with
+the adapter in the same application-owned helper package so the findings use
+wire names rather than Go field namespaces.
 
 ```go
 // Validator adapts rules to an Arc validator for T. Each failed rule becomes
@@ -148,8 +161,11 @@ so the client shows a model-level finding rather than targeting an empty field.
 
 ## Register the validator
 
-Create the rules once and share them; a `*validator.Validate` is safe for
-concurrent use:
+This fragment assumes an application `builder`, an `OpenAccount` model and
+its `accountPath`. The example's `opened` counter tracks handler calls; your
+application supplies its own model, route and handler state. The example
+command requires a name and has playground rules for its email and nested
+label values. Attach the callback using the configured rules:
 
 ```go
 rules := structvalidation.NewRules()
@@ -169,7 +185,10 @@ arguments bound from GET query strings and QUERY bodies alike.
 ## What your clients see
 
 For `{"email":"not-an-email","labels":[{"value":"ok"},{"value":"x"}]}`, both the
-command and its `/validate` endpoint return 400 with `isValid: false` and two
-results: one on member `email` with `reasonDetail` `email`, and one on
-`labels[1].value` with `reasonDetail` `min=2`. Every result has reason `rule`.
-Arc's own `validate:"required"` findings appear beside them.
+command and its `/validate` endpoint return 400 with `isValid: false`. The two
+playground findings are one on member `email` with `reasonDetail` `email`,
+and one on `labels[1].value` with `reasonDetail` `min=2`. Each playground
+finding has reason `rule`.
+
+The command also requires a name. Because this request omits it, Arc adds its
+own `validate:"required"` finding alongside the two playground findings.

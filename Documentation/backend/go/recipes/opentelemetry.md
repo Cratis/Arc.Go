@@ -3,13 +3,19 @@ title: Trace requests with OpenTelemetry
 description: Wrap Arc with otelhttp so each request gets a server span and handlers join the caller's trace.
 ---
 
-You run Arc behind other services and want one trace across them: the caller's
-`traceparent` should become the parent of a server span, and your command and
-query handlers should log and call downstream services inside that span. Arc
-has no OpenTelemetry dependency; wrap the application with
-[otelhttp](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp).
+Wrap your Arc handler with
+[otelhttp](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp)
+to join a caller's trace. The incoming `traceparent` becomes the parent of a
+server span, and command and query handlers receive its context for logging
+and downstream calls. Arc itself has no OpenTelemetry dependency; your
+application owns the wrapper and provider.
 
 ## Wrap the application
+
+Start with a built Arc application and your chosen HTTP host. Create the SDK
+provider before starting Arc, then supply the wrapped handler when serving
+requests. The formatter below uses registered endpoints for span names and
+bounded fallbacks for other paths.
 
 This code is compiled and tested in the [recipes module](index.md):
 
@@ -46,6 +52,14 @@ composite propagator). Passing them explicitly keeps the recipe independent of
 the global OpenTelemetry state. Inside a handler,
 `trace.SpanContextFromContext(ctx)` returns the server span.
 
+At shutdown, initiate HTTP draining and `app.Shutdown` before waiting for
+either: active observations may need Arc cancellation before the host can
+finish draining. Wait for both shutdown outcomes and check their errors.
+Once the work using the provider has joined, shut the provider down with a
+fresh bounded cleanup context and check its error. The tests own their
+provider and follow that cleanup order; the wrapper never installs a global
+provider.
+
 ## Correlate application logs
 
 Use this bridge with a nonnil, application-owned `slog.Logger` and the handler's
@@ -68,10 +82,7 @@ func Logger(ctx context.Context, logger *slog.Logger) *slog.Logger {
 }
 ```
 
-Create your SDK provider before starting Arc. After stopping the HTTP server and
-joining `app.Shutdown`, shut the provider down with a fresh bounded cleanup
-context and check its error. The tests own their provider and follow that cleanup
-order; the wrapper never installs a global provider. Ingress spans do not replace
+Ingress spans do not replace
 [backend operation diagnostics](../core/diagnostics.md). Do not log credentials,
 command payloads or sensitive query arguments, or use tenant/user IDs as metric
 labels. Expose metrics, pprof and administrative endpoints only on deliberately
