@@ -1,6 +1,6 @@
 ---
 title: Inspect observable queries over HTTP
-description: Read current values, wait for a first result, or stream full results with SSE and WebSocket.
+description: Consume Arc Go observable queries over HTTP snapshots, first-result waits, direct SSE or WebSocket streams, with disconnect and recovery behavior.
 ---
 
 You can inspect a live query without writing a frontend. These examples assume a

@@ -1,6 +1,6 @@
 ---
 title: Mount Arc in Chi
-description: Preserve Arc paths and QUERY dispatch when embedding in a Chi host.
+description: Mount an Arc Go application in a Chi host while preserving Arc routes, the QUERY method and empty error responses, with explicit server lifecycle ownership.
 ---
 
 Your service already routes with Chi and you want Arc's commands and queries

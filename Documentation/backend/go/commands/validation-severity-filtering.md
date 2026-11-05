@@ -1,6 +1,6 @@
 ---
 title: Validation severity filtering
-description: Apply command input thresholds without weakening declaration floors or post-Handle controls.
+description: Filter Arc Go command validation severities with caller allowances and declaration floors, keeping input thresholds separate from returned handler controls.
 ---
 
 An advisory input warning should not accidentally block a command, but a command's declared floor must not be weakened by a caller. The policy distinguishes input-stage allowance from returned Handle controls.

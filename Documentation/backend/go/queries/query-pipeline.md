@@ -1,6 +1,6 @@
 ---
 title: Query pipeline
-description: Understand snapshot stages, operation-scope ownership and fail-closed publication.
+description: Follow Arc Go query pipeline stages from argument binding and authorization to rendering and publication, including operation scope ownership and cleanup.
 ---
 
 <!-- Copyright (c) Cratis. All rights reserved. -->

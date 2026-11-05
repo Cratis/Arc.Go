@@ -1,6 +1,6 @@
 ---
 title: Paging and sorting
-description: Count authorized rows before stable ordering and paging without changing ordinary-list behavior.
+description: Page Arc Go model-bound query results with source renderers or explicit pages, counting authorized rows before stable sorting and optional in-memory paging.
 ---
 
 <!-- Copyright (c) Cratis. All rights reserved. -->

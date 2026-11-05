@@ -1,6 +1,6 @@
 ---
 title: Trace requests with OpenTelemetry
-description: Wrap Arc with otelhttp so each request gets a server span and handlers join the caller's trace.
+description: Wrap Arc Go HTTP handlers with otelhttp to create server spans, join incoming traces and correlate application logs while keeping telemetry host-owned.
 ---
 
 Wrap your Arc handler with

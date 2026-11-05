@@ -1,6 +1,6 @@
 ---
 title: Protect discovery endpoints
-description: Expose command/query catalogs, identity schemas and development listings deliberately.
+description: Configure Arc Go discovery exposure for command and query catalogs, identity schemas and development users independently of operation authorization.
 ---
 
 Discovery makes an application's callable surface inspectable without executing

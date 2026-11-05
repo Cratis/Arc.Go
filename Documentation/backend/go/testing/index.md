@@ -1,6 +1,6 @@
 ---
 title: Test commands and queries without HTTP
-description: Exercise the real Arc pipelines with explicit test dependencies and ordinary Go assertions.
+description: Test Arc Go commands and snapshot queries through real pipelines with arctest, explicit dependencies, controlled identity and ordinary Go assertions.
 ---
 
 Calling `Handle` directly misses authorization, validation, preparation and

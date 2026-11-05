@@ -1,6 +1,6 @@
 ---
 title: Model-bound commands
-description: Define a command's Handle, Validate, and Provide methods and register typed adapters.
+description: Author Arc Go model-bound commands as structs with Handle, Validate and Provide methods, registering typed adapters while keeping behavior on the command.
 ---
 
 Keep the intent and its decision together. A command is a named Go struct, and its receiver is the decoded command, not a DI-created handler object.

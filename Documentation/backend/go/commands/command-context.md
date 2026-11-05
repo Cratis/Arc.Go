@@ -1,6 +1,6 @@
 ---
 title: Command context and keys
-description: Read immutable command snapshots and supply copied context values or an explicit command key.
+description: Access Arc Go command context snapshots, provide copied values and explicit command keys, resolve scoped read models and respect invocation lifetimes.
 ---
 
 A handler needs to know which command frame it belongs to without borrowing an ambient service provider. `commands.ContextFrom(ctx)` returns a metadata snapshot; `Invoke` and `Prepare` additionally receive an expiring `Invocation` for stage-local facilities.

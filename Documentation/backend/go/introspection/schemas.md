@@ -1,6 +1,6 @@
 ---
 title: Supply truthful discovery schemas
-description: Understand bounded metadata-only schemas and override opaque application codecs.
+description: Understand Arc Go metadata-only introspection schemas, supported wire shapes and startup failures, and override schemas for custom application codecs.
 ---
 
 A schema which hides unsupported fields is worse than a startup error. Arc builds

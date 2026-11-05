@@ -1,6 +1,6 @@
 ---
 title: Authentication handlers
-description: Compose trusted credential adapters without treating display cookies or forwarded headers as proof of identity.
+description: Authenticate Arc Go HTTP requests with ordered credential adapters, keeping display cookies and unverified forwarded headers outside the trust boundary.
 ---
 
 Authentication decides who called; [authorization](../authorization/index.md)

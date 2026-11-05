@@ -1,6 +1,6 @@
 ---
 title: Identity details
-description: Provide display data without changing trusted claims, roles or operation permissions.
+description: Provide Arc Go frontend identity display details through /.cratis/me while keeping profile data separate from trusted claims, roles and operation permissions.
 ---
 
 You may need profile data for a frontend without giving that data authority over

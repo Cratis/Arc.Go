@@ -1,6 +1,6 @@
 ---
 title: Command filters
-description: Add ordered command verdicts without replacing mandatory authorization or validation.
+description: Add ordered Arc Go command filters for reusable execution gates, with lazy registration that preserves mandatory authorization and validation stages.
 ---
 
 Use a filter for a reusable execution gate, not to hide command business logic in a second handler. `Filter.OnExecution(context.Context, *Invocation)` returns a `Result[NoResponse]` fragment and an inspectable local error. `FilterFunc` adapts a callback.

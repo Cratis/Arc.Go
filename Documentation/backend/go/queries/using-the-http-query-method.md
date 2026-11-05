@@ -1,6 +1,6 @@
 ---
 title: GET and HTTP QUERY readers
-description: Normalize GET controls and QUERY envelopes while preserving safe parse errors and no-store metadata.
+description: Normalize Arc Go query requests from GET parameters or QUERY envelopes with request readers, preserving parse failures, status hints and no-store metadata.
 ---
 
 <!-- Copyright (c) Cratis. All rights reserved. -->

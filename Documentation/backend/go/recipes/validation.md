@@ -1,6 +1,6 @@
 ---
 title: Validate with go-playground/validator
-description: Report go-playground/validator rules as Arc validation results through a validator callback.
+description: Adapt go-playground/validator rules into Arc Go validation results, reporting field-level input failures before handling or through validation-only endpoints.
 ---
 
 Arc's portable `validate:"required"` tag covers presence. Use

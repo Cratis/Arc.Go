@@ -1,6 +1,6 @@
 ---
 title: Dependency injection and operation resources
-description: Wire dependencies with plain Go, then opt into Fundamentals scopes when you need a container.
+description: Wire Arc Go dependencies with constructors and closures, choose operation scope ownership and optionally adopt Fundamentals dependency injection scopes.
 ---
 
 <!-- Copyright (c) Cratis. All rights reserved. -->

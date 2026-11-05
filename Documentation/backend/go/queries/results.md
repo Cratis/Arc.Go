@@ -1,6 +1,6 @@
 ---
 title: Query results
-description: Represent ready, pending, paged and delta query outcomes without losing null semantics.
+description: Construct Arc Go query results for ready, pending, paged and delta outcomes, preserving null values, readiness signals and serialization ownership.
 ---
 
 <!-- Copyright (c) Cratis. All rights reserved. -->

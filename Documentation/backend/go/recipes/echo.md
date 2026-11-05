@@ -1,6 +1,6 @@
 ---
 title: Mount Arc in Echo
-description: Delegate every unmatched method and path from Echo v5 to Arc's http.Handler.
+description: Embed Arc Go in Echo v5 by forwarding unmatched methods and paths to its http.Handler, preserving QUERY dispatch and controlling the host lifecycle.
 ---
 
 Your service already uses Echo and you want Arc's commands and queries beside

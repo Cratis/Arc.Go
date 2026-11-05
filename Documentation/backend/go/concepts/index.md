@@ -1,6 +1,6 @@
 ---
 title: Concepts and JSON values
-description: Preserve UUIDs, calendar values, durations and missing input without losing wire meaning.
+description: Model Arc Go domain concepts with named values and portable UUID, date, time and duration scalars, preserving missing input and JSON wire semantics.
 ---
 
 <!-- Copyright (c) Cratis. All rights reserved. -->

@@ -1,6 +1,6 @@
 ---
 title: Query dependencies
-description: Supply repositories through closures or lazy operation resources after authorization and validation.
+description: Supply Arc Go query dependencies through closures, lazy operation resources or an optional DI provider, activating them only after authorization and validation.
 ---
 
 <!-- Copyright (c) Cratis. All rights reserved. -->

@@ -1,6 +1,6 @@
 ---
 title: Protected query health
-description: Enable an opt-in, role-protected observable query that reports aggregate observable-query and hub connection counts.
+description: Monitor Arc Go observable queries and hub connections with an opt-in, role-protected health endpoint exposing aggregate counts without subscriber details.
 ---
 
 Observable queries hold connections, subscriptions and source resources open. When

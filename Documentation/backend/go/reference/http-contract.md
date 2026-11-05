@@ -1,6 +1,6 @@
 ---
 title: HTTP contract
-description: Look up Arc.Go methods, status overrides, wire headers and observable transport boundaries.
+description: Reference Arc Go HTTP routes, methods, request controls, status overrides and wire headers, including identity metadata and observable transport boundaries.
 ---
 
 ## Routes and methods

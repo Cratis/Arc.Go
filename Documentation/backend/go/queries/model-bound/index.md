@@ -1,6 +1,6 @@
 ---
 title: Model-bound queries
-description: Share ordinary read-model structs between Arc queries and Chronicle projections without coupling registration.
+description: Share plain Go read-model structs between Arc model-bound queries and Chronicle projections while keeping registration independent and public identity explicit.
 ---
 
 <!-- Copyright (c) Cratis. All rights reserved. -->

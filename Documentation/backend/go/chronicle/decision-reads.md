@@ -1,6 +1,6 @@
 ---
 title: Chronicle decision reads
-description: Decide from a Chronicle read model inside a Go command and have a competing append reject the whole commit.
+description: Protect Arc Go command decisions with invocation-owned Chronicle read models, enrolling reads so competing appends reject the entire command commit.
 ---
 
 A booking command reads a room, sees it is free and appends `RoomBooked`. Between the read and the commit another command books the same room, and both succeed. An ordinary injected read model can't prevent that, because it is a snapshot: it can lag the event log and it guards nothing.

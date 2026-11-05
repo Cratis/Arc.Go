@@ -1,6 +1,6 @@
 ---
 title: Queries in Go
-description: Keep query behavior beside its read model and execute typed snapshots without a container.
+description: Define Arc Go queries beside ordinary read-model structs, register typed snapshot methods or functions and execute them without a dependency container.
 ---
 
 <!-- Copyright (c) Cratis. All rights reserved. -->

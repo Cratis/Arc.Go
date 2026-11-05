@@ -1,6 +1,6 @@
 ---
 title: WebSocket runtime dependency
-description: The pinned WebSocket implementation and its runtime boundary.
+description: Review Arc Go's pinned coder/websocket dependency, runtime capabilities, license and security boundary without assuming higher-level query semantics.
 ---
 
 ## Dependency and boundary

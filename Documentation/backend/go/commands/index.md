@@ -1,6 +1,6 @@
 ---
 title: Commands in Go
-description: Put command input and behavior together and execute it through Arc's authorized pipeline.
+description: Define Arc Go commands with colocated input and behavior, then connect typed adapters to authorization, validation, preparation and execution pipelines.
 ---
 
 You should not need a second handler type just to act on a command. In Arc.Go, the command owns its `Handle` method. Typed adapters connect that method to authorization, validation, preparation, returned-value handling, and completion without requiring a container.

@@ -1,6 +1,6 @@
 ---
 title: Protected decision reads
-description: Opt a command into invocation-owned, enrolled read-model decisions and supply them through the provider-neutral seam.
+description: Enable protected Arc Go command decision reads through provider-neutral contracts, with invocation ownership, enrollment checks and completion guarantees.
 ---
 
 A command that decides from a read model can lose a race: another command changes the same instance between the read and the write. A protected decision read lets a provider guard against that. The read belongs to one command invocation and is enrolled with the provider's completion owner. The provider must reject the whole batch on a competing write; Arc's root module checks provenance but cannot enforce a database transaction.

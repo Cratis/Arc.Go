@@ -1,6 +1,6 @@
 ---
 title: Authorization declarations and policies
-description: Compile operation declarations and evaluate trusted identity before invoking application dependencies.
+description: Compile Arc Go authorization declarations and policies, then evaluate trusted identities and roles before activating command or query dependencies.
 ---
 
 A validation warning must never bypass a permission check. Arc.Go separates

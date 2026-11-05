@@ -1,6 +1,6 @@
 ---
 title: Command return shapes
-description: Choose ordinary payloads, explicit responses, effects, ambiguous values, or infrastructure controls.
+description: Choose Arc Go command return shapes with examples of payloads, explicit responses, effects and infrastructure controls under the one-response rule.
 ---
 
 Make the client response distinct from server-consumed values. Go does not need CLR tuple or union reflection to retain Arc's one-response rule.

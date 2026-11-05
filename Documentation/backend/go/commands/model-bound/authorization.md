@@ -1,6 +1,6 @@
 ---
 title: Command authorization
-description: Protect command declarations and tenant membership before ordinary dependency activation.
+description: Authorize Arc Go model-bound commands with roles and declaration rules, checking tenant membership before validators and handler dependencies activate.
 ---
 
 Reject callers before constructing their validators or handler dependencies. Command authorization is mandatory pipeline work; a custom authorization filter adds restrictions, never replaces the declaration.

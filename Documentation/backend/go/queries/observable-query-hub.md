@@ -1,6 +1,6 @@
 ---
 title: Observable query hub contract
-description: Multiplex query subscriptions with revision ownership, bounded delivery and SSE control ownership.
+description: Multiplex Arc Go observable query subscriptions over WebSocket or SSE hubs with revision ownership, bounded delivery and secure SSE control requests.
 ---
 
 Use a hub to carry several subscriptions over one physical connection. Both hubs

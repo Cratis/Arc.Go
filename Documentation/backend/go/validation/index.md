@@ -1,6 +1,6 @@
 ---
 title: Validation findings
-description: Invoke typed validators and apply bounded command severity allowances without weakening authorization.
+description: Use Arc Go validation results, invoke typed validators and apply command severity allowances without weakening authorization or declaration-level limits.
 ---
 
 <!-- Copyright (c) Cratis. All rights reserved. -->
