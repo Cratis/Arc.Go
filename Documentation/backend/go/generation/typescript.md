@@ -4,7 +4,7 @@ description: Publish supported models, commands, snapshot queries, and observabl
 ---
 
 Keep your frontend contract aligned with your Go declarations instead of copying
-request and result types. The experimental `arc-gen` application profile generates
+request and result types. The `arc-gen` application profile generates
 models, numeric enums, commands, **snapshot queries**, and declared **observable
 queries** together with their Go adapters. Compatibility is Partial: the tested
 client versions are Arc/Arc.React 22.48.2 and Fundamentals 7.22.0. Proxy-only

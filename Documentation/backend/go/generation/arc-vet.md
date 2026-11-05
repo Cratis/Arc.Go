@@ -4,7 +4,7 @@ description: Check model-bound Go declarations with arc-vet and interpret their 
 ---
 
 A declaration can compile without being discoverable as an Arc command or query.
-The experimental `arc-vet` command reports these authoring mistakes without
+The `arc-vet` command reports these authoring mistakes without
 executing application code or writing adapters. It also reports unused preparation
 values, potentially absent read-model dependencies and contradictory authorization.
 Use [generator directives and signatures](reference.md) for the admission contract.

@@ -4,7 +4,7 @@ description: Generate typed Go registrations and supported TypeScript models, co
 ---
 
 Writing a registration closure for every command repeats information already in
-its method signature. The experimental `arc-gen` tool reads opted-in Go packages
+its method signature. The `arc-gen` tool reads opted-in Go packages
 and writes command, snapshot-query, and declared observable-source adapters for
 you. An optional application profile also
 [generates TypeScript models, commands, and queries](typescript.md), including

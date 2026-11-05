@@ -3,7 +3,7 @@ title: Generator directives and signatures
 description: Supported arc-gen declarations, method shapes, dependency stages, and diagnostics.
 ---
 
-`arc-gen` is experimental tooling for typed command, snapshot-query, and declared
+`arc-gen` provides tooling for typed command, snapshot-query, and declared
 observable-source adapters and a bounded [TypeScript proxy profile](typescript.md).
 It analyzes explicitly selected packages with `go/packages` and `go/types`; it
 never executes package initialization, constructors, or business methods.

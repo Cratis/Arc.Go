@@ -36,8 +36,9 @@ For hosted requests, supply the handlers in `arc.Options.Authentication` when
 calling `arc.NewBuilder`; `Build` constructs the chain. No handlers are configured
 by default, so include `authentication.HostPrincipal()` when a trusted host has
 installed a principal. When the chain returns without an error or credential
-failure, hosting installs its principal in the request context; command and query
-pipelines capture that principal for invocation. See [hosting
+failure, hosting installs its principal on the incoming request context with
+`identity.WithPrincipal`, then dispatches the request to the command or query
+pipeline, which captures that principal for invocation. See [hosting
 options](../configuration/hosting.md) for the configuration boundary.
 
 | Result | Chain action |

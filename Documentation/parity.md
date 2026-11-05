@@ -330,7 +330,7 @@ The frontend authority is `Source/DotNET/Tools/ProxyGenerator` and
 ## Generation ledger
 
 C# sources below use Arc `7c1e78075b737df64f69fddfaae83374f75e3612`, relative
-to `Source/DotNET/Arc.Core/`. The experimental [generator](backend/go/generation/index.md)
+to `Source/DotNET/Arc.Core/`. The [generator](backend/go/generation/index.md)
 provides Go adapters and bounded TypeScript model/command/snapshot/observable-query
 proxies. Frontend sources additionally use `Source/DotNET/Tools/ProxyGenerator` and
 `Source/JavaScript` at the same revision. OpenAPI and Screenplay publication, opaque provider-source

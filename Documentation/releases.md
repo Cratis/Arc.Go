@@ -1,10 +1,10 @@
 # Go releases
 
-This repository is in early development and has no tagged Go release yet. Repository setup uses `no-release`; the first implemented, minor-labeled release will be v0.1.0. Experimental releases remain v0.x until an approved stable launch.
+This repository has no tagged Go release yet. Repository setup uses `no-release`; the first implemented, minor-labeled release will be v0.1.0. Releases remain v0.x until an approved stable launch.
 
 ## Release intent
 
-Every PR has exactly one of `major`, `minor`, `patch`, or `no-release`. While v0.x, use minor for breaking experimental API changes and patch for compatible fixes. Describe breaking changes explicitly in the release notes. Dependabot PRs use `no-release`; a dependency change that needs publication requires a deliberate release-bound maintainer change.
+Every PR has exactly one of `major`, `minor`, `patch`, or `no-release`. While v0.x, use minor for breaking API changes and patch for compatible fixes. Describe breaking changes explicitly in the release notes. Dependabot PRs use `no-release`; a dependency change that needs publication requires a deliberate release-bound maintainer change.
 
 The merged PR body becomes the GitHub Release notes verbatim. Use the [contribution guide](../CONTRIBUTING.md) and PR template, and keep verification and review notes in a PR comment.
 
