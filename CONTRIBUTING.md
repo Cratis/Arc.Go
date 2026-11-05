@@ -19,6 +19,23 @@ Product documentation lives in `Documentation/`. Add packages and examples only 
 
 Install Go 1.26 or later, golangci-lint v2.14.0, actionlint v1.7.12, ShellCheck, and markdownlint-cli2. CI tests Go 1.26 and 1.27, including the latest patches; golangci-lint must be built with a Go version at least as new as the code it analyzes.
 
+## Overview compatibility evidence
+
+The product overview summarizes the supported client behavior. Its verification
+comes from the generated observable Node case, which exercises default WebSocket
+hub/Delta behavior with an independent collection consumer, and a bounded mounted
+React lane, which executes real generated hook reconstruction, cache reuse and
+joined cleanup with explicit WebSocket/Delta providers. This is not
+browser/DOM/StrictMode or full Arc-wrapper parity; suspense, reconnect, server
+paging, setter correctness and 30-second expiry remain unverified.
+
+The [paired snapshot HTTP checkpoint](Documentation/parity.md#paired-snapshot-http-checkpoint)
+compares 36 GET/QUERY requests against pinned C# Arc: 34 strict matches and two
+exact ordinary-list paging-metadata allowances. This remains Partial; commands,
+authentication, HEAD, providers, streams and browsers are outside that pair.
+Consult the [parity map](Documentation/parity.md) for the executable gates and
+coverage limits when changing these claims.
+
 ## Verify your change
 
 Run from the repository root, with each supported Go toolchain where applicable:
