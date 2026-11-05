@@ -1,6 +1,6 @@
 ---
 title: Arc.Go parity
-description: Versioned feature-by-feature compatibility with the pinned C# Arc contract.
+description: Feature-by-feature ledger of Arc.Go against the pinned C# Arc contract, showing what is supported, partial, or deliberately different, and why.
 ---
 
 <!-- Copyright (c) Cratis. All rights reserved. -->

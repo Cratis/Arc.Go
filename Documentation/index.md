@@ -1,6 +1,6 @@
 ---
 title: Arc for Go
-description: Use Cratis Arc's foundation contracts from idiomatic, dependency-free Go packages.
+description: Arc.Go provides Go commands, queries, and snapshot and observable HTTP hosting for Arc applications; it is a partial port, not full parity with C# Arc.
 ---
 
 <!-- Copyright (c) Cratis. All rights reserved. -->

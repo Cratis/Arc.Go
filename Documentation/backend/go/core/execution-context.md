@@ -83,8 +83,12 @@ The new context retains the parent's cancellation and deadlines.
 ## Run an independent job
 
 Start with [plain Go operation resources](dependency-injection.md), then call
-`execution.RunWithResources` using an application/job lifetime context. This
-excerpt assumes `jobCtx` and an `open` function of type `execution.OpenResources`
+`execution.RunWithResources` using an application/job lifetime context. Give this
+job its own system actor and default tenant instead of inheriting a request's
+identity. The callback receives a context carrying that metadata while retaining
+the job lifetime's cancellation and deadlines.
+
+This excerpt assumes `jobCtx` and an `open` function of type `execution.OpenResources`
 are available and imports `context`, `execution`, `identity`, and `tenancy`:
 
 ```go
@@ -96,12 +100,17 @@ err := execution.RunWithResources(jobCtx, open, execution.Metadata{
 })
 ```
 
-Inspect the returned `err`. The callback runs synchronously in a fresh scope,
-receives a non-closing view, and expires on return. Cleanup follows callback
-completion; callback, cancellation, and cleanup errors are joined. It creates no
-goroutine. Callback panics become inspectable `execution.PanicError` diagnostics
-without disclosing their payload in error text. The unreleased `execution.Run`
-API is removed; use `RunWithResources` for both plain holders and DI factories.
+The callback checks that its context matches the fresh scope. To do more work,
+borrow resources inside that callback, as with the greeter in the no-container
+example. The callback receives a non-closing scope view that expires when it
+returns; cleanup then releases the owned resources. Neither the view nor a
+borrowed dependency should escape into later work.
+
+Inspect the returned `err`: callback, cancellation, and cleanup errors are joined.
+The callback runs synchronously; the call creates no goroutine. Callback panics
+become inspectable `execution.PanicError` diagnostics without disclosing their
+payload in error text. The unreleased `execution.Run` API is removed; use
+`RunWithResources` for both plain holders and DI factories.
 
 Zero cleanup timeout means 30 seconds. Negative timeouts and nil contexts or
 callbacks return `execution.ErrInvalidArgument`. A nil opener means empty resources. Cleanup uses a bounded

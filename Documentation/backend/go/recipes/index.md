@@ -3,12 +3,17 @@ title: Recipes for common Go hosts and libraries
 description: Compiled, tested recipes for mounting Arc in Chi, Gin and Echo and adding JWT, CORS/CSRF, OpenTelemetry and go-playground validation.
 ---
 
-Arc is a plain `http.Handler`, so it fits into the router, authentication,
-tracing and validation libraries your service already uses. The glue is
-small, but each library has one detail that silently breaks Arc's contract:
-a router that swallows the QUERY method, a fallback that appends a body to
-Arc's empty 404, or a struct tag both libraries claim. These recipes show the
-glue that works and the tests that prove it.
+Arc exposes a plain `http.Handler` that you can connect to your service's
+router, authentication, tracing and validation libraries. The host must
+preserve Arc's method handling and response boundaries, including QUERY and
+an empty 404 response.
+
+Choose a host recipe and the optional integrations you need. In your
+application, register commands, queries and any validation callbacks before
+building Arc. Prepare host-owned resources, start Arc, then serve its handler
+through the chosen HTTP host. At shutdown, initiate HTTP draining and Arc
+shutdown together, wait for their outcomes, then close resources such as the
+tracing provider once the work using them has joined.
 
 ## Recipes
 
@@ -48,5 +53,10 @@ recipe.
 
 The `recipes` module is never tagged or published, and Arc's runtime module
 does not depend on any of these libraries. Copy the code you need into your
-application; do not import `github.com/cratis/arc.go/recipes`. The recipes do
-not cover databases, message brokers or other optional integrations.
+application; do not import `github.com/cratis/arc.go/recipes`. Put copied
+helpers, their imports and any local declarations in application-owned
+packages. A helper package prefix in a fragment refers to that copied code,
+not an import from the unpublished module.
+
+The recipes do not cover databases, message brokers or other optional
+integrations.

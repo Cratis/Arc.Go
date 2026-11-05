@@ -1,4 +1,7 @@
-# Go releases
+---
+title: Go release policy
+description: Arc.Go has no tagged release yet; learn the PR release labels, v0.x versioning rules, and how publication verifies tags and the Go proxy.
+---
 
 This repository has no tagged Go release yet. Repository setup uses `no-release`; the first implemented, minor-labeled release will be v0.1.0. Releases remain v0.x until an approved stable launch.
 

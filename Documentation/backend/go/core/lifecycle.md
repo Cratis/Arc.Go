@@ -41,6 +41,15 @@ connections (including hijacked WebSockets) before ordinary request drain and us
 hooks. Failed source opening retains cleanup and its application admission lease
 until workers actually join. See [observable lifetimes](../queries/observable-queries.md).
 
+For embedded hosting, stop your external server as well. Arc owns its observable
+connections, not arbitrary raw hijacks; track those in your own lifecycle participant.
+
+**Advanced: resume operation resource cleanup.**
+
+A resource holder can explicitly support cleanup that outlasts one waiting
+budget. Use this only when an owner can retain the unfinished work and return to
+it with a fresh budget.
+
 Operation resource `Close` still runs at most once. A holder that owns resumable
 cleanup can explicitly implement `execution.ResourcesJoiner`: Close initiates
 cleanup once and `Join(ctx)` waits for that same work without repeating disposal
@@ -50,6 +59,7 @@ non-context Join outcome certifies completion, even on failure. Non-context
 failures and panic diagnostics from earlier attempts remain inspectable through
 `errors.Is`/`errors.As`; only provisional canceled/deadline waiting errors clear
 when joining finishes.
+
 Plain holders without this capability have final, cached Close errors, including
 context errors; they must not return while leaving unowned background cleanup.
 `execution.ErrScopeJoinPending` distinguishes unfinished work from final failures.
@@ -67,6 +77,3 @@ for later Shutdown. Unary hosts do not automatically retain resource joins: your
 host must retain the pending scope and resume Close, not merely check or log the
 error. Do not opt a unary holder into asynchronous cleanup without that owner.
 Borrowed scopes never transfer resource-disposal ownership through this error.
-
-For embedded hosting, stop your external server as well. Arc owns its observable
-connections, not arbitrary raw hijacks; track those in your own lifecycle participant.

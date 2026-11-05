@@ -1,6 +1,6 @@
 ---
 title: Generator directives and signatures
-description: Supported arc-gen declarations, method shapes, dependency stages, and diagnostics.
+description: Learn how arc-gen directives select command, read-model, and query declarations, and which method signatures, dependency stages, and diagnostics it accepts.
 ---
 
 `arc-gen` provides tooling for typed command, snapshot-query, and declared
