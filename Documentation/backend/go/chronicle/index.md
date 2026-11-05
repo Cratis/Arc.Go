@@ -1,6 +1,6 @@
 ---
 title: Chronicle integration
-description: Return events from Go commands, inject keyed read models, and run aggregate decisions in one command-owned transaction.
+description: Integrate Arc Go commands with Chronicle to return events, inject keyed read models, run aggregate decisions and commit nested work in one transaction.
 ---
 
 An Arc command can return a registered event instead of calling the event store. The optional `github.com/cratis/arc.go/integrations/chronicle` module stages those events and commits them only after the command and its nested commands succeed. Arc's root module still works without Chronicle.

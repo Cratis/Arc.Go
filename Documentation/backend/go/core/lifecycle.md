@@ -1,6 +1,6 @@
 ---
 title: Start and stop application work
-description: Register explicitly owned resources and drain HTTP and direct operations safely.
+description: Manage Arc Go application lifecycle participants with ordered startup and reverse shutdown, draining HTTP and direct operations before closing owned resources.
 ---
 
 A canceled context signals work to stop; it does not prove work has ended. Arc

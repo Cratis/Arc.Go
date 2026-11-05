@@ -1,6 +1,6 @@
 ---
 title: Command results
-description: Construct Arc command outcomes with safe response presence and standard status selection.
+description: Construct Arc Go command results for authorization, validation and exceptions, with explicit response presence and standard HTTP status selection.
 ---
 
 <!-- Copyright (c) Cratis. All rights reserved. -->

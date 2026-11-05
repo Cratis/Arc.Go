@@ -1,6 +1,6 @@
 ---
 title: Execute a command
-description: Execute, validate, or borrow an operation scope while preserving failure and response contracts.
+description: Build and execute Arc Go command pipelines, validate without handling and borrow operation scopes while preserving authorization, failures and responses.
 ---
 
 Use the pipeline when a backend caller needs the same command boundary as other callers, rather than calling Handle and silently skipping its guards.

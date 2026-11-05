@@ -1,6 +1,6 @@
 ---
 title: Tenant selection and membership
-description: Select a tenant from explicit request inputs and enforce membership as a separate security boundary.
+description: Resolve Arc Go tenants from request inputs, match subdomains safely and enforce tenant membership separately from selection and database routing.
 ---
 
 A tenant header tells you where a caller wants to work, not whether they belong

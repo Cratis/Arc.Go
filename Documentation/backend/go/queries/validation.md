@@ -1,6 +1,6 @@
 ---
 title: Query validation
-description: Validate successfully bound argument models and block every retained query finding.
+description: Validate bound Arc Go query argument models with model methods, concept rules and typed validators, blocking execution for every retained validation finding.
 ---
 
 <!-- Copyright (c) Cratis. All rights reserved. -->

@@ -1,6 +1,6 @@
 ---
 title: Hosting options
-description: Look up construction defaults, unary HTTP limits and owned server budgets.
+description: Reference Arc Go hosting configuration defaults, request limits and server timeout budgets, including option validation and borrowed collaborator rules.
 ---
 
 Pass `arc.Options` to `NewBuilder` to configure an Arc application. The builder

@@ -1,6 +1,6 @@
 ---
 title: Execution metadata
-description: Carry trusted identity, tenant, correlation and receipt values through explicit Go contexts.
+description: Carry Arc Go principals, tenants, correlation IDs and receipts through immutable contexts, choosing actors explicitly for independent background jobs.
 ---
 
 <!-- Copyright (c) Cratis. All rights reserved. -->

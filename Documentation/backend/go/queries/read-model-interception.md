@@ -1,6 +1,6 @@
 ---
 title: Read-model interception
-description: Transform rendered models in deterministic order without treating masking as row authorization.
+description: Transform rendered Arc Go read models with exact-type interceptors in deterministic order, while keeping presentation masking separate from row authorization.
 ---
 
 <!-- Copyright (c) Cratis. All rights reserved. -->

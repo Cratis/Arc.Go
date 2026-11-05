@@ -1,6 +1,6 @@
 ---
 title: Backend operation diagnostics
-description: Record bounded, payload-free command and query outcomes and export them on your own schedule.
+description: Record Arc Go command and query outcomes with bounded, payload-free observations, inspect counts and durations, and export telemetry on your own schedule.
 ---
 
 When a command starts failing validation or a query slows down, you need counts and

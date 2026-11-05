@@ -1,6 +1,6 @@
 ---
 title: Authenticate JWT bearer tokens
-description: Verify bearer tokens with golang-jwt v5 in an Arc authentication handler.
+description: Verify bearer tokens in an Arc Go authentication handler with golang-jwt v5, map claims to trusted principals and register the handler at HTTP ingress.
 ---
 
 Your frontend or API clients send `Authorization: Bearer <token>` and your

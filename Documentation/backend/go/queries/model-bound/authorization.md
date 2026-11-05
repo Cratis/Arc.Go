@@ -1,6 +1,6 @@
 ---
 title: Query authorization
-description: Replace model authorization at the query level and suppress ordinary factories on denial.
+description: Protect Arc Go model-bound queries with model-level declarations or query overrides, denying access before ordinary dependency factories activate.
 ---
 
 <!-- Copyright (c) Cratis. All rights reserved. -->

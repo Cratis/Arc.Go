@@ -1,6 +1,6 @@
 ---
 title: Command execution scopes
-description: Enlist root completion participants and safely share command resources with nested execution.
+description: Register Arc Go command execution scopes for root completion, share resources with nested commands and defer persistence until the boundary can complete.
 ---
 
 Select a response only after the command boundary has finished. An `ExecutionScope` can still reject completion, so the pipeline publishes no failed response even when Handle returned a value.

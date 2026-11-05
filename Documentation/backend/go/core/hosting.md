@@ -1,6 +1,6 @@
 ---
 title: Host commands and queries
-description: Choose owned HTTP serving or embed an Arc application as an http.Handler.
+description: Host Arc Go with an owned HTTP server or embed it as an http.Handler, building once and optionally serving a public site within documented security limits.
 ---
 
 Arc keeps business execution in the command/query pipelines and transport in the

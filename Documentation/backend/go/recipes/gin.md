@@ -1,6 +1,6 @@
 ---
 title: Mount Arc in Gin
-description: Forward unmatched Gin requests to Arc without losing QUERY or Arc's empty 404.
+description: Embed Arc Go in Gin by forwarding unmatched requests to Arc's handler without losing the QUERY method, empty 404 responses or host-owned lifecycle.
 ---
 
 Your service already uses Gin and you want Arc's commands and queries next to

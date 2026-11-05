@@ -1,6 +1,6 @@
 ---
 title: Query return types
-description: Choose owning-model snapshot shapes, already-windowed pages or exact provider renderers.
+description: Choose supported Arc Go query return types for owning-model snapshots, collections, pre-paged results, observable values and exact provider renderers.
 ---
 
 <!-- Copyright (c) Cratis. All rights reserved. -->

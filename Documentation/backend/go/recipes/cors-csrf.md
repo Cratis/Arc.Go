@@ -1,6 +1,6 @@
 ---
 title: Serve browsers on other origins
-description: Protect Arc from cross-site requests and allow a trusted frontend origin with the standard library.
+description: Protect an Arc Go host against cross-site request forgery and configure trusted frontend origins using standard-library CORS and CSRF handling.
 ---
 
 Your React frontend runs on `https://app.example.com` and Arc runs on another

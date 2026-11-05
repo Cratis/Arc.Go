@@ -1,6 +1,6 @@
 ---
 title: Query arguments
-description: Bind flat typed arguments with explicit requiredness, defaults and raw presence.
+description: Bind Arc Go query inputs to named argument structs with required fields, defaults and raw presence, using supported scalar conversions and query tags.
 ---
 
 <!-- Copyright (c) Cratis. All rights reserved. -->

@@ -1,6 +1,6 @@
 ---
 title: Routes and stable identities
-description: Resolve Arc command and query paths from explicit versioned metadata.
+description: Resolve Arc Go command and query routes from versioned metadata catalogs, apply path overrides and inspect C#-compatible conventions without activation.
 ---
 
 <!-- Copyright (c) Cratis. All rights reserved. -->

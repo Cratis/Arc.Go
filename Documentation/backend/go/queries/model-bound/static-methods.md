@@ -1,6 +1,6 @@
 ---
 title: Namespace methods and query functions
-description: Translate C# static read-model queries into direct, typed Go calls.
+description: Translate C# static read-model query methods into Arc Go namespace methods with unnamed value receivers, or register explicitly owned typed functions.
 ---
 
 <!-- Copyright (c) Cratis. All rights reserved. -->

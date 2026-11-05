@@ -1,6 +1,6 @@
 ---
 title: Response value handlers
-description: Consume returned values additively and update command context before selecting a client response.
+description: Register Arc Go response value handlers to consume integration returns, update command context and separate server-side effects from client responses.
 ---
 
 A returned value can represent work for a server extension rather than a client response. Register a `ResponseValueHandler` when that interpretation belongs to an integration; keep ordinary command logic on the command.

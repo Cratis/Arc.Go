@@ -1,6 +1,6 @@
 ---
 title: Validate commands
-description: Combine model Validate methods, required tags, registered concept rules, and explicit validators.
+description: Validate Arc Go command input with model methods, required tags, concept rules and explicit validators before activating handler dependencies.
 ---
 
 Reject bad input before fetching handler dependencies. Keep reusable value invariants with concepts, cross-field rules with the command, and preparation-dependent decisions in Provide or Handle.

@@ -1,6 +1,6 @@
 ---
 title: Flat command operations in Go
-description: Declare immediate inline work, inspect commit-aware recovery, and understand the manual operation boundary.
+description: Declare and register Arc Go command operations for immediate inline work, inspect persistence-aware recovery and understand the manual operation limits.
 ---
 
 Returning work lets you test a command's decision without performing the write. Arc.Go executes explicitly registered operation declarations through the existing command pipeline and attempts their declared reversals only when observed persistence permits it.

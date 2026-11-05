@@ -1,6 +1,6 @@
 ---
 title: Generate adapters and proxies
-description: Generate typed Go registrations and supported TypeScript models, commands, snapshot queries, and observable queries.
+description: Generate Arc Go command and query registration adapters from opted-in packages, with optional TypeScript models, command proxies and observable query clients.
 ---
 
 Writing a registration closure for every command repeats information already in

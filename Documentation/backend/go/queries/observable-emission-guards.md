@@ -1,6 +1,6 @@
 ---
 title: Guard each observable emission
-description: Suppress candidates or terminate subscriptions after authorization and detached interception.
+description: Add Arc Go observable emission guards to suppress candidate results or end subscriptions after membership checks, authorization, rendering and interception.
 ---
 
 Admission alone cannot authorize everything a long-lived query will publish.

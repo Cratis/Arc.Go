@@ -1,6 +1,6 @@
 ---
 title: Compose HTTP middleware
-description: Add standard net/http middleware without bypassing Arc ingress or pipeline authorization.
+description: Compose Arc Go with standard net/http middleware, respecting request ordering, response capabilities and mandatory ingress and authorization checks.
 ---
 
 Use `builder.Use` for middleware of type `func(http.Handler) http.Handler`.

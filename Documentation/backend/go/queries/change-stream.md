@@ -1,6 +1,6 @@
 ---
 title: Collection change streams
-description: Choose full, delta or legacy transfers and understand identity, privacy and delivered baselines.
+description: Choose full, delta or legacy collection transfers for Arc Go query hubs, with item identity, privacy safeguards and baselines committed only on delivery.
 ---
 
 Sending a large list after every small change wastes bandwidth. Hub collection
