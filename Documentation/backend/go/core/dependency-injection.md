@@ -15,17 +15,25 @@ or a transaction.
 
 A holder needs only `Close(context.Context) error`. Use
 `execution.RunWithResources` to open it for one operation, and
-`execution.ResourcesAs[T]` inside the callback to borrow the typed holder. The
-[no-container example](../../../../examples/nocontainer/main.go) combines this
-with real authorization and validation calls; run it from the repository root:
+`execution.ResourcesAs[T]` inside the callback to borrow the typed holder. Arc
+owns closing that holder after the callback; the callback only borrows it while
+it works. The [no-container example](../../../../examples/nocontainer/main.go)
+uses a holder containing a greeter, alongside authorization and validation calls.
+Run it from the repository root:
 
 ```sh
 go run ./examples/nocontainer
 ```
 
-It prints `authorized: true`, `validation findings: 0`, `hello, Arc`, and
-`resources closed: true`. It does not register a command or query pipeline; those
-pipelines are demonstrated separately by the [HTTP hosting example](../../../../examples/hosting/main.go).
+Inside the callback, the example authorizes and validates the greeting, then
+borrows the holder to call its greeter. It prints `authorized: true`,
+`validation findings: 0`, and `hello, Arc` as that work proceeds. After the callback
+returns, Arc closes the owned holder; `resources closed: true` reports that
+cleanup. Keep use of the borrowed greeter inside the callback so it finishes
+before the holder closes.
+
+The example does not register a command or query pipeline; those pipelines are
+demonstrated separately by the [HTTP hosting example](../../../../examples/hosting/main.go).
 
 ## Choose operation ownership
 

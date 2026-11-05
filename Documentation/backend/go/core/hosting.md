@@ -4,8 +4,16 @@ description: Choose owned HTTP serving or embed an Arc application as an http.Ha
 ---
 
 Arc keeps business execution in the command/query pipelines and transport in the
-application. You can own a small server or mount the same application in an
-existing host; neither requires a container or Chronicle connection.
+application. Choose who owns HTTP serving before adding host-specific setup;
+neither path requires a container or Chronicle connection.
+
+| Path | Choose it when | Your responsibility |
+| --- | --- | --- |
+| Owned server | Arc should own listening and serving. | Supply cancellation and install signal handlers if needed. |
+| Embedded handler | An existing host should keep its listener and server. | Start Arc, configure server timeouts, and coordinate HTTP and Arc shutdown. |
+
+Both paths use the same application built below. Static-site serving is an
+optional addition after you have chosen a host.
 
 ## Build once
 
@@ -70,10 +78,29 @@ responses. Arc always owns `/.cratis/*`; an unmapped reserved path returns empty
 host-constrained patterns. Raw handlers receive resolved ingress metadata and
 are not implicitly wrapped in result envelopes.
 
+## Boundaries
+
+POST and `/validate`, GET/HEAD and QUERY use the existing pipelines. HEAD executes
+the GET read flow but suppresses bytes; it is not a free metadata probe. Snapshot
+queries stay snapshots even with an SSE Accept header. Hubs, waits, OpenAPI and
+browser-client conformance remain unsupported.
+
+After admission, Arc recovers middleware and raw-handler panics. Before response
+commitment it returns a redacted command/query 500, or empty 500 for raw,
+identity and discovery endpoints. After commitment or hijacking it logs the fault
+without appending an error body. `http.ErrAbortHandler` is re-panicked so the
+HTTP server retains its abort semantics. Arc's owned server routes its ErrorLog
+through the configured `slog.Logger`; a nil logger stays silent. Embedded hosts
+must configure their own server logger.
+
+See [HTTP contract](../reference/http-contract.md)
+and [lifecycle](lifecycle.md) for error and ownership behavior.
+
 ## Serve an embedded public site
 
-To serve a small site beside your queries, keep the files and fallback policy in
-an ordinary `http.Handler`, registered through `builder.Handle("/", handler)`.
+This optional setup serves a small public site beside your queries. Keep the
+files and fallback policy in an ordinary `http.Handler`, registered through
+`builder.Handle("/", handler)`.
 The [compiled static-site example](../../../../static_files_example_test.go)
 embeds three files and supplies an example-local `newStaticSite` helper; it is
 not a framework API. Run it from the repository root:
@@ -150,7 +177,7 @@ interface does not provide cancellation or establish trust. `os.DirFS` and
 `fs.Sub` are **not symlink sandboxes**. Writable or symlink-containing directories
 and arbitrary filesystem implementations are outside this confinement claim.
 
-This bounded composition witness is **Partial** static-file parity. The C#
+This Go example provides **Partial** static-file parity. The C#
 reference at `7c1e78075b737df64f69fddfaae83374f75e3612` is
 `Arc.Core/StaticFileExtensions.cs`, `Http/StaticFileOptions.cs`,
 `Http/StaticFilesMiddleware.cs`, `Http/FallbackMiddleware.cs`, and
@@ -163,21 +190,3 @@ chooses no-store caching. The
 profile, not identical C# execution, paired C# tests, browser behavior, or broad
 host/filesystem support. See [the parity map](../../../parity.md) for the wider
 implementation boundary.
-
-## Boundaries
-
-POST and `/validate`, GET/HEAD and QUERY use the existing pipelines. HEAD executes
-the GET read flow but suppresses bytes; it is not a free metadata probe. Snapshot
-queries stay snapshots even with an SSE Accept header. Hubs, waits, OpenAPI and
-browser-client conformance remain unsupported.
-
-After admission, Arc recovers middleware and raw-handler panics. Before response
-commitment it returns a redacted command/query 500, or empty 500 for raw,
-identity and discovery endpoints. After commitment or hijacking it logs the fault
-without appending an error body. `http.ErrAbortHandler` is re-panicked so the
-HTTP server retains its abort semantics. Arc's owned server routes its ErrorLog
-through the configured `slog.Logger`; a nil logger stays silent. Embedded hosts
-must configure their own server logger.
-
-See [HTTP contract](../reference/http-contract.md)
-and [lifecycle](lifecycle.md) for error and ownership behavior.

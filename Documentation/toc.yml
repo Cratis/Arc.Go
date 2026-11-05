@@ -7,6 +7,10 @@
     - name: Hosting
       href: backend/go/core/hosting.md
       items:
+        - name: Dependency injection and operation resources
+          href: backend/go/core/dependency-injection.md
+        - name: Execution metadata
+          href: backend/go/core/execution-context.md
         - name: Lifecycle
           href: backend/go/core/lifecycle.md
         - name: Middleware
@@ -137,10 +141,6 @@
       href: backend/go/tenancy/index.md
     - name: Routes and identities
       href: backend/go/configuration/routing.md
-    - name: Execution metadata
-      href: backend/go/core/execution-context.md
-    - name: Dependency injection and operation resources
-      href: backend/go/core/dependency-injection.md
 - name: Parity
   href: parity.md
 - name: Releases

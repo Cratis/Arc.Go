@@ -11,7 +11,9 @@ Observable generation remains separate tools work.
 
 ## Run a greeting command
 
-With Go 1.26 or later, run the repository's [hosting example](../../../../examples/hosting/main.go):
+You need Go 1.26 or later and two terminals. From the repository root, run the
+[hosting example](../../../../examples/hosting/main.go) in the first terminal.
+Leave it running while you send requests from the second terminal:
 
 ```sh
 go run ./examples/hosting
@@ -33,18 +35,22 @@ This excerpt uses `context` from the standard library. The application registers
 `Greet.Handle` with `commands.Register` and `commands.Handle`, then builds and runs
 Arc. No separate endpoint-mapping step can be forgotten.
 
+In the second terminal, send a greeting:
+
 ```sh
 curl -H 'Content-Type: application/json' -d '{"name":"Ada"}' http://127.0.0.1:8080/api/greet
 ```
 
 The command envelope contains `"response":"Hello, Ada"`. An empty name returns
 400. Post the same body to `/api/greet/validate` to validate without invoking the
-handler. Ctrl+C initiates graceful shutdown.
+handler. When you finish, press Ctrl+C in the server terminal to initiate graceful
+shutdown.
 
 ## Compose your application
 
-The sample's composition function is the minimal path. This excerpt assumes the
-model above and imports `arc`, `commands` and `context`:
+You have already run the application; no second startup step is needed. To adapt
+the sample for your own application, use its composition function below. This
+excerpt assumes the model above and imports `arc`, `commands` and `context`:
 
 ```go
 func run(ctx context.Context) error {
