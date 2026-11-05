@@ -5,7 +5,7 @@ description: Return events from Go commands, inject keyed read models, and run a
 
 An Arc command can return a registered event instead of calling the event store. The optional `github.com/cratis/arc.go/integrations/chronicle` module stages those events and commits them only after the command and its nested commands succeed. Arc's root module still works without Chronicle.
 
-**Source preview:** the integration has no tagged release. It requires Go 1.26 or later and independently fetchable Arc/Chronicle dependencies. The kernel contract tests target `cratis/chronicle:19.29.4-development`. Do not treat this slice as complete C# integration parity; the [parity ledger](../../../parity.md) records the boundaries.
+The integration has no tagged release. It requires Go 1.26 or later and independently fetchable Arc/Chronicle dependencies. The kernel contract tests target `cratis/chronicle:19.29.4-development`. Do not treat this slice as complete C# integration parity; the [parity ledger](../../../parity.md) records the boundaries.
 
 Arc's [observable sources](../queries/observable-queries.md) can consume an
 application-owned feed, but this module does not provide Chronicle read-model

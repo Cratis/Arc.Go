@@ -11,7 +11,7 @@ foundation packages, each application must recreate Arc's routes, scalar codecs
 and result envelopes; with them, you share those contracts explicitly.
 
 **Start with [your first running application](backend/go/core/getting-started.md).**
-Go 1.26 or later is required. This experimental port supports backend pipelines,
+Go 1.26 or later is required. The Go port supports backend pipelines,
 snapshot and observable HTTP hosting, identity, and protected discovery. Typed Go
 adapters and bounded TypeScript model/command/snapshot/observable-query proxies are
 available, alongside optional Chronicle integration and MongoDB snapshots and
@@ -82,7 +82,7 @@ POST /api/tasks/registration/register-task
 ## Publication
 
 After the first tagged release, use `go get github.com/cratis/arc.go@latest`.
-The planned release series is v0.x; experimental APIs may change between minor
+The planned release series is v0.x; APIs may change between minor
 releases. See the [contribution guide](../CONTRIBUTING.md) and
 [release policy](releases.md). Foundation fixtures and Go-owned hosting tests do not certify full-product,
 paired .NET or browser parity. Central documentation-site integration remains separate.

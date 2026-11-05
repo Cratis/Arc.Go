@@ -4,7 +4,7 @@ description: Opt in to constructor bindings, compose them separately from Arc ar
 ---
 
 When service constructors already describe your dependencies, you can generate
-their registrations instead of repeating factory closures. The experimental
+their registrations instead of repeating factory closures. The
 `arc-gen -bindings-config` option adds `RegisterServices` alongside the existing
 artifact adapters. Plain constructors, manual registration closures, and
 `ArcBindings` callbacks remain supported; using a container is optional.

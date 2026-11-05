@@ -8,7 +8,7 @@ from an Arc query instead of loading every row and paging in memory. The optiona
 `github.com/cratis/arc.go/integrations/mongodb` module counts authorized rows and
 pushes sorting, skip and limit to MongoDB before Arc publishes the result.
 
-**Source preview, Partial snapshot provider:** there is no tagged module release.
+There is no tagged module release.
 Use Go 1.26 or later and the independently fetchable dependency pins in the module.
 The live contracts target MongoDB **8.0.15**, a single-member replica set and the
 official Go driver v2.9.1. Count and find are separate reads, not one atomic
