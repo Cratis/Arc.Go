@@ -19,6 +19,23 @@ Product documentation lives in `Documentation/`. Add packages and examples only 
 
 Install Go 1.26 or later, golangci-lint v2.14.0, actionlint v1.7.12, ShellCheck, and markdownlint-cli2. CI tests Go 1.26 and 1.27, including the latest patches; golangci-lint must be built with a Go version at least as new as the code it analyzes.
 
+## Overview compatibility evidence
+
+The product overview summarizes the supported client behavior. Its verification
+comes from the generated observable Node case, which exercises default WebSocket
+hub/Delta behavior with an independent collection consumer, and a bounded mounted
+React lane, which executes real generated hook reconstruction, cache reuse and
+joined cleanup with explicit WebSocket/Delta providers. This is not
+browser/DOM/StrictMode or full Arc-wrapper parity; suspense, reconnect, server
+paging, setter correctness and 30-second expiry remain unverified.
+
+The [paired snapshot HTTP checkpoint](Documentation/parity.md#paired-snapshot-http-checkpoint)
+compares 36 GET/QUERY requests against pinned C# Arc: 34 strict matches and two
+exact ordinary-list paging-metadata allowances. This remains Partial; commands,
+authentication, HEAD, providers, streams and browsers are outside that pair.
+Consult the [parity map](Documentation/parity.md) for the executable gates and
+coverage limits when changing these claims.
+
 ## Verify your change
 
 Run from the repository root, with each supported Go toolchain where applicable:
@@ -65,7 +82,7 @@ Format all Go source in all five modules with `gofmt`; no source files should ap
 
 Repeat these Go checks from `integrations/chronicle/` with `--config=../../.golangci.yml` for lint. CI also runs its tagged kernel contracts and taskboard sample against `cratis/chronicle:19.29.4-development`; set `CHRONICLE_INTEGRATION_CONNECTION_STRING` for those tests.
 
-Repeat the native build, vet, test, race, tidy-diff, verify, lint, and vulnerability gates from `integrations/mongodb/`, with `--config=../../.golangci.yml` for lint. Its ordinary tests require no database. Run `python3 scripts/check-module-boundaries.py` from the root to verify the exact manifest allowlist and resolved runtime dependency boundary. The independent Linux Go 1.27 live-provider lane runs `python3 integrations/mongodb/scripts/replica-set-tests.py --state-file "$PWD/.ai-work/keep/mongodb-provider-local-unique.json"` from the root with a fresh state path and Docker available. It owns one digest-pinned MongoDB 8.0.15 replica-set container, uses a Docker-assigned loopback port and external direct URI, budgets startup/tests/diagnostics-and-cleanup at 90/180/15 seconds, and removes only its verified container ID/token. Missing prerequisites/URI or failpoint support fail the required lane, not skip. Run `python3 -B -m unittest discover -s integrations/mongodb/scripts -p 'test_*.py' -v` and `python3 integrations/mongodb/scripts/check-doc-snippet.py` for offline harness/example regressions; the live job also lints integration-tagged contracts. Synthetic release tests do not prove real Chronicle sink layout or compliance.
+Repeat the native build, vet, test, race, tidy-diff, verify, lint, and vulnerability gates from `integrations/mongodb/`, with `--config=../../.golangci.yml` for lint. Its ordinary tests require no database. Run `python3 scripts/check-module-boundaries.py` from the root to verify the exact manifest allowlist and resolved runtime dependency boundary. The independent Linux Go 1.27 live-provider lane runs `python3 integrations/mongodb/scripts/replica-set-tests.py --state-file "$STATE_DIR/mongodb-provider-state.json"` from the root (set `STATE_DIR=$(mktemp -d)` first and keep it for `--cleanup-only`) with a fresh state path and Docker available. It owns one digest-pinned MongoDB 8.0.15 replica-set container, uses a Docker-assigned loopback port and external direct URI, budgets startup/tests/diagnostics-and-cleanup at 90/180/15 seconds, and removes only its verified container ID/token. Missing prerequisites/URI or failpoint support fail the required lane, not skip. Run `python3 -B -m unittest discover -s integrations/mongodb/scripts -p 'test_*.py' -v` and `python3 integrations/mongodb/scripts/check-doc-snippet.py` for offline harness/example regressions; the live job also lints integration-tagged contracts. Synthetic release tests do not prove real Chronicle sink layout or compliance.
 
 The observable-client lane requires exact Node 26.8.1/npm 12.0.2 prerequisites and the locked frontend dependencies. Run each stage separately from the root; the runtime stages own and join their fixture hosts:
 

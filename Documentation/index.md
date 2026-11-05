@@ -15,22 +15,21 @@ Go 1.26 or later is required. The Go port supports backend pipelines,
 snapshot and observable HTTP hosting, identity, and protected discovery. Typed Go
 adapters and bounded TypeScript model/command/snapshot/observable-query proxies are
 available, alongside optional Chronicle integration and MongoDB snapshots and
-source-only watches. The generated observable Node case exercises default
-WebSocket hub/Delta behavior with an independent collection consumer. A separate
-bounded mounted React lane executes real generated hook reconstruction, cache
-reuse and joined cleanup with explicit WebSocket/Delta providers. This is not
-browser/DOM/StrictMode or full Arc-wrapper parity; suspense, reconnect, server
-paging, setter correctness and 30-second expiry remain unverified. MongoDB watches
-require explicit close/join/reopen after terminal loss; see the [Partial provider
+source-only watches. Generated observable clients use WebSocket hub/Delta
+transport. React hooks support reconstructing query results, reusing cached
+queries and cleaning up subscriptions with explicit WebSocket/Delta providers.
+This is not full Arc-wrapper support: browser/DOM/StrictMode behavior, suspense,
+reconnect, server paging, setter correctness and 30-second cache expiry remain
+unverified. MongoDB watches require explicit close/join/reopen after terminal
+loss; see the [Partial provider
 profiles and limits](parity.md). Opaque provider-source generation, Chronicle
 watches, and OpenAPI remain unsupported.
 Constructing metadata or a result alone does not execute business code; the
 application builder compiles the HTTP endpoints.
 
-The [paired snapshot HTTP checkpoint](parity.md#paired-snapshot-http-checkpoint)
-compares 36 GET/QUERY requests against pinned C# Arc: 34 strict matches and two
-exact ordinary-list paging-metadata allowances. This remains Partial; commands,
-authentication, HEAD, providers, streams and browsers are outside that pair.
+For feature coverage and differences from Arc on .NET, consult the
+[parity map](parity.md). Contributor verification details are in the repository's
+`CONTRIBUTING.md`.
 
 ## Inspect a command route and result
 
