@@ -1,6 +1,6 @@
 ---
 title: MongoDB snapshots and observations
-description: Serve authorized MongoDB pages and rerender them on bounded database invalidations.
+description: Serve authorized MongoDB snapshot pages from Arc queries, rerender on bounded database invalidations, and see which boundaries your source and Chronicle own.
 ---
 
 When your read models already live in MongoDB, you can return a typed selection
@@ -214,7 +214,7 @@ From the repository root, run the required live lane with Docker available:
 
 ```bash
 python3 integrations/mongodb/scripts/replica-set-tests.py \
-  --state-file "$PWD/.ai-work/keep/mongodb-provider-local-unique.json"
+  --state-file "$PWD/state/mongodb-provider-local-unique.json"
 ```
 
 Use a fresh state-file path for each task. The harness owns one fresh-storage

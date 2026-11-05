@@ -1,6 +1,6 @@
 ---
 title: Run your first Arc.Go application
-description: Serve a model-bound command over HTTP without a container or event store.
+description: Run the Arc.Go hosting example, post a JSON greeting command to /api/greet over HTTP, and read the Hello, Ada response without a container or event store.
 ---
 
 You want a command endpoint, not a collection of transport handlers. Arc maps

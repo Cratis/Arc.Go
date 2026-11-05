@@ -1,6 +1,6 @@
 ---
 title: Keep a query live
-description: Register an owned source, publish current values, and consume observable query results in Go.
+description: Register an application-owned source, publish current values, consume observable query results from Go, and stop subscriptions safely per tenant.
 ---
 
 Polling a list repeatedly wastes requests and still leaves your screen behind the

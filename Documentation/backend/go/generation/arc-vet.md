@@ -1,6 +1,6 @@
 ---
 title: Arc authoring diagnostics
-description: Check model-bound Go declarations with arc-vet and interpret their ARC diagnostic codes.
+description: Run arc-vet to find Go declarations Arc will not discover, such as missing Handle methods or conflicting authorization, and act on its ARC diagnostic codes.
 ---
 
 A declaration can compile without being discoverable as an Arc command or query.
