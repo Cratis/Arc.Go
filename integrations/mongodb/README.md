@@ -367,8 +367,9 @@ response when its canceled context prevents encoding.
 From the repository root, with Docker available, run:
 
 ```bash
+STATE_DIR=$(mktemp -d)
 python3 integrations/mongodb/scripts/replica-set-tests.py \
-  --state-file "$PWD/.ai-work/keep/mongodb-provider-local-unique.json"
+  --state-file "$STATE_DIR/mongodb-provider-state.json"
 ```
 
 Use a fresh state-file path. The harness pins image digest
