@@ -177,8 +177,11 @@ implementation boundary.
 
 POST and `/validate`, GET/HEAD and QUERY use the existing pipelines. HEAD executes
 the GET read flow but suppresses bytes; it is not a free metadata probe. Snapshot
-queries stay snapshots even with an SSE Accept header. Hubs, waits, OpenAPI and
-browser-client conformance remain unsupported.
+queries stay snapshots even with an SSE Accept header. Observable hubs are
+[documented separately](../queries/observable-query-hub.md). The host does not
+serve an OpenAPI document; `arc-gen -openapi-out` renders one offline. Browser
+conformance is limited to the headless-Chromium lane in the
+[parity map](../../../parity.md).
 
 After admission, Arc recovers middleware and raw-handler panics. Before response
 commitment it returns a redacted command/query 500, or empty 500 for raw,

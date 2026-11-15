@@ -16,7 +16,7 @@ Leave credentials, personal data, customer data, and production logs out of the 
 
 ## Supported versions
 
-This project is in early development, with no stable release or tagged Go module yet. Reports against the current `main` branch are welcome. Once experimental v0.x releases exist, include the affected module version; no long-term support commitment is made.
+This project is experimental v0 software. The root module has tags `v0.1.0` through `v0.1.3`; there is no stable release. Reports against the current `main` branch are welcome. Include the affected module version; no long-term support commitment is made.
 
 ## Scope
 

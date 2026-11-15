@@ -6,9 +6,10 @@ description: Multiplex Arc Go observable query subscriptions over WebSocket or S
 Use a hub to carry several subscriptions over one physical connection. Both hubs
 support full, delta and legacy collection transfer. The JavaScript runtime's
 default is one WebSocket hub with delta transfer. The locked Node client lane
-executes that default and both hubs' Full/Delta/Legacy transfers. Browser and
-React-hook reconstruction remain unverified; the Node delta case uses an
-independent test-consumer reducer, not a React hook.
+executes that default and both hubs' Full/Delta/Legacy transfers. The Node delta
+case uses an independent test-consumer reducer, not a React hook; React-hook
+reconstruction and headless-Chromium behavior have separate lanes recorded in
+the parity ledger.
 
 ## Routes and opening
 
@@ -108,7 +109,7 @@ own lifetime and do not borrow the short-lived POST request scope.
 
 Anonymous SSE uses a different random HttpOnly cookie for each connection,
 SameSite=Strict, Secure on TLS, no Domain. It covers the hub and its controls and
-expires with the bounded connection lifetime. Keep a cookie jar for terminal use:
+expires with `Observable.ConnectionLifetime` (default twelve hours). Keep a cookie jar for terminal use:
 
 ```bash
 curl -N -c cookies.txt 'http://localhost:8080/.cratis/queries/sse'
@@ -130,7 +131,7 @@ cookie names; eligible later hub responses expire closed cookies.
 
 Same-origin policy uses actual TLS and Host, never untrusted forwarded headers.
 `Observable.AllowedOrigins` adds exact origins, not wildcard credentials or CORS
-middleware. `Origin: null` requires explicit opt-in. Cross-origin use also needs
+middleware. An opaque `Origin: null` requires the literal `"null"` in `AllowedOrigins`. Cross-origin use also needs
 host-owned credentialed CORS/session configuration; built-in Strict cookies target
 the same-origin path. Browser WebSocket/EventSource cannot generally add arbitrary
 credential headers; provide a compatible host authentication mechanism.
