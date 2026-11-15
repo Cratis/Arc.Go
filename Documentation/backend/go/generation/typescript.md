@@ -9,7 +9,7 @@ models, numeric enums, commands, **snapshot queries**, and declared **observable
 queries** together with their Go adapters. Compatibility is Partial: the tested
 client versions are Arc/Arc.React 22.48.2 and Fundamentals 7.22.0. Proxy-only
 output is unsupported. Generated observable hooks have bounded mounted Node
-evidence; browser and complete React parity remain unverified.
+evidence; a bounded headless-Chromium lane covers the `<Arc>` wrapper, and other browsers and complete React parity remain unverified.
 
 ## Select the application profile
 
@@ -175,8 +175,9 @@ not React. The existing manual lane separately executes the wider transport
 matrix. A third lane mounts generated observable hooks using real providers with
 explicit WebSocket hub/Delta: rich collection reconstruction, argument replacement,
 cache sharing/reuse and joined source/resource cleanup. It does not use the full
-Arc wrapper or prove browser/DOM/StrictMode, suspense, reconnect, 30-second expiry,
-server-side paging or setter correctness. Same-key setter retention characterizes
+Arc wrapper or prove suspense, 30-second expiry, server-side paging or setter
+correctness; the separate Chromium lane in the parity ledger covers
+DOM/StrictMode and reconnect after a server close. Same-key setter retention characterizes
 [Arc issue 2869](https://github.com/Cratis/Arc/issues/2869) at 22.48.2, not a fix.
 Paired .NET hosts and full frontend parity remain unverified. The [observable fixture](../../../../ContractTests/observables/README.md)
 and [parity map](../../../parity.md) record the exact limits; the

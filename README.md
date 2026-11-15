@@ -10,25 +10,31 @@ The Go framework for [Cratis Arc](https://github.com/Cratis/Arc), bringing Arc's
 
 ## Status
 
-Foundation packages provide artifact metadata, route resolution, UUID/temporal codecs, presence-aware JSON and result envelopes. Backend model-bound command/query pipelines now add authorization, validation, preparation, nested execution, paging, rendering and interception through typed adapters, with optional guarded DI resources. The planned release series is **v0.x**; APIs may change between minor releases. There is no tagged Go release yet; the installation command and Go reference will become usable after the first release.
+Arc.Go is **experimental v0** software. The root module has Git tags `v0.1.0`, `v0.1.1`, `v0.1.2` and `v0.1.3`. APIs may change between minor releases; while the version is v0.x, a breaking change is released as a minor version. See the [release policy](Documentation/releases.md).
 
-See the [compiling foundation example](https://github.com/Cratis/Arc.Go/blob/main/example_test.go) and [feature-by-feature parity ledger](https://github.com/Cratis/Arc.Go/blob/main/Documentation/parity.md). HTTP hosting composes commands, snapshots, observable SSE/WebSocket queries, identity and protected discovery with explicit graceful lifecycle. Try the [minimal HTTP example](https://github.com/Cratis/Arc.Go/tree/develop/examples/hosting) and [observable query guide](https://github.com/Cratis/Arc.Go/blob/develop/Documentation/backend/go/queries/observable-queries.md). Adapter generation, TypeScript model/command/snapshot/observable-query proxies, and optional Chronicle/MongoDB integration are available from source. [Proxy generation](https://github.com/Cratis/Arc.Go/blob/develop/Documentation/backend/go/generation/typescript.md) has actual CLI, independent Go-consumer, and locked Node runtime evidence, including a generated default WebSocket hub/Delta case. The wider manual transport lane remains separate. Those class-runtime cases use an independent delta reducer; a separate bounded mounted React lane executes generated hook reconstruction, cache reuse and joined cleanup with explicit WebSocket/Delta providers. Browser/DOM/StrictMode, the full Arc wrapper, suspense, reconnect, server paging, setter correctness and 30-second expiry remain unverified. MongoDB source-only watches have bounded native/live evidence and require explicit close/join/reopen after terminal loss; Chronicle watches remain unsupported. Opaque provider-source generation, including MongoDB `Source[Find]` without explicit emission metadata, remains unsupported. See the parity ledger for the Partial provider profiles and limits.
+Foundation packages provide artifact metadata, route resolution, UUID/temporal codecs, presence-aware JSON and result envelopes. Backend model-bound command/query pipelines add authorization, validation, preparation, nested execution, paging, rendering and interception through typed adapters, with optional guarded DI resources. HTTP hosting composes commands, snapshots, observable SSE/WebSocket queries, identity and protected discovery with explicit graceful lifecycle.
 
-A separate [paired snapshot HTTP checkpoint](https://github.com/Cratis/Arc.Go/blob/develop/ContractTests/httpconformance/README.md) compares 36 GET/QUERY requests in 14 groups against pinned C# Arc: 34 strict matches and two exact successful ordinary-list paging-metadata allowances. This is **Partial** coverage, not command, authentication, HEAD, provider, streaming, browser or whole-product parity.
+See the [compiling foundation example](example_test.go), the [minimal HTTP example](examples/hosting), the [observable query guide](Documentation/backend/go/queries/observable-queries.md) and the [feature-by-feature parity ledger](Documentation/parity.md), which records what is Implemented, Partial or unsupported.
+
+Adapter generation (the `arc-gen` tool), the Chronicle integration and the MongoDB integration are separate Go modules inside this repository, not part of the root module. This README makes no claim about how they are installed; the [release policy](Documentation/releases.md) lists the current facts. TypeScript model/command/snapshot/observable-query [proxy generation](Documentation/backend/go/generation/typescript.md) has CLI, independent Go-consumer and locked Node runtime evidence, including a generated default WebSocket hub/Delta case, plus a bounded mounted React lane.
+
+Browser evidence is limited. The separate [Browser observable conformance](.github/workflows/browser.yml) workflow runs the production-generated hook under the exported `<Arc>` wrapper in headless Chromium on Linux. It covers SSE hub cookie ownership, a WebSocket hub, `StrictMode`, reconnect after a server close and joined shutdown. Other browsers, cross-origin credentialed requests, suspense, paging hooks and `ReconnectPolicy` exhaustion remain unverified; the parity ledger records the exact limits. MongoDB source-only watches have bounded native/live evidence and require explicit close/join/reopen after terminal loss; Chronicle watches remain unsupported. Opaque provider-source generation, including MongoDB `Source[Find]` without explicit emission metadata, remains unsupported. See the parity ledger for the Partial provider profiles and limits.
+
+A separate [paired snapshot HTTP checkpoint](ContractTests/httpconformance/README.md) compares 36 GET/QUERY requests in 14 groups against pinned C# Arc: 34 strict matches and two exact successful ordinary-list paging-metadata allowances. This is **Partial** coverage, not command, authentication, HEAD, provider, streaming, browser or whole-product parity.
 
 ## Installation
 
-Requires Go **1.26 or later**. Once a version has been published:
+Requires Go **1.26 or later**. Install the root module:
 
 ```sh
 go get github.com/cratis/arc.go@latest
 ```
 
-Use the lowercase module path exactly as shown. CI checks Go 1.26 and 1.27 independently of local Go workspaces.
+To pin a tag, use for example `go get github.com/cratis/arc.go@v0.1.3`. Use the lowercase module path exactly as shown. CI checks Go 1.26 and 1.27 independently of local Go workspaces. The `tools`, `integrations/chronicle`, `integrations/mongodb` and `recipes` directories are separate Go modules in this repository; see the [release policy](Documentation/releases.md) for their current state.
 
 ## Documentation
 
-Start with [Documentation](Documentation/index.md). API reference will be available on [pkg.go.dev](https://pkg.go.dev/github.com/cratis/arc.go) after publication.
+Start with [Documentation](Documentation/index.md). API reference is on [pkg.go.dev](https://pkg.go.dev/github.com/cratis/arc.go).
 
 ## Development
 

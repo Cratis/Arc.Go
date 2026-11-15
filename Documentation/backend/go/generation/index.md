@@ -8,8 +8,9 @@ its method signature. The `arc-gen` tool reads opted-in Go packages
 and writes command, snapshot-query, and declared observable-source adapters for
 you. An optional application profile also
 [generates TypeScript models, commands, and queries](typescript.md), including
-bounded observable proxies. The tools module pins pushed runtime `78ebbf8` and
-released Fundamentals.Go `v0.2.0`; it needs no workspace or local replacement.
+bounded observable proxies. The tools module requires Arc pseudo-version
+`v0.0.0-20261006003625-1bc16445f410` and Fundamentals.Go `v0.3.3`; its `go.mod`
+has no `replace` directive.
 Your business methods remain ordinary Go;
 the generated code uses the same public registrars and pipelines as manual wiring.
 To replace repeated service factory registrations, opt in to

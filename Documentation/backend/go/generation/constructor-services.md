@@ -12,9 +12,9 @@ artifact adapters. Plain constructors, manual registration closures, and
 ## Before you start
 
 - Use Go 1.26 or later and the [source-installed generator](index.md#run-the-tool-from-source).
-  Pin its source revision. The tools module and compiled consumer fixture use
-  Arc.Go `v0.0.0-20261003142617-78ebbf8fdff8` (the immutable `78ebbf8` revision)
-  and Fundamentals.Go `v0.2.0`, without a workspace or local replacement.
+  Pin its source revision. The tools module requires
+  Arc.Go `v0.0.0-20261006003625-1bc16445f410` and Fundamentals.Go `v0.3.3`,
+  without a `replace` directive.
   The Arc version is a pseudo-version, not a release tag.
 - Select the main-module packages containing your declarations and constructors.
   Choose **one** of those packages as the service-registration output owner.

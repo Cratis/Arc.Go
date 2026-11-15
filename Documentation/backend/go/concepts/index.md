@@ -12,8 +12,7 @@ contracts Go does not provide directly. Arc does not require a `Concept[T]` wrap
 ## Portable scalars
 
 `UUID`, `DateOnly`, `TimeOnly` and `TimeSpan` are provided by
-`github.com/cratis/fundamentals.go/concepts`, pinned at
-`v0.0.0-20261002211957-66acfedfec9c`. Arc.Go's `concepts` package aliases these
+`github.com/cratis/fundamentals.go/concepts`, required at `v0.3.3`. Arc.Go's `concepts` package aliases these
 shared types and forwards its existing constructors and parsers. You can pass
 values between the two packages without conversion; existing Arc.Go imports
 and wire formats are unchanged. `concepts.Concept[T]` also aliases the shared

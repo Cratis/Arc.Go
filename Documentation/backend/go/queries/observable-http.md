@@ -7,7 +7,8 @@ You can inspect a live query without writing a frontend. These examples assume a
 running application at `http://localhost:8080` with the observable task feed
 registered at `/tasks/all` in [Keep a query live](observable-queries.md). Supply
 your application's credentials when the query is protected. The locked Node
-client lane executes both direct transports; browser compatibility remains
+client lane executes both direct transports; the headless-Chromium lane covers
+the default hub, not direct per-query transports, and other browsers remain
 unverified. These are the implemented transport contracts.
 
 ## Read or wait for a snapshot

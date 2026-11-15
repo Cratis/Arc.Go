@@ -316,7 +316,7 @@ failure retains the original error and a `Committed` completion, with persisted
 kernel readback; it cannot be rolled back by the later failure.
 
 This bounded consumer uses Chronicle SDK
-`v0.0.0-20261003210034-9e0c8d5ba5f1`, Arc `435a136792b6`, Fundamentals `v0.1.0`
+`v0.0.0-20261003210034-9e0c8d5ba5f1`, Arc `v0.0.0-20261005222852-3e2a69270f46`, Fundamentals `v0.3.3`
 and Go 1.26 minimum. The SDK baseline includes fail-closed profile changes beyond
 two-phase construction. It does not establish classified decision, compliance,
 watch or replay safety. Legacy watch/window/local-reducer release ownership is

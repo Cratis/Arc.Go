@@ -161,8 +161,9 @@ This requires Node 26.8.1 and npm 12.0.2; it installs locked dependencies, compi
 manual query classes, builds the Go host and joins it after the client tests.
 The observable contract README records the executed transport/mode cases and
 exclusions. Node WebSocket/EventSource polyfills and class hydration are executed;
-Guid/date hydration, browser cookies/origins and React-hook reconstruction remain
-unverified. Delta reconstruction uses an explicitly independent test consumer,
+Guid hydration and cross-origin browser behavior remain unverified in this lane;
+the separate `ContractTests/browser` lane covers cookies, StrictMode and reconnect
+in headless Chromium, and mounted React-hook reconstruction has its own lane. Delta reconstruction uses an explicitly independent test consumer,
 not a claimed React hook. In-memory race/synctest cases separately prove
 candidate-budget release on cancellation, explicit resource-join retries without
 redisposal and retained channel cleanup after partial startup.

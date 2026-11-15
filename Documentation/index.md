@@ -18,9 +18,11 @@ available, alongside optional Chronicle integration and MongoDB snapshots and
 source-only watches. Generated observable clients use WebSocket hub/Delta
 transport. React hooks support reconstructing query results, reusing cached
 queries and cleaning up subscriptions with explicit WebSocket/Delta providers.
-This is not full Arc-wrapper support: browser/DOM/StrictMode behavior, suspense,
-reconnect, server paging, setter correctness and 30-second cache expiry remain
-unverified. MongoDB watches require explicit close/join/reopen after terminal
+The mounted React lane does not use the full Arc wrapper. A separate
+headless-Chromium lane (`browser.yml`) covers the exported `<Arc>` wrapper,
+StrictMode, cookie ownership and reconnect after a server close; other
+browsers, suspense, paging hooks, setter correctness and 30-second cache
+expiry remain unverified. MongoDB watches require explicit close/join/reopen after terminal
 loss; see the [Partial provider
 profiles and limits](parity.md). Opaque provider-source generation, Chronicle
 watches, and OpenAPI remain unsupported.
@@ -80,8 +82,8 @@ POST /api/tasks/registration/register-task
 
 ## Publication
 
-After the first tagged release, use `go get github.com/cratis/arc.go@latest`.
-The planned release series is v0.x; APIs may change between minor
-releases. See the [contribution guide](../CONTRIBUTING.md) and
+The root module has tags `v0.1.0` through `v0.1.3`; install it with
+`go get github.com/cratis/arc.go@latest`. Arc.Go is experimental v0 software;
+APIs may change between minor releases. See the [contribution guide](../CONTRIBUTING.md) and
 [release policy](releases.md). Foundation fixtures and Go-owned hosting tests do not certify full-product,
 paired .NET or browser parity. Central documentation-site integration remains separate.

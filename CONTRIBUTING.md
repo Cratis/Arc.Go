@@ -25,9 +25,11 @@ The product overview summarizes the supported client behavior. Its verification
 comes from the generated observable Node case, which exercises default WebSocket
 hub/Delta behavior with an independent collection consumer, and a bounded mounted
 React lane, which executes real generated hook reconstruction, cache reuse and
-joined cleanup with explicit WebSocket/Delta providers. This is not
-browser/DOM/StrictMode or full Arc-wrapper parity; suspense, reconnect, server
-paging, setter correctness and 30-second expiry remain unverified.
+joined cleanup with explicit WebSocket/Delta providers. That lane does not use
+the full Arc wrapper. The separate headless-Chromium `browser.yml` lane covers
+the exported `<Arc>` wrapper, StrictMode, cookie ownership and reconnect after a
+server close; other browsers, suspense, paging hooks, setter correctness and
+30-second expiry remain unverified.
 
 The [paired snapshot HTTP checkpoint](Documentation/parity.md#paired-snapshot-http-checkpoint)
 compares 36 GET/QUERY requests against pinned C# Arc: 34 strict matches and two
@@ -98,7 +100,7 @@ node ContractTests/observables/frontend/run.mjs react-runtime
 node ContractTests/observables/frontend/run.mjs runtime
 ```
 
-These run real client code in Node, including mounted generated hooks. They do not establish browser credentials/origins, DOM/StrictMode, the complete `<Arc>` wrapper, reconnect or full hook parity. See the [observable fixture coverage](ContractTests/observables/README.md).
+These run real client code in Node, including mounted generated hooks. They do not establish browser credentials/origins, DOM/StrictMode, the complete `<Arc>` wrapper, reconnect or full hook parity; the separate [browser lane](ContractTests/browser/README.md) covers bounded Chromium cases. See the [observable fixture coverage](ContractTests/observables/README.md).
 
 The separate [paired snapshot HTTP checkpoint](ContractTests/httpconformance/README.md) requires Python 3, exact .NET SDK `10.0.401` / runtime `10.0.12`, and Arc source revision `7c1e78075b737df64f69fddfaae83374f75e3612`. Its run instructions extract source outside the sibling checkout, restore all seven locked projects, build Release, verify exact provenance, prove generated activation, and execute every paired request. Native inventory/comparator/lifecycle tests run with the root tests without .NET. The paired result is bounded to 36 requests / 14 groups, with 34 strict matches and two exact successful ordinary-list page/size allowances; it is not a full HTTP or CI-matrix claim.
 
@@ -139,7 +141,7 @@ for plain wiring and optional container integration.
 - Use focused conventional commits and merge commits; do not squash, rebase, or force-push shared history.
 - Apply exactly one release-intent label: `major`, `minor`, `patch`, or `no-release`. Setup-only changes use `no-release`; Dependabot uses `no-release` too.
 - Keep the PR body user-facing: optional `## Summary`, then only applicable `## Added`, `Changed`, `Fixed`, `Removed`, `Security`, or `Deprecated` sections, with concise bullets. End a delivered issue's bullet with `(#123)`; use `(part of #123)` if it stays open. Delete placeholders and unused sections, use absolute links, and put test/review notes in a PR comment.
-- The PR body is published verbatim as release notes. The first minor release becomes v0.1.0. During v0.x, use minor for breaking experimental API changes and describe the break explicitly; use patch for compatible fixes.
+- The PR body is published verbatim as release notes. The root module's tags run from v0.1.0 to v0.1.3. During v0.x, use minor for breaking experimental API changes and describe the break explicitly; use patch for compatible fixes.
 - A major release requires human approval. `GO_RELEASE_MAJOR_CEILING` defaults to 0, blocking an accidental v1 launch. A maintainer can set it to 1 for an approved v1 release; v2+ requires `/vN` module/import paths and a revised workflow.
 - Wait for Publish to finish before merging the next release-bound PR. Tags are immutable; never delete or move a released version. See [release policy](Documentation/releases.md).
 

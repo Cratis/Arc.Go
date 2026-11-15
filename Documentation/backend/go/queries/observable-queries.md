@@ -7,8 +7,9 @@ Polling a list repeatedly wastes requests and still leaves your screen behind th
 latest state. An observable query keeps one admitted subscription open and sends
 new results as your application publishes them. You do not need Chronicle or a
 container. A locked Node lane executes the real
-Arc client transports; generated observable adapters and browser/React-hook
-compatibility remain separate, unverified boundaries.
+Arc client transports. Generated observable adapters and React hooks have
+separate, bounded lanes, including headless Chromium; other browsers remain
+unverified.
 
 ## Register an application-owned feed
 
