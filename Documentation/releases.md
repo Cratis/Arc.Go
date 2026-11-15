@@ -1,6 +1,6 @@
 ---
 title: Go release policy
-description: Arc.Go is experimental v0 with root tags v0.1.0 through v0.1.3; learn the PR release labels, v0.x versioning rules, and how publication verifies tags and the Go proxy.
+description: Arc.Go is experimental v0 with root tags v0.1.0 to v0.1.3; learn PR release labels, v0.x versioning rules, and how publication verifies tags and the Go proxy.
 ---
 
 Arc.Go is experimental v0 software. The root module `github.com/cratis/arc.go` has the Git tags `v0.1.0`, `v0.1.1`, `v0.1.2` and `v0.1.3`. Releases remain v0.x until an approved stable launch, and APIs may change between minor releases.
