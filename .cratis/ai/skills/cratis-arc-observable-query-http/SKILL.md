@@ -1,6 +1,6 @@
 ---
 name: cratis-arc-observable-query-http
-description: Inspect a Cratis Arc observable query from a terminal with curl or another plain HTTP client — snapshot GET, waiting for the first result, Server-Sent Events streaming, and long polling, plus the exact query-string keys, status codes, and payload shape. Use when debugging or exploring an observable query without writing frontend code. Do not use to implement the query itself.
+description: Use when inspecting or debugging an existing Arc observable query with curl or another plain HTTP client. Not for implementing the query or its frontend consumer.
 license: MIT
 ---
 <!-- cratis-ai-managed: skills/cratis-arc-observable-query-http/SKILL.md -->
@@ -146,7 +146,7 @@ Sources: `Arc.Core/Queries/ObservableQueryHttp.cs`,
 ### Local `cratis` template ports
 
 The `cratis` template still publishes MongoDB on host port `27017` and configures
-`mongodb://localhost:27017` for the app (`Templates/Cratis/docker-compose.yml`,
+the MongoDB connection string for host `localhost`, port `27017` for the app (`Templates/Cratis/docker-compose.yml`,
 `appsettings.json`). Its Vite dev server runs on `9000` and proxies `/api`,
 `/.cratis` and `/swagger` to `http://localhost:5000`
 (`Templates/Cratis/.frontend/vite.config.ts`). A backend started on another
