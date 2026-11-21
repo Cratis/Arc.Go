@@ -52,8 +52,9 @@ func (p decisionProvider[T]) admit() error {
 }
 
 // detached is also the validation-only path. It never enrolls an ambient unit,
-// creates an owner or releases model data a second time. SDK 9e0c8d5 owns session
-// cleanup and refuses classified models before acquiring a lease/RPC.
+// creates an owner or releases model data a second time. The SDK owns session
+// cleanup and refuses unsupported models before acquiring a lease/RPC; it admits
+// classified models, which the kernel releases with each value's original subject.
 func (p decisionProvider[T]) detached(ctx context.Context, key readmodels.Key) (*decisionRead[T], error) {
 	if ctx == nil {
 		return nil, integration.ErrInvalid

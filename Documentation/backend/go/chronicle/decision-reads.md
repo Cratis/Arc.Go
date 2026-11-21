@@ -67,7 +67,7 @@ Within an active protected invocation, refusals wrap `commands.ErrDecisionRead` 
 Before acquisition (no fold or enrollment), the read is refused when:
 
 - its arguments are invalid (`integration.ErrInvalid`) or the integration cannot resolve the command's frozen routing;
-- the model is classified (`readmodels.WithPII` or any protection metadata), reducer-backed, joined, hierarchical or otherwise not admitted by Chronicle's decision catalog; `errors.As` exposes `*readmodels.DecisionReadRefused` with its reason;
+- the model is reducer-backed, joined, hierarchical or otherwise not admitted by Chronicle's decision catalog; `errors.As` exposes `*readmodels.DecisionReadRefused` with its reason;
 - the model is not registered with the client's store (`integration.ErrNotRegistered`).
 
 After acquisition, checking or enrollment can refuse a foreign, zero or stale token: one issued to another invocation, client, store or namespace, or invalidated by a reconnect or catalog change. These checks run again before `Handle`; the SDK also verifies token lifetime before dispatching the commit.
@@ -84,8 +84,7 @@ If an application ignores a failed enrollment and still returns events, the inte
 
 - A token is opaque evidence issued by the Chronicle.Go SDK, not an authenticated server proof. The pinned protocol can't atomically bind projection definitions or in-place history changes to the fold.
 - The protected profile admits no model or custom validators, as described for the [root seam](../commands/decision-reads.md#limits).
-- Classified models are refused rather than released: a session fold can't establish safe per-subject release.
 
 ## Verify against a kernel
 
-`internal/integration/decisions_test.go` runs these contracts against `cratis/chronicle:19.29.4-development`: a committed booking and a stale-decision rejection, a competing dependency-event append that rejects a two-source batch, an unrelated-event append to the same source that leaves the decision valid, a lost acknowledgement that stays unknown, a separate validation-only read and the profile, classified-model and unregistered-model refusals. Run it with the commands in [Verify independently](index.md#verify-independently).
+`internal/integration/decisions_test.go` runs these contracts against `cratis/chronicle:19.32.3-development`: a committed booking and a stale-decision rejection, a competing dependency-event append that rejects a two-source batch, an unrelated-event append to the same source that leaves the decision valid, a lost acknowledgement that stays unknown, a separate validation-only read, a classified (`WithPII`) model that is admitted, enrolled and rejected as a whole on a competing append, and the profile and unregistered-model refusals. Run it with the commands in [Verify independently](index.md#verify-independently).

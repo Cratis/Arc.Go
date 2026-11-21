@@ -51,7 +51,7 @@ func clientFor(t *testing.T, register func(*chronicle.Registry), names ...chroni
 	if endpoint == "" {
 		t.Fatal("CHRONICLE_INTEGRATION_CONNECTION_STRING is required with -tags=integration")
 	}
-	t.Log("kernel cratis/chronicle:19.29.4-development", os.Getenv("CHRONICLE_INTEGRATION_IMAGE_DIGEST"))
+	t.Log("kernel cratis/chronicle:19.32.3-development", os.Getenv("CHRONICLE_INTEGRATION_IMAGE_DIGEST"))
 	registry := chronicle.NewRegistry()
 	register(registry)
 	client, err := chronicle.NewClient(chronicle.WithAppendOriginResolver(sdk.ResolveAppendOrigin), chronicle.WithRegistry(registry), chronicle.WithConnectionString(endpoint), chronicle.WithDevelopmentDefaults())
