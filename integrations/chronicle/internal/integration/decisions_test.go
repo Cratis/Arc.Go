@@ -60,8 +60,13 @@ type BookRoom struct {
 type InspectRoom struct {
 	ID integration.EventSourceID `json:"id"`
 }
-type InspectGuestRoom struct {
-	ID integration.EventSourceID `json:"id"`
+
+// BookGuestRoom decides from a protected read of the classified GuestRoom model.
+// Compete appends a competing booking directly after the read.
+type BookGuestRoom struct {
+	ID      integration.EventSourceID `json:"id"`
+	Guest   string                    `json:"guest"`
+	Compete bool                      `json:"-"`
 }
 type PeekRoom struct {
 	ID integration.EventSourceID `json:"id"`
@@ -233,18 +238,16 @@ func roomApp(t *testing.T) *roomFixture {
 			return decision.Instance().Value.Guest, nil
 		})))
 	require(t, commands.Register(builder.Commands(),
-		commands.WithProtectedDecisions[InspectGuestRoom](),
-		commands.WithoutModelValidation[InspectGuestRoom](),
-		commands.Prepare(func(ctx context.Context, inv *commands.Invocation, c InspectGuestRoom) (commands.Preparation[*sdk.Decision[GuestRoom]], error) {
+		commands.WithProtectedDecisions[BookGuestRoom](),
+		commands.WithoutModelValidation[BookGuestRoom](),
+		commands.WithNoResponse[BookGuestRoom](),
+		commands.Prepare(func(ctx context.Context, inv *commands.Invocation, c BookGuestRoom) (commands.Preparation[*sdk.Decision[GuestRoom]], error) {
 			decision, err := sdk.ReadDecision(ctx, inv, decisions, guests, readmodels.Key(c.ID))
 			if err != nil {
 				return commands.Preparation[*sdk.Decision[GuestRoom]]{}, err
 			}
 			return commands.Provided(decision), nil
-		}, func(context.Context, *commands.Invocation, InspectGuestRoom, *sdk.Decision[GuestRoom]) (commands.NoResponse, error) {
-			t.Error("classified decision reached Handle")
-			return commands.NoResponse{}, nil
-		})))
+		}, bookGuestRoom(t, f.ctx, handle))))
 	require(t, commands.Register(builder.Commands(),
 		commands.WithUnprotectedDecisions[PeekRoom](),
 		commands.Prepare(func(ctx context.Context, inv *commands.Invocation, c PeekRoom) (commands.Preparation[*sdk.Decision[Room]], error) {
@@ -287,6 +290,39 @@ func roomApp(t *testing.T) *roomFixture {
 	require(t, f.app.Start(ctx))
 	t.Cleanup(func() { require(t, f.app.Shutdown(context.Background())) })
 	return f
+}
+
+// bookGuestRoom handles BookGuestRoom from its protected classified decision.
+func bookGuestRoom(t *testing.T, ctx context.Context, handle *chronicle.EventStore) func(context.Context, *commands.Invocation, BookGuestRoom, *sdk.Decision[GuestRoom]) (integration.EventBatch, error) {
+	return func(_ context.Context, _ *commands.Invocation, c BookGuestRoom, decision *sdk.Decision[GuestRoom]) (integration.EventBatch, error) {
+		if !decision.IsProtected() {
+			t.Error("classified command received an advisory decision")
+		}
+		if room := decision.Instance(); room.Exists {
+			return integration.EventBatch{}, validation.Reject(validation.Result{Severity: validation.Error, Message: "Room is already booked by " + room.Value.Guest + "."})
+		}
+		if c.Compete {
+			result, err := handle.EventLog().Append(ctx, events.SourceID(c.ID), RoomBooked{Guest: "competitor"})
+			require(t, err)
+			require(t, result.Err())
+		}
+		return integration.EventsWithScopes([]integration.EventValue{
+			integration.EventForSource(c.ID, RoomBooked{Guest: c.Guest}),
+			integration.EventForSource("ledger-"+c.ID, LedgerEntered{Room: string(c.ID)}),
+		}), nil
+	}
+}
+
+// requireBookings fails unless the room and its ledger hold the given number of events.
+func (f *roomFixture) requireBookings(t *testing.T, room string, bookings, ledger int) {
+	t.Helper()
+	got := f.guests(t, room)
+	if len(got) != bookings {
+		t.Fatalf("room %s bookings = %v, want %d", room, got, bookings)
+	}
+	if entries := f.guests(t, "ledger-"+room); len(entries) != ledger {
+		t.Fatalf("room %s ledger = %v, want %d", room, entries, ledger)
+	}
 }
 
 func (f *roomFixture) guests(t *testing.T, source string) []string {
@@ -398,17 +434,45 @@ func TestValidationOnlyDecisionIsSeparateAndNeverEnrollsAgainstTheKernel(t *test
 	}
 }
 
-func TestDecisionProfilesAndClassifiedModelsAgainstTheKernel(t *testing.T) {
+// A classified (WithPII) model is admitted like C#: the fold releases the
+// plaintext the decision needs, a committed booking makes the next decision
+// stale, and a competing append after enrollment rejects the whole batch.
+func TestClassifiedDecisionIsAdmittedAndEnrolledAgainstTheKernel(t *testing.T) {
 	f := roomApp(t)
-	result, err := f.app.Commands().Execute(f.ctx, InspectGuestRoom{ID: "505"})
-	var refused *readmodels.DecisionReadRefused
-	if result.IsSuccess() || !errors.Is(err, commands.ErrDecisionRead) || !errors.As(err, &refused) || refused.Reason != readmodels.DecisionProtectedModel {
-		t.Fatal("classified model was not refused", result.Details(), err)
+	result, err := f.app.Commands().Execute(f.ctx, BookGuestRoom{ID: "606", Guest: "Ada"})
+	if disposition := result.Completion().Disposition; err != nil || disposition != commands.Committed {
+		t.Fatal("classified decision was not admitted", result.Details(), disposition, err)
 	}
-	if result.Completion().Disposition == commands.Committed {
-		t.Fatal(result.Completion())
+	f.requireBookings(t, "606", 1, 1)
+
+	result, _ = f.app.Commands().Execute(f.ctx, BookGuestRoom{ID: "606", Guest: "Grace"})
+	if got := findingMessages(result.Details().ValidationResults); got != "Room is already booked by Ada." {
+		t.Fatal("classified decision did not see the released booking", got)
 	}
-	result, err = f.app.Commands().Execute(f.ctx, InspectSuite{ID: "505"})
+	f.requireBookings(t, "606", 1, 1)
+
+	result, _ = f.app.Commands().Execute(f.ctx, BookGuestRoom{ID: "607", Guest: "Ada", Compete: true})
+	if disposition := result.Completion().Disposition; disposition != commands.NotCommitted {
+		t.Fatal("competing append did not reject the batch", result.Details(), disposition)
+	}
+	if findings := result.Details().ValidationResults; len(findings) == 0 || findings[0].Reason != validation.ConcurrencyViolation {
+		t.Fatal("competing append was not reported as a concurrency violation", findings)
+	}
+	f.requireBookings(t, "607", 1, 0)
+}
+
+// findingMessages joins validation messages so a test can compare them at once.
+func findingMessages(findings []validation.Result) string {
+	messages := make([]string, 0, len(findings))
+	for _, finding := range findings {
+		messages = append(messages, finding.Message)
+	}
+	return strings.Join(messages, "\n")
+}
+
+func TestDecisionProfilesAndUnregisteredModelsAgainstTheKernel(t *testing.T) {
+	f := roomApp(t)
+	result, err := f.app.Commands().Execute(f.ctx, InspectSuite{ID: "505"})
 	if result.IsSuccess() || !errors.Is(err, integration.ErrNotRegistered) || !errors.Is(err, commands.ErrDecisionRead) {
 		t.Fatal("unregistered model was read", result.Details(), err)
 	}

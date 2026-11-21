@@ -5,7 +5,7 @@ description: Integrate Arc Go commands with Chronicle to return events, inject k
 
 An Arc command can return a registered event instead of calling the event store. The optional `github.com/cratis/arc.go/integrations/chronicle` module stages those events and commits them only after the command and its nested commands succeed. Arc's root module still works without Chronicle.
 
-The integration has no tagged release. It requires Go 1.26 or later and independently fetchable Arc/Chronicle dependencies. The kernel contract tests target `cratis/chronicle:19.29.4-development`. Do not treat this slice as complete C# integration parity; the [parity ledger](../../../parity.md) records the boundaries.
+The integration has no tagged release. It requires Go 1.26 or later and independently fetchable Arc/Chronicle dependencies. The kernel contract tests target `cratis/chronicle:19.32.3-development`. Do not treat this slice as complete C# integration parity; the [parity ledger](../../../parity.md) records the boundaries.
 
 Arc's [observable sources](../queries/observable-queries.md) can consume an
 application-owned feed, but this module does not provide Chronicle read-model
@@ -19,7 +19,7 @@ From a repository checkout, start a development kernel and run the example in th
 
 ```bash
 docker run -d --rm --name arc-go-chronicle \
-  -p 127.0.0.1:35000:35000 cratis/chronicle:19.29.4-development
+  -p 127.0.0.1:35000:35000 cratis/chronicle:19.32.3-development
 cd integrations/chronicle
 export GOWORK=off GOTOOLCHAIN=local
 export CHRONICLE_INTEGRATION_CONNECTION_STRING=chronicle://localhost:35000
@@ -316,9 +316,9 @@ failure retains the original error and a `Committed` completion, with persisted
 kernel readback; it cannot be rolled back by the later failure.
 
 This bounded consumer uses Chronicle SDK
-`v0.0.0-20261003210034-9e0c8d5ba5f1`, Arc `v0.0.0-20261005222852-3e2a69270f46`, Fundamentals `v0.3.3`
+`v0.9.1`, Arc `v0.0.0-20261005222852-3e2a69270f46`, Fundamentals `v0.3.3`
 and Go 1.26 minimum. The SDK baseline includes fail-closed profile changes beyond
-two-phase construction. It does not establish classified decision, compliance,
+two-phase construction and admits classified models to protected decision reads. It does not establish general compliance,
 watch or replay safety. Legacy watch/window/local-reducer release ownership is
 still tracked by [Chronicle.Go #35](https://github.com/Cratis/Chronicle.Go/issues/35).
 

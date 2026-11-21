@@ -84,7 +84,7 @@ func TestSharedProviderCommandOriginAndJoinedShutdown(t *testing.T) {
 	if endpoint == "" {
 		t.Fatal("CHRONICLE_INTEGRATION_CONNECTION_STRING is required with -tags=integration")
 	}
-	t.Log("kernel cratis/chronicle:19.29.4-development", os.Getenv("CHRONICLE_INTEGRATION_IMAGE_DIGEST"))
+	t.Log("kernel cratis/chronicle:19.32.3-development", os.Getenv("CHRONICLE_INTEGRATION_IMAGE_DIGEST"))
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
 	registry := chronicle.NewRegistry()

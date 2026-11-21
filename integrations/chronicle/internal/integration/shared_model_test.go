@@ -72,13 +72,13 @@ func TestOneModelProjectsAndServesArcNamespaceQuery(t *testing.T) {
 			reader := readmodels.For(store.ReadModels(), model)
 			note := "initial note"
 			want := sharedmodel.Inventory{ID: "item-1", ProductName: sharedmodel.ProductName(namespace), URLValue: "https://example.test", Note: &note, State: "available"}
-			awaitInventoryOrKnownStall(t, ctx, store, model, reader, want, appended.Position, namespace)
+			awaitInventoryOrDiagnose(t, ctx, store, model, reader, want, appended.Position)
 			appended, err = store.EventLog().Append(ctx, "item-1", sharedmodel.NoteCleared{})
 			logInventoryAppend(t, store, "cleared", appended, err)
 			require(t, err)
 			require(t, appended.Err())
 			want.Note = nil
-			awaitInventoryOrKnownStall(t, ctx, store, model, reader, want, appended.Position, namespace)
+			awaitInventoryOrDiagnose(t, ctx, store, model, reader, want, appended.Position)
 
 			tenant, err := tenancy.ParseID(namespace)
 			require(t, err)
@@ -111,11 +111,9 @@ func TestOneModelProjectsAndServesArcNamespaceQuery(t *testing.T) {
 	}
 }
 
-// awaitInventoryOrKnownStall waits for the projected inventory. On timeout it
-// fails, except in the freshly ensured TenantB namespace where the upstream
-// kernel strand (Chronicle#4548) is skipped when the projection observer is
-// active, subscribed, behind a known tail and has no failed partitions.
-func awaitInventoryOrKnownStall(t *testing.T, ctx context.Context, store *chronicle.EventStore, model readmodels.Model[sharedmodel.Inventory], reader *readmodels.Reader[sharedmodel.Inventory], want sharedmodel.Inventory, position *events.SequenceNumber, namespace string) {
+// awaitInventoryOrDiagnose waits for the projected inventory. On timeout it
+// fails the test with the projection observer's kernel state as evidence.
+func awaitInventoryOrDiagnose(t *testing.T, ctx context.Context, store *chronicle.EventStore, model readmodels.Model[sharedmodel.Inventory], reader *readmodels.Reader[sharedmodel.Inventory], want sharedmodel.Inventory, position *events.SequenceNumber) {
 	t.Helper()
 	materialized, waitElapsed := awaitInventory(t, ctx, reader, want)
 	if materialized {
@@ -125,19 +123,14 @@ func awaitInventoryOrKnownStall(t *testing.T, ctx context.Context, store *chroni
 		t.Fatal("test context exhausted while waiting for projected inventory:", err)
 	}
 	failure := "projection did not materialize"
-	if namespace != "TenantB" || position == nil {
+	if position == nil {
 		t.Fatal(failure)
 	}
 	for _, projection := range store.Projections() {
 		if projection.Model().Identifier() != model.Identifier() {
 			continue
 		}
-		stall, evidence := observeStall(t, ctx, store, observation.ID(projection.Identifier()), projection.EventSequence(), *position, 0, waitElapsed, failure)
-		if stall.matchesChronicle4548() {
-			knownKernelDefectObserved(t, chronicle4548+": catch-up job reuse strands observers in a freshly ensured namespace; re-enable with https://github.com/Cratis/Arc.Go/issues/43", failure, evidence)
-			return
-		}
-		t.Fatal(failure, evidence)
+		t.Fatal(failure, observeStall(t, ctx, store, observation.ID(projection.Identifier()), projection.EventSequence(), *position, 0, waitElapsed, failure))
 	}
 	t.Fatal(failure, "; projection for the model not registered")
 }

@@ -77,7 +77,7 @@ A provider integration implements `DecisionSource` for each target:
 
 | Stage | Contract |
 | --- | --- |
-| `Admit` | Refuse unsupported models, such as classified ones, before any acquisition. |
+| `Admit` | Refuse unsupported models, such as reducer-backed ones, before any acquisition. |
 | `Acquire` | Return opaque, non-nil provider evidence. Never accept an application-created token. |
 | `Check` | Validate the evidence's lifetime and target again; called at every issue and verification. |
 | `Enroll` | Register the evidence with the provider's current completion owner. Not called in validation-only runs. |

@@ -91,8 +91,9 @@ func (d *Decision[M]) DecisionReads() []*commands.DecisionRead {
 // store and namespace the integration routes that command to.
 //
 // For a command marked commands.WithProtectedDecisions it issues a protected
-// read through commands.ReadDecision: classified, reducer-backed and otherwise
-// unsupported models are refused before any acquisition; the read is shared per
+// read through commands.ReadDecision: classified models are admitted, while
+// reducer-backed and otherwise unsupported models are refused before any
+// acquisition; the read is shared per
 // invocation and target; outside validation-only execution it is enrolled with
 // the command's Chronicle transaction, so a competing append of a dependency
 // event for the same key rejects the whole batch at commit. Validation-only
