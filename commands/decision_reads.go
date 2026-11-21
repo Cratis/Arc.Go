@@ -35,7 +35,7 @@ type DecisionTarget struct {
 // security continuity between them, and never holds a lock while calling them.
 // A stage that panics is converted to an error.
 //
-// Admit refuses unsupported models (for example classified ones) before any
+// Admit refuses unsupported models (for example reducer-backed ones) before any
 // acquisition. Acquire returns the provider's opaque read evidence; it must not
 // be nil and must not be manufactured by the application. Check re-validates that
 // evidence (lifetime, target) on every issue and verification. Enroll registers

@@ -2,8 +2,8 @@ github.com/coder/websocket v1.8.15 h1:6B2JPeOGlpff2Uz6vOEH1Vzpi0iUz20A+lPVhPHtNU
 github.com/coder/websocket v1.8.15/go.mod h1:NX3SzP+inril6yawo5CQXx8+fk145lPDC6pumgx0mVg=
 github.com/cratis/arc.go v0.0.0-20261005222852-3e2a69270f46 h1:KiXo9MMFW7KJ/er/wj34BkqlnshKzYH/GED9MzmwyHs=
 github.com/cratis/arc.go v0.0.0-20261005222852-3e2a69270f46/go.mod h1:sNlv+dPCjq2kSh9Xp0TYBlFx9SUkAv3z4syai6AwLI8=
-github.com/cratis/chronicle.go v0.0.0-20261003210034-9e0c8d5ba5f1 h1:Fzkn43TQ4K98TYvCStpjeu0JACBBWezQEPPrzCezTBI=
-github.com/cratis/chronicle.go v0.0.0-20261003210034-9e0c8d5ba5f1/go.mod h1:gRtI5xgb37OisJXDor6syh0KubKUfu3T24ZyRmVqQmM=
+github.com/cratis/chronicle.go v0.9.1 h1:e02VP05xxxOlaprGbSf+eddFuSbbFh0ZZmmXgPbh4zI=
+github.com/cratis/chronicle.go v0.9.1/go.mod h1:ZpiQGcUSpfs92HSzrbLtIcPC3spR84GE4vQhVjoIEiM=
 github.com/cratis/fundamentals.go v0.3.3 h1:e/ysxXvOlbDzlOEpixMcoctIzYlYJOpCC0jOxv9moDQ=
 github.com/cratis/fundamentals.go v0.3.3/go.mod h1:upTRXscJLeH63NqzzY51bPvvsgjtDpfug6a6VAaT2fI=
 github.com/golang/protobuf v1.5.4 h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek=

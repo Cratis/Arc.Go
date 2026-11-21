@@ -148,10 +148,8 @@ func TestReactorReturnedCommandCommitsBeforeAckAndFailureRecordsPartition(t *tes
 }
 
 // awaitReactorOutcome polls done for up to 15 seconds per phase. On timeout it
-// separates the upstream kernel strand (Chronicle#4548: no delivery reached the
-// client while the subscribed, active observer stays behind a known tail) from
-// every other cause, which fails the test. done polls with a deadline derived
-// from poll; the diagnosis reads the kernel with ctx.
+// fails the test with the reactor observer's kernel state as evidence. done polls
+// with a deadline derived from poll; the diagnosis reads the kernel with ctx.
 func awaitReactorOutcome(t *testing.T, ctx, poll context.Context, store *chronicle.EventStore, deliveries *reactorDeliveries, source events.SourceID, position *events.SequenceNumber, failure string, done func(context.Context) (bool, error)) {
 	t.Helper()
 	if position == nil {
@@ -186,20 +184,32 @@ func awaitReactorOutcome(t *testing.T, ctx, poll context.Context, store *chronic
 
 func diagnoseReactorStall(t *testing.T, parent context.Context, store *chronicle.EventStore, deliveries *reactorDeliveries, source events.SourceID, position events.SequenceNumber, waitElapsed bool, failure string) {
 	t.Helper()
-	stall, evidence := observeStall(t, parent, store, "arc-create", events.EventLog, position, deliveries.count(source), waitElapsed, failure)
-	evidence = fmt.Sprintf("source=%s %s", source, evidence)
-	if stall.matchesChronicle4548() {
-		knownKernelDefectObserved(t, chronicle4548+": reactor stranded behind the event-log tail; re-enable with "+reactorStrandIssue, failure, evidence)
-		return
-	}
-	t.Fatal(failure, evidence)
+	evidence := observeStall(t, parent, store, "arc-create", events.EventLog, position, deliveries.count(source), waitElapsed, failure)
+	t.Fatal(failure, fmt.Sprintf("source=%s %s", source, evidence))
+}
+
+// reactorStall is the observable state of an observer that did not reach an
+// expected outcome before its deadline.
+type reactorStall struct {
+	// WaitElapsed reports that the full polling window, not the parent context, ended the wait.
+	WaitElapsed bool
+	// Position is the sequence number of the event the observer should handle.
+	Position uint64
+	// Delivered counts client-side invocations for the event's source.
+	Delivered int
+	// UnresolvedFailures counts the observer's unresolved failed partitions.
+	UnresolvedFailures int
+	// Active and Subscribed report the kernel's observer state.
+	Active, Subscribed bool
+	// LastHandled and Tail are the observer's kernel sequence numbers.
+	LastHandled, Tail uint64
 }
 
 // observeStall reads the kernel state of an observer that did not reach the
-// event at position and fails the test when that state is unreadable. delivered
-// is the client-side invocation count, zero for observers with no client hook.
-// waitElapsed records whether the full observation window elapsed.
-func observeStall(t *testing.T, parent context.Context, store *chronicle.EventStore, observerID observation.ID, sequence events.SequenceID, position events.SequenceNumber, delivered int, waitElapsed bool, failure string) (reactorStall, string) {
+// event at position as failure evidence, and fails the test when that state is
+// unreadable. delivered is the client-side invocation count, zero for observers
+// with no client hook. waitElapsed records whether the full observation window elapsed.
+func observeStall(t *testing.T, parent context.Context, store *chronicle.EventStore, observerID observation.ID, sequence events.SequenceID, position events.SequenceNumber, delivered int, waitElapsed bool, failure string) string {
 	t.Helper()
 	read, cancel := context.WithTimeout(context.WithoutCancel(parent), 5*time.Second)
 	defer cancel()
@@ -222,7 +232,7 @@ func observeStall(t *testing.T, parent context.Context, store *chronicle.EventSt
 		Active: info.RunningState() == observation.Active, Subscribed: info.IsSubscribed(),
 		LastHandled: uint64(info.LastHandled()), Tail: uint64(info.Tail()),
 	}
-	return stall, fmt.Sprintf("observer=%s %+v next=%d handled=%d", observerID, stall, info.Next(), info.HandledEventCount())
+	return fmt.Sprintf("observer=%s %+v next=%d handled=%d", observerID, stall, info.Next(), info.HandledEventCount())
 }
 
 // failureClient uses the public kernel OAuth/contract APIs, not SDK internal test helpers.

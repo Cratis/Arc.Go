@@ -74,17 +74,21 @@ func decisionProviderForTest(t *testing.T, connection *decisionNoRPC, options ..
 	return newDecisionProvider(service, model)
 }
 
-func TestDecisionSDKRefusesClassifiedAndUnsupportedProvidersWithoutRPC(t *testing.T) {
+// Classification no longer decides admission: a classified model reaches the
+// same provider check as an unclassified one, so on a low-level service (which
+// cannot issue decision evidence) every case is refused only as unavailable and
+// never as a protected model. Successful classified acquisition and enrollment
+// need an issuing kernel; the tagged kernel contract covers them.
+func TestDecisionSDKAdmitsClassifiedModelsAndRefusesUnsupportedProvidersWithoutRPC(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		option readmodels.ModelOption
-		reason readmodels.DecisionReadRefusalReason
 	}{
-		{name: "low-level-provider", reason: readmodels.DecisionUnavailable},
-		{name: "pii", option: readmodels.WithProtection(compliance.Property("name", compliance.Classification{PII: true})), reason: readmodels.DecisionProtectedModel},
-		{name: "subject", option: readmodels.WithProtection(compliance.Property("name", compliance.Classification{Encrypted: true})), reason: readmodels.DecisionProtectedModel},
-		{name: "namespace", option: readmodels.WithProtection(compliance.Property("name", compliance.Classification{Encrypted: true, Scope: compliance.Namespace})), reason: readmodels.DecisionProtectedModel},
-		{name: "global", option: readmodels.WithProtection(compliance.Property("name", compliance.Classification{Encrypted: true, Scope: compliance.Global})), reason: readmodels.DecisionProtectedModel},
+		{name: "low-level-provider"},
+		{name: "pii", option: readmodels.WithProtection(compliance.Property("name", compliance.Classification{PII: true}))},
+		{name: "subject", option: readmodels.WithProtection(compliance.Property("name", compliance.Classification{Encrypted: true}))},
+		{name: "namespace", option: readmodels.WithProtection(compliance.Property("name", compliance.Classification{Encrypted: true, Scope: compliance.Namespace}))},
+		{name: "global", option: readmodels.WithProtection(compliance.Property("name", compliance.Classification{Encrypted: true, Scope: compliance.Global}))},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			connection := &decisionNoRPC{}
@@ -103,8 +107,8 @@ func TestDecisionSDKRefusesClassifiedAndUnsupportedProvidersWithoutRPC(t *testin
 					read, err = provider.acquire(t.Context(), "source", participant)
 				}
 				var refused *readmodels.DecisionReadRefused
-				if read != nil || !errors.As(err, &refused) || refused.Reason != tc.reason {
-					t.Fatalf("read = %v, error = %v; want %s", read, err, tc.reason)
+				if read != nil || !errors.As(err, &refused) || refused.Reason != readmodels.DecisionUnavailable {
+					t.Fatalf("read = %v, error = %v; want %s", read, err, readmodels.DecisionUnavailable)
 				}
 			}
 			if err := owner.Rollback(); err != nil {

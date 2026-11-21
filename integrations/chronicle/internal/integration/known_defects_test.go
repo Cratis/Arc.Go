@@ -15,13 +15,28 @@ import (
 // the corresponding skip.
 const runKnownFlakesEnv = "ARC_CHRONICLE_RUN_KNOWN_FLAKES"
 
-// chronicle4548 names the upstream kernel defect where a finishing catch-up job
-// is reused and strands an observer behind the event-log tail.
-const chronicle4548 = "known upstream kernel defect https://github.com/Cratis/Chronicle/issues/4548"
+// chronicle6064 names the upstream kernel defect where a recovered position is
+// delivered once more after partition recovery succeeds.
+const chronicle6064 = "known upstream kernel defect https://github.com/Cratis/Chronicle/issues/6064"
 
-// reactorStrandIssue tracks re-enabling the reactor kernel contract once the
-// Chronicle#4548 fix ships.
-const reactorStrandIssue = "https://github.com/Cratis/Arc.Go/issues/44"
+// redeliveredAfterRecovery quarantines Chronicle#6064 only when the history holds
+// exactly one extra prefix and suffix and the application effect still ran once.
+// Any other shape fails, so an unrelated regression is not hidden.
+func redeliveredAfterRecovery(t *testing.T, steps []string, state *redeliveryState) {
+	t.Helper()
+	counts := map[string]int{}
+	for _, step := range steps {
+		counts[step]++
+	}
+	if len(steps) != 5 || counts["prefix"] != 3 || counts["suffix"] != 2 {
+		t.Fatal("unexpected committed command order", steps)
+	}
+	calls, applied := state.snapshot()
+	if applied != 1 {
+		t.Fatalf("application effect count = %d, want 1", applied)
+	}
+	knownKernelDefectObserved(t, chronicle6064, steps, calls, applied)
+}
 
 func runKnownFlakes() bool {
 	return os.Getenv(runKnownFlakesEnv) == "1"
