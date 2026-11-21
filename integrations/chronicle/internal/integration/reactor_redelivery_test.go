@@ -7,7 +7,6 @@ package integration_test
 
 import (
 	"context"
-	"encoding/json"
 	"reflect"
 	"slices"
 	"sync"
@@ -179,19 +178,18 @@ func TestReactorCommandRedeliveryRetainsCommitsAndWaitsForCompletion(t *testing.
 		t.Fatal("original and recovered deliveries did not open reactor resources")
 	}
 	records := history(t, ctx, client, storeName, namespace, source)
+	steps := committedSteps(t, records, redeliveryCoordinates{
+		store: storeName, namespace: namespace, source: source, correlationID: request.CorrelationID,
+	})
+	if other := history(t, ctx, client, storeName, "Default", source); len(other) != 0 {
+		t.Fatal("reactor command escaped its tenant namespace", other)
+	}
+	if len(records) == 6 {
+		redeliveredAfterRecovery(t, steps, state)
+		return
+	}
 	if len(records) != 4 {
 		t.Fatalf("history count = %d, want request, prefix, prefix, suffix", len(records))
-	}
-	var steps []string
-	for _, record := range records[1:] {
-		if record.Context.EventType.ID != "RedeliveryRecorded" || record.Context.Namespace != namespace ||
-			record.Context.Store != storeName || record.Context.SourceID != source ||
-			record.Context.CorrelationID != request.CorrelationID || record.Context.CausedBy.Subject != "[System]" {
-			t.Fatal("committed output lost coordinates or trusted metadata", record.Context)
-		}
-		var value RedeliveryRecorded
-		require(t, json.Unmarshal(record.Content, &value))
-		steps = append(steps, value.Step)
 	}
 	if !slices.Equal(steps, []string{"prefix", "prefix", "suffix"}) {
 		t.Fatal("unexpected committed command order", steps)
@@ -199,8 +197,5 @@ func TestReactorCommandRedeliveryRetainsCommitsAndWaitsForCompletion(t *testing.
 	calls, applied = state.snapshot()
 	if len(calls) != 7 || calls[6].Step != "suffix" || applied != 1 {
 		t.Fatalf("unexpected final commands/effects: %+v / %d", calls, applied)
-	}
-	if other := history(t, ctx, client, storeName, "Default", source); len(other) != 0 {
-		t.Fatal("reactor command escaped its tenant namespace", other)
 	}
 }

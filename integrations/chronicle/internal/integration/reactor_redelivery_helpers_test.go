@@ -7,6 +7,7 @@ package integration_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -18,9 +19,46 @@ import (
 	integration "github.com/cratis/arc.go/integrations/chronicle"
 	"github.com/cratis/arc.go/tenancy"
 	"github.com/cratis/arc.go/validation"
+	"github.com/cratis/chronicle.go"
 	"github.com/cratis/chronicle.go/events"
+	"github.com/cratis/chronicle.go/metadata"
 	"github.com/cratis/chronicle.go/reactors"
 )
+
+// redeliveryCoordinates are the coordinates and correlation every committed
+// reactor output must keep.
+type redeliveryCoordinates struct {
+	store         chronicle.StoreName
+	namespace     chronicle.Namespace
+	source        events.SourceID
+	correlationID metadata.CorrelationID
+}
+
+func (c redeliveryCoordinates) keptBy(record events.Appended) bool {
+	appended := record.Context
+	sameLocation := appended.Store == c.store && appended.Namespace == c.namespace && appended.SourceID == c.source
+	trusted := appended.CorrelationID == c.correlationID && appended.CausedBy.Subject == "[System]"
+	return appended.EventType.ID == "RedeliveryRecorded" && sameLocation && trusted
+}
+
+// committedSteps checks that every reactor output after the request kept its
+// coordinates and trusted metadata, and returns the recorded steps in order.
+func committedSteps(t *testing.T, records []events.Appended, coordinates redeliveryCoordinates) []string {
+	t.Helper()
+	if len(records) == 0 {
+		t.Fatal("history lost the request")
+	}
+	var steps []string
+	for _, record := range records[1:] {
+		if !coordinates.keptBy(record) {
+			t.Fatal("committed output lost coordinates or trusted metadata", record.Context)
+		}
+		var value RedeliveryRecorded
+		require(t, json.Unmarshal(record.Content, &value))
+		steps = append(steps, value.Step)
+	}
+	return steps
+}
 
 const redeliveryObserver = "arc-redelivery"
 
